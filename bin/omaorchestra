@@ -1,3 +1,6 @@
 #!/bin/bash
 # omarchy:summary=Coordinate AI coding agents
+# Run from a source checkout when there is one next to this script.
+src="$(dirname "$(readlink -f "$0")")/../src"
+[[ -d $src/omaorchestra ]] && export PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}"
 exec python3 -m omaorchestra "$@"

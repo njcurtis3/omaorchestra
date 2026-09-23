@@ -1,0 +1,38 @@
+"""Translate Claude Code hook events into session status updates."""
+
+# Claude Code hook event -> omaorchestra status. None means the session ended.
+CLAUDE_EVENTS = {
+    "SessionStart": "idle",
+    "UserPromptSubmit": "working",
+    # Fires after a tool runs, so it also clears needs-input once a permission
+    # prompt has been answered.
+    "PostToolUse": "working",
+    "Notification": "needs-input",
+    "Stop": "idle",
+    "SessionEnd": None,
+}
+
+
+def request_for(event):
+    """Build a daemon request from a Claude Code hook payload, or None to ignore it."""
+    name = event.get("hook_event_name")
+    session_id = event.get("session_id")
+    if name not in CLAUDE_EVENTS or not session_id:
+        return None
+    status = CLAUDE_EVENTS[name]
+    if status is None:
+        return {"cmd": "remove", "session_id": session_id}
+    return {
+        "cmd": "update",
+        "session_id": session_id,
+        "agent": "claude",
+        "status": status,
+        "cwd": event.get("cwd"),
+        "message": event.get("message") if name == "Notification" else None,
+    }
+
+
+def settings_snippet(command="omaorchestra hook claude"):
+    """The hooks block to merge into ~/.claude/settings.json."""
+    entry = [{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]
+    return {"hooks": {name: entry for name in CLAUDE_EVENTS}}
