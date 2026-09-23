@@ -114,6 +114,7 @@ ColumnLayout {
     text: detail.gone ? "" : [
       detail.s.statusLabel + " for " + sessions.duration(detail.s.since, detail.now),
       detail.s.branch ? " " + detail.s.branch : "",
+      detail.s.worktree ? "󰙅 own worktree" : "",
       detail.s.modelName || "",
       detail.s.cwd || ""
     ].filter(Boolean).join("   ·   ")
@@ -256,56 +257,18 @@ ColumnLayout {
           Layout.fillWidth: true
           wrapMode: Text.Wrap
           color: theme.muted
-          text: "Uncommitted changes in this folder, whoever made them."
+          text: detail.gone || !detail.s.worktree
+            ? "Uncommitted changes in this folder, whoever made them."
+            : "Everything this task has done in its own worktree since it started, commits included."
         }
         IconButton { glyph: "󰑐"; tip: "Refresh"; onActivated: detail.loadChanges() }
       }
 
-      Label {
-        visible: detail.changesLoading
-        color: theme.muted
-        text: "Reading changes…"
-      }
-
-      Label {
-        visible: !detail.changesLoading && !!detail.changesResult
-        Layout.fillWidth: true
-        wrapMode: Text.Wrap
-        color: detail.changesResult && detail.changesResult.error ? theme.urgent : theme.muted
-        text: {
-          const r = detail.changesResult
-          if (!r) return ""
-          if (r.error) return r.error
-          if (!r.repo) return "This folder is not in a git repository."
-          if (!r.diff && r.untracked.length === 0) return "No uncommitted changes."
-          const parts = []
-          if (r.untracked.length) parts.push(r.untracked.length + " untracked: " + r.untracked.slice(0, 8).join(", ") + (r.untracked.length > 8 ? ", …" : ""))
-          if (r.truncated) parts.push("The diff is long; showing the first 200 KB.")
-          return parts.join("\n")
-        }
-      }
-
-      ListView {
-        id: diffList
+      ChangesView {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
-        ScrollBar.horizontal: ScrollBar {}
-        contentWidth: width * 2
-        flickableDirection: Flickable.AutoFlickIfNeeded
-        model: detail.changesResult && detail.changesResult.diff ? detail.changesResult.diff.split("\n") : []
-
-        delegate: Label {
-          required property string modelData
-          text: modelData
-          font.pixelSize: 12
-          color: modelData.startsWith("+") && !modelData.startsWith("+++") ? theme.accent
-                 : modelData.startsWith("-") && !modelData.startsWith("---") ? theme.urgent
-                 : modelData.startsWith("@@") || modelData.startsWith("diff ") ? theme.muted
-                 : theme.foreground
-        }
+        result: detail.changesResult
+        loading: detail.changesLoading
       }
     }
   }

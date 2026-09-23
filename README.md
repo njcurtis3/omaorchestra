@@ -203,6 +203,33 @@ window may be asking whether to trust this folder"), with a notification.
 omaorchestra never answers that question for you. A launch whose agent never
 appears is dropped after a minute.
 
+## Worktrees
+
+In a git repository, each task started from omaorchestra gets its own git
+worktree and branch (`omaorchestra/<task words>-<id>`, from the commit the
+checkout is on), so agents working in parallel never touch each other's
+files or your checkout. Worktrees live outside the repository, under
+`~/.local/share/omaorchestra/worktrees/`, so nothing shows up in your
+`git status`. Uncommitted changes in your checkout are not carried over.
+Turn this off per task (`run --no-worktree`, or the switch in New task) or
+with `tasks.isolate_with_worktrees = false`.
+
+A worktree outlives its agent: it holds the work until you decide.
+
+```bash
+omaorchestra worktree list              # every task worktree and how it stands
+omaorchestra worktree diff <id>         # everything done since the task started
+omaorchestra worktree merge <id>        # into the branch it started from
+omaorchestra worktree remove <id>       # --force to discard unmerged work
+```
+
+The app's **Worktrees** page does the same, and a worktree session's Changes
+tab shows its commits and diff since it started. Merging happens in your
+main checkout and refuses unless it is clean and on the branch the task
+started from; a conflicting merge is undone. Removing refuses to lose
+uncommitted or unmerged work unless forced. Each new worktree is a new
+folder, so Claude Code asks once whether to trust it.
+
 ## Stopping an agent
 
 `omaorchestra stop <id>` asks before ending the session's agent process

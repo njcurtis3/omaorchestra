@@ -33,7 +33,9 @@ class CommandTest(unittest.TestCase):
 class RunTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = mock.patch.dict(os.environ, {"OMAORCHESTRA_CLAUDE": "true"})  # any installed binary
+        self.env = mock.patch.dict(os.environ, {"OMAORCHESTRA_CLAUDE": "true",  # any installed binary
+                                                "OMAORCHESTRA_CONFIG": os.path.join(self.tmp.name, "none.toml"),
+                                                "OMAORCHESTRA_STATE_DIR": os.path.join(self.tmp.name, "state")})
         self.env.start()
 
     def tearDown(self):
@@ -42,9 +44,13 @@ class RunTest(unittest.TestCase):
 
     def test_registers_then_launches(self):
         sent, spawned = [], []
-        sid, tracked = launch.run("  fix the   flaky test  ", self.tmp.name,
-                                  spawn=lambda cmd, **kw: spawned.append(cmd), request=sent.append)
-        self.assertTrue(tracked)
+        result = launch.run("  fix the   flaky test  ", self.tmp.name,
+                            spawn=lambda cmd, **kw: spawned.append(cmd), request=sent.append)
+        sid = result["id"]
+        self.assertTrue(result["tracked"])
+        # Worktrees are on by default, but this folder is not a git repository.
+        self.assertIsNone(result["worktree"])
+        self.assertIn("not a git repository", result["note"])
         reg = sent[0]
         self.assertEqual((reg["session_id"], reg["status"], reg["launching"], reg["title"], reg["cwd"]),
                          (sid, "working", True, "fix the flaky test", str(Path(self.tmp.name).resolve())))
@@ -55,8 +61,8 @@ class RunTest(unittest.TestCase):
     def test_untracked_when_daemon_is_down(self):
         def down(payload):
             raise client.DaemonUnavailable("no")
-        sid, tracked = launch.run("x", self.tmp.name, spawn=lambda cmd, **kw: None, request=down)
-        self.assertFalse(tracked)
+        result = launch.run("x", self.tmp.name, spawn=lambda cmd, **kw: None, request=down)
+        self.assertFalse(result["tracked"])
 
     def test_failed_terminal_unregisters(self):
         sent = []
@@ -81,7 +87,7 @@ class RunTest(unittest.TestCase):
 
         def fake_run(task, cwd, **kw):
             captured.update(task=task, cwd=cwd, **kw)
-            return "abcdef1234", True
+            return {"id": "abcdef1234", "tracked": True, "worktree": None, "note": ""}
         out = io.StringIO()
         with mock.patch.object(launch, "run", fake_run), contextlib.redirect_stdout(out):
             self.assertEqual(main(["run", "do it", "--in", self.tmp.name, "--model", "haiku", "--", "--verbose"]), 0)

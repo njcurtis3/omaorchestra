@@ -26,7 +26,8 @@ class RecentTest(unittest.TestCase):
 
     def test_launch_remembers_the_folder(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
-                os.environ, {"OMAORCHESTRA_STATE_DIR": tmp, "OMAORCHESTRA_CLAUDE": "true"}):
+                os.environ, {"OMAORCHESTRA_STATE_DIR": tmp, "OMAORCHESTRA_CLAUDE": "true",
+                             "OMAORCHESTRA_CONFIG": os.path.join(tmp, "none.toml")}):
             launch.run("x", tmp, spawn=lambda cmd, **kw: None, request=lambda p: None)
             self.assertEqual(recent.load(), [str(Path(tmp).resolve())])
 

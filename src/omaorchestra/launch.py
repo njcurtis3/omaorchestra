@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import client, recent
+from . import client, config, recent, worktrees
 
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
@@ -46,9 +46,15 @@ def short(task, limit=80):
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def run(task, cwd, permission_mode=None, model=None, extra=(), spawn=subprocess.Popen, request=client.request):
-    """Launch the agent; returns (session_id, tracked). `tracked` is False
-    when the daemon was not running to register it."""
+def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
+        spawn=subprocess.Popen, request=client.request):
+    """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
+    `tracked` is False when the daemon was not running to register it;
+    `worktree` is the worktree record when the task got one.
+
+    `worktree=None` follows the `tasks.isolate_with_worktrees` setting; a
+    folder outside a git repository never gets one.
+    """
     if not task.strip():
         raise LaunchError("the task is empty")
     cwd = Path(cwd).expanduser().resolve()
@@ -56,14 +62,27 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), spawn=subprocess.
         raise LaunchError(f"{cwd} is not a directory")
     if not shutil.which(claude_bin()):
         raise LaunchError(f"{claude_bin()} is not installed")
+    if worktree is None:
+        worktree = config.load_or_defaults()["tasks"]["isolate_with_worktrees"]
     session_id = str(uuid.uuid4())
+    record, note, workdir = None, "", cwd
+    if worktree:
+        if worktrees.repo_root(cwd) is None:
+            note = "not a git repository, so no separate worktree"
+        else:
+            try:
+                record = worktrees.create(cwd, task, session_id)
+            except worktrees.WorktreeError as e:
+                raise LaunchError(f"could not create a worktree: {e}") from e
+            workdir = Path(record["workdir"])
     tracked = True
     try:
         request({"cmd": "update", "session_id": session_id, "agent": "claude", "status": "working",
-                 "cwd": str(cwd), "title": short(task), "task": task, "launching": True})
+                 "cwd": str(workdir), "title": short(task), "task": task, "launching": True,
+                 "worktree": record["path"] if record else None})
     except client.DaemonUnavailable:
         tracked = False
-    command = terminal_command(cwd, claude_command(task, session_id, permission_mode, model, extra))
+    command = terminal_command(workdir, claude_command(task, session_id, permission_mode, model, extra))
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True)
@@ -78,4 +97,4 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), spawn=subprocess.
         recent.add(cwd)
     except OSError:
         pass  # only a convenience
-    return session_id, tracked
+    return {"id": session_id, "tracked": tracked, "worktree": record, "note": note}

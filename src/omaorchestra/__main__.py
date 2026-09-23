@@ -7,7 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, config, control, daemon, hooks, launch, procs, service, windows
+from . import (__version__, claude_settings, client, config, control, daemon, hooks, launch, procs, service,
+               windows, worktrees)
 
 
 def cmd_daemon(args):
@@ -130,12 +131,53 @@ def cmd_app(args):
 
 
 def cmd_run(args):
-    session_id, tracked = launch.run(args.task, args.dir, permission_mode=args.permission_mode,
-                                     model=args.model, extra=args.agent_args)
-    where = launch.Path(args.dir).expanduser().resolve()
-    print(f"started {session_id[:8]} in {where}")
-    if not tracked:
+    result = launch.run(args.task, args.dir, permission_mode=args.permission_mode, model=args.model,
+                        extra=args.agent_args, worktree=args.worktree)
+    record = result["worktree"]
+    where = record["workdir"] if record else launch.Path(args.dir).expanduser().resolve()
+    print(f"started {result['id'][:8]} in {where}")
+    if record:
+        print(f"  on branch {record['branch']}, from {record.get('base_branch') or record['base'][:8]}")
+    if result["note"]:
+        print(f"  ({result['note']})")
+    if not result["tracked"]:
         print("(omaorchestrad is not running, so this session is not tracked)")
+    return 0
+
+
+def cmd_worktree_list(args):
+    items = worktrees.records()
+    if not items:
+        print("no worktrees")
+        return 0
+    for r in items:
+        info = worktrees.status(r)
+        state = ("removed" if not info["exists"] else "merged" if info["merged"]
+                 else f"{len(info['commits'])} commit(s)" + (", uncommitted changes" if info["dirty"] else ""))
+        print(f"{r['session_id'][:8]}  {r['branch']:<48} {state}")
+        print(f"          {r['path']}")
+    return 0
+
+
+def cmd_worktree_diff(args):
+    result = worktrees.changes(worktrees.find(args.worktree))
+    if result["error"]:
+        raise worktrees.WorktreeError(result["error"])
+    for commit in result["commits"]:
+        print(f"commit {commit}")
+    print(result["diff"] or "(no changes since the base)", end="" if result["diff"] else "\n")
+    for name in result["untracked"]:
+        print(f"untracked: {name}")
+    return 0
+
+
+def cmd_worktree_merge(args):
+    print(worktrees.merge(worktrees.find(args.worktree)))
+    return 0
+
+
+def cmd_worktree_remove(args):
+    print(worktrees.remove(worktrees.find(args.worktree), force=args.force))
     return 0
 
 
@@ -339,8 +381,22 @@ def main(argv=None):
     run_p.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
     run_p.add_argument("--model", help="model to use, passed to the agent")
     run_p.add_argument("--permission-mode", help="the agent's permission mode (default: its own setting)")
+    run_p.add_argument("--worktree", dest="worktree", action="store_true", default=None,
+                       help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
+    run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
+    wt = sub.add_parser("worktree", help="task worktrees: list, review, merge, remove")
+    wt_sub = wt.add_subparsers(dest="worktree_command", required=True)
+    wt_sub.add_parser("list", help="every task worktree and how it stands").set_defaults(func=cmd_worktree_list)
+    for name, func, text in (("diff", cmd_worktree_diff, "everything done since the task started"),
+                             ("merge", cmd_worktree_merge, "merge into the branch it started from"),
+                             ("remove", cmd_worktree_remove, "delete it (refuses to lose work without --force)")):
+        p = wt_sub.add_parser(name, help=text)
+        p.add_argument("worktree", help="session id (or prefix), branch, or path")
+        if name == "remove":
+            p.add_argument("--force", action="store_true", help="discard uncommitted or unmerged work")
+        p.set_defaults(func=func)
     stop_p = sub.add_parser("stop", help="stop a session's agent process (asks first)")
     stop_p.add_argument("session", help="session id or prefix")
     stop_p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
@@ -404,7 +460,7 @@ def main(argv=None):
     try:
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
-            control.ControlError, launch.LaunchError) as e:
+            control.ControlError, launch.LaunchError, worktrees.WorktreeError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

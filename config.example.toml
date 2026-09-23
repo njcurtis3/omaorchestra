@@ -20,8 +20,8 @@ waiting = true
 finished_after = 120
 
 [tasks]
-# Not used yet: these take effect with the task queue.
-# Maximum agents running at once
+# Maximum agents running at once (not used yet: takes effect with the task queue)
 max_parallel = 2
-# Give every task its own git worktree so parallel agents do not collide
+# In a git repository, give each task its own worktree and branch so parallel
+# agents do not collide (`run --no-worktree` or the New task form can opt out)
 isolate_with_worktrees = true

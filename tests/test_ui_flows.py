@@ -57,6 +57,7 @@ class UiFlowTest(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {
             "OMAORCHESTRA_SOCKET": str(tmp / "o.sock"), "OMAORCHESTRA_STATE_DIR": str(tmp / "state"),
             "OMAORCHESTRA_CONFIG": str(self.config_path), "XDG_STATE_HOME": str(tmp / "xdg-state"),
+            "OMAORCHESTRA_WORKTREES": str(tmp / "worktrees"),
         })
         self.env.start()
         env = dict(os.environ)
@@ -66,9 +67,11 @@ class UiFlowTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: (tmp / "o.sock").exists()), "daemon did not start")
 
         self.theme, self.sessions, self.settings = backend.Theme(), backend.Sessions(), backend.Settings()
+        self.worktrees = backend.Worktrees()
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
+                            ("worktrees", self.worktrees),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -104,6 +107,7 @@ class UiFlowTest(unittest.TestCase):
         return item is not None and item.isVisible()
 
     def click(self, name):
+        spin(80)  # let the layout settle (a row that just appeared may still move)
         item = self.find(name)
         self.assertIsNotNone(item, f"no item {name}")
         self.assertTrue(item.isVisible(), f"{name} is not visible")
@@ -127,33 +131,33 @@ class UiFlowTest(unittest.TestCase):
 
         # Click a row: its details open. Escape goes back.
         self.click("row-w1")
-        self.assertTrue(wait_for(lambda: self.shown("detail")))
+        self.assertTrue(wait_for(lambda: self.shown("detail")), 'self.shown("detail")')
         self.assertEqual(self.page().property("selectedId"), "w1")
         QTest.keyClick(self.window, Qt.Key.Key_Escape)
-        self.assertTrue(wait_for(lambda: not self.shown("detail") and self.shown("row-w1")))
+        self.assertTrue(wait_for(lambda: not self.shown("detail") and self.shown("row-w1")), 'not self.shown("detail") and self.shown("row-w1")')
 
         # A session that ends while its details are open shows as ended.
         self.click("row-k1")
         self.client.request({"cmd": "remove", "session_id": "k1"})
-        self.assertTrue(wait_for(lambda: self.find("detail").property("gone") is True))
+        self.assertTrue(wait_for(lambda: self.find("detail").property("gone") is True), 'self.find("detail").property("gone") is True')
         QTest.keyClick(self.window, Qt.Key.Key_Escape)
         self.add_session("k1", "working", "/tmp/tries")
-        self.assertTrue(wait_for(lambda: self.shown("row-k1")))
+        self.assertTrue(wait_for(lambda: self.shown("row-k1")), 'self.shown("row-k1")')
 
         # Filter chips and the search box.
         self.click("filter-needs-input")
-        self.assertTrue(wait_for(lambda: self.shown("row-w1") and not self.shown("row-k1")))
+        self.assertTrue(wait_for(lambda: self.shown("row-w1") and not self.shown("row-k1")), 'self.shown("row-w1") and not self.shown("row-k1")')
         self.click("filter-all")
         self.click("search")
         for ch in "tries":  # keyClicks only takes widgets; type into the window key by key
             QTest.keyClick(self.window, getattr(Qt.Key, f"Key_{ch.upper()}"))
-        self.assertTrue(wait_for(lambda: self.shown("row-k1") and not self.shown("row-w1")))
+        self.assertTrue(wait_for(lambda: self.shown("row-k1") and not self.shown("row-w1")), 'self.shown("row-k1") and not self.shown("row-w1")')
         self.assertEqual(len(self.page().property("shown")), 1)
 
         # Settings: flip a switch and save; the file changes (comments kept)
         # and the daemon reloads.
         self.click("nav-settings")
-        self.assertTrue(wait_for(lambda: self.shown("setting-daemon.verbose")))
+        self.assertTrue(wait_for(lambda: self.shown("setting-daemon.verbose")), 'self.shown("setting-daemon.verbose")')
         self.click("setting-daemon.verbose")
         self.click("settings-save")
         text = self.config_path.read_text()
@@ -169,11 +173,11 @@ class UiFlowTest(unittest.TestCase):
         from omaorchestra import launch
         calls = []
 
-        def fake_run(task, cwd, model=None, permission_mode=None, **kw):
-            calls.append((task, cwd, model, permission_mode))
+        def fake_run(task, cwd, model=None, permission_mode=None, worktree=None, **kw):
+            calls.append((task, cwd, model, permission_mode, worktree))
             # What a real launch does first: register the session.
             self.add_session("new-1", "working", cwd, title=task, launching=True)
-            return "new-1", True
+            return {"id": "new-1", "tracked": True, "worktree": None, "note": ""}
 
         with mock.patch.object(launch, "run", fake_run):
             QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
@@ -190,14 +194,52 @@ class UiFlowTest(unittest.TestCase):
             self.assertTrue(self.find("task-launch").property("enabled"))
             self.click("task-launch")
             self.assertTrue(wait_for(lambda: self.shown("detail")), "did not open the new session")
-        self.assertEqual(calls, [("fix it", self.tmp.name, None, None)])
+        # Not a git repository, so no worktree even though it is on by default.
+        self.assertEqual(calls, [("fix it", self.tmp.name, None, None, False)])
         self.assertEqual(self.page().property("selectedId"), "new-1")
         self.assertEqual(self.find("task-prompt").property("text"), "", "form not cleared after launching")
         self.assertEqual(self.warnings, [])
 
+    def test_worktrees_page_merge_and_remove(self):
+        from PySide6.QtCore import QMetaObject, QObject
+        from omaorchestra import worktrees
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+
+        def git(cwd, *args):
+            subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "user.email", "t@example.com")
+        git(repo, "config", "user.name", "t")
+        (repo / "a.txt").write_text("a\n")
+        git(repo, "add", ".")
+        git(repo, "commit", "-qm", "first")
+        record = worktrees.create(repo, "Add b", "abcdef123")
+        (Path(record["path"]) / "b.txt").write_text("b\n")
+        git(record["path"], "add", ".")
+        git(record["path"], "commit", "-qm", "add b")
+
+        self.click("nav-worktrees")
+        name = "worktree-" + record["branch"]
+        self.assertTrue(wait_for(lambda: self.shown(name)), "worktree not listed")
+        confirm = self.window.findChild(QObject, "worktree-confirm")
+
+        self.click("merge-" + record["branch"])
+        self.assertTrue(wait_for(lambda: confirm.property("opened")), 'confirm.property("opened")')
+        QMetaObject.invokeMethod(confirm, "accept")
+        self.assertTrue(wait_for(lambda: (repo / "b.txt").exists()), "merge did not happen")
+
+        self.click("remove-" + record["branch"])
+        self.assertTrue(wait_for(lambda: confirm.property("opened")), 'confirm.property("opened")')
+        QMetaObject.invokeMethod(confirm, "accept")
+        self.assertTrue(wait_for(lambda: not self.shown(name)), "worktree still listed after removing")
+        self.assertFalse(Path(record["path"]).exists())
+        self.assertEqual(self.warnings, [])
+
     def test_reconnects_after_the_daemon_restarts(self):
         self.add_session("w1", "idle", "/tmp/a")
-        self.assertTrue(wait_for(lambda: self.shown("row-w1")))
+        self.assertTrue(wait_for(lambda: self.shown("row-w1")), 'self.shown("row-w1")')
         self.daemon.terminate()
         self.daemon.wait(timeout=5)
         self.assertTrue(wait_for(lambda: not self.sessions.connected), "did not notice the daemon going")

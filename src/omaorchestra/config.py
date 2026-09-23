@@ -89,10 +89,12 @@ METADATA = {
     },
     "tasks": {
         "title": "Tasks",
-        "help": "Not used yet: these take effect with the task queue.",
+        "help": "Agents started from omaorchestra (`omaorchestra run`, or New task in the app).",
         "keys": {
-            "max_parallel": ("Agents at once", "Maximum agents running at the same time."),
-            "isolate_with_worktrees": ("Separate worktree per task", "Give every task its own git worktree."),
+            "max_parallel": ("Agents at once", "Maximum agents running at the same time. Not used yet: "
+                                               "takes effect with the task queue."),
+            "isolate_with_worktrees": ("Separate worktree per task",
+                                       "In a git repository, give each task its own worktree and branch."),
         },
     },
 }

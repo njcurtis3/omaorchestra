@@ -150,7 +150,7 @@ class Daemon:
         changed (a new status) or are still unknown, so the frequent
         same-status updates cost nothing."""
         # An agent adapter may report these itself; that wins over the transcript.
-        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching") if request.get(k)}
+        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree") if request.get(k)}
         path = request.get("transcript_path") or (before or {}).get("transcript_path")
         if not path or (before and before.get("status") == request.get("status") and before.get("model")):
             return given

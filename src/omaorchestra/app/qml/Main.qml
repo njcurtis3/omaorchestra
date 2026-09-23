@@ -61,6 +61,7 @@ ApplicationWindow {
   readonly property var pages: [
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
     { id: "new", glyph: "󰐕", label: "New task" },
+    { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
 
@@ -171,6 +172,13 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.fillHeight: true
         onLaunched: id => window.showSession(id)
+      }
+
+      // Worktrees
+      WorktreesPage {
+        visible: window.page === "worktrees"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
       }
 
       // Settings

@@ -12,6 +12,7 @@ ColumnLayout {
 
   property string error: ""
   readonly property bool folderOk: sessions.folderExists(folder.text)
+  readonly property bool inRepo: folderOk && sessions.inGitRepo(folder.text)
   readonly property bool ready: prompt.text.trim() !== "" && folderOk
 
   function reset() {
@@ -21,7 +22,8 @@ ColumnLayout {
   }
   function launch() {
     if (!ready) return
-    const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue)
+    const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
+                                   page.inRepo && worktreeSwitch.checked)
     if (result.error) { error = result.error; return }
     const id = result.id
     reset()
@@ -29,6 +31,7 @@ ColumnLayout {
   }
 
   onVisibleChanged: if (visible) {
+    worktreeSwitch.checked = sessions.worktreeDefault()
     recentList.model = sessions.recentFolders()
     if (!folder.text && recentList.model.length) folder.text = recentList.model[0]
     prompt.forceActiveFocus()
@@ -162,6 +165,40 @@ ColumnLayout {
     ColumnLayout {
       FieldLabel { text: "Agent" }
       Label { text: "Claude Code"; color: theme.foreground; Layout.topMargin: 8 }
+    }
+  }
+
+  RowLayout {
+    Layout.fillWidth: true
+    spacing: 12
+    Switch {
+      id: worktreeSwitch
+      objectName: "task-worktree"
+      enabled: page.inRepo
+      checked: true
+      indicator: Rectangle {
+        implicitWidth: 40
+        implicitHeight: 20
+        x: worktreeSwitch.leftPadding
+        y: (worktreeSwitch.height - height) / 2
+        radius: 10
+        opacity: worktreeSwitch.enabled ? 1 : 0.4
+        color: worktreeSwitch.checked && worktreeSwitch.enabled ? theme.accent : theme.selection
+        Rectangle {
+          x: worktreeSwitch.checked ? parent.width - width - 2 : 2
+          y: 2
+          width: 16; height: 16; radius: 8
+          color: theme.foreground
+        }
+      }
+    }
+    Label {
+      Layout.fillWidth: true
+      wrapMode: Text.Wrap
+      color: page.inRepo ? theme.foreground : theme.muted
+      text: page.inRepo
+        ? "Work in a separate git worktree and branch, so parallel agents do not collide. Merge it from the Worktrees page."
+        : "Separate worktree: only for folders in a git repository."
     }
   }
 

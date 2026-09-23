@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import changes, client, config, control, launch, recent, transcript, windows
+from .. import changes, client, config, control, launch, recent, transcript, windows, worktrees
 from . import present
 from . import theme as theme_file
 
@@ -124,6 +124,60 @@ class Settings(QObject):
     path = Property(str, lambda self: str(config.path()), notify=changed)
 
 
+class Worktrees(QObject):
+    """Task worktrees for the Worktrees page."""
+
+    changed = Signal()
+    changesReady = Signal(str, "QVariantMap")  # worktree path, worktrees.changes() result
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._items = []
+
+    @Slot()
+    def refresh(self):
+        items = []
+        for record in worktrees.records():
+            try:
+                info = worktrees.status(record)
+            except worktrees.WorktreeError as e:
+                info = {"exists": True, "commits": [], "dirty": False, "merged": False, "error": str(e)}
+            items.append({**record, **info, "commitCount": len(info["commits"])})
+        self._items = sorted(items, key=lambda r: -r.get("created", 0))
+        self.changed.emit()
+
+    @Slot(str)
+    def requestChanges(self, path):
+        record = next((r for r in worktrees.records() if r["path"] == path), None)
+
+        def work():
+            result = worktrees.changes(record) if record else {"error": "that worktree is gone"}
+            self.changesReady.emit(path, result)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _act(self, path, action):
+        try:
+            record = next(r for r in worktrees.records() if r["path"] == path)
+            return {"message": action(record)}
+        except StopIteration:
+            return {"error": "that worktree is gone"}
+        except worktrees.WorktreeError as e:
+            return {"error": str(e)}
+        finally:
+            self.refresh()
+
+    @Slot(str, result="QVariantMap")
+    def merge(self, path):
+        return self._act(path, worktrees.merge)
+
+    @Slot(str, bool, result="QVariantMap")
+    def remove(self, path, force):
+        return self._act(path, lambda r: worktrees.remove(r, force=force))
+
+    items = Property("QVariantList", lambda self: self._items, notify=changed)
+
+
 class Sessions(QObject):
     """Sessions from omaorchestrad, kept current over a subscription.
 
@@ -228,10 +282,14 @@ class Sessions(QObject):
 
     @Slot(str)
     def requestChanges(self, session_id):
-        cwd = (self.by_id.get(session_id) or {}).get("cwd")
+        session = self.by_id.get(session_id) or {}
+        record = next((r for r in worktrees.records() if r["path"] == session.get("worktree")), None)
 
         def work():
-            self.changesReady.emit(session_id, changes.uncommitted(cwd))
+            # A task with its own worktree: everything since it started.
+            # Otherwise: the folder's uncommitted changes.
+            result = worktrees.changes(record) if record else changes.uncommitted(session.get("cwd"))
+            self.changesReady.emit(session_id, result)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -266,20 +324,30 @@ class Sessions(QObject):
         return present.recent_folders(recent.load(), self.by_id.values())
 
     @Slot(str, result=bool)
+    def inGitRepo(self, folder):
+        import os
+        from .. import worktrees
+        return self.folderExists(folder) and worktrees.repo_root(os.path.expanduser(folder)) is not None
+
+    @Slot(result=bool)
+    def worktreeDefault(self):
+        return bool(config.load_or_defaults()["tasks"]["isolate_with_worktrees"])
+
+    @Slot(str, result=bool)
     def folderExists(self, folder):
         import os
         return bool(folder) and os.path.isdir(os.path.expanduser(folder))
 
-    @Slot(str, str, str, str, result="QVariantMap")
-    def launch(self, task, folder, model, permission_mode):
+    @Slot(str, str, str, str, bool, result="QVariantMap")
+    def launch(self, task, folder, model, permission_mode, worktree):
         """Start an agent on `task`; returns {"id": ...} or {"error": ...}."""
         import os
         try:
-            session_id, tracked = launch.run(task, os.path.expanduser(folder), model=model or None,
-                                             permission_mode=permission_mode or None)
+            result = launch.run(task, os.path.expanduser(folder), model=model or None,
+                                permission_mode=permission_mode or None, worktree=worktree)
         except launch.LaunchError as e:
             return {"error": str(e)}
-        return {"id": session_id, "tracked": tracked}
+        return {"id": result["id"], "tracked": result["tracked"], "note": result["note"]}
 
     @Slot(float, result=str)
     def clock(self, timestamp):
