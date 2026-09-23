@@ -6,7 +6,7 @@ Run AI coding agents side by side, see which are working, waiting for you, or
 done, and jump into any of them, from the terminal or the Omarchy bar.
 
 > **Status:** early prototype. The daemon tracks Claude Code sessions through
-> hooks; a bar widget and a first version of the desktop app show them.
+> hooks; a bar widget and the desktop app's sessions dashboard show them.
 > There is no task queue yet.
 > omaorchestra is an independent, third-party project. It is not part of, or
 > endorsed by, Omarchy.
@@ -97,6 +97,14 @@ app, not a web page. It follows the current Omarchy theme and font, reconnects
 by itself when the daemon restarts, and keeps a single window (launching it
 again focuses the open one). Open it from the app launcher, the button at the
 top of the bar panel, the Omarchy menu, or a keybinding.
+
+The **Sessions** page lists every session, waiting first: project, git
+branch, model, the waiting message, and how long it has been in its current
+state. Filter by status or by text (project, path, branch, model), switch
+between a list and a grid, click a session to jump to its terminal, or copy
+its path, open its folder, or dismiss it. The model and branch come from the
+agent's transcript (Claude Code), or from the agent itself when it reports
+them.
 
 ```bash
 sudo pacman -S pyside6        # the app's one dependency

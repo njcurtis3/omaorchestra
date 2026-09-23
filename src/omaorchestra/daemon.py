@@ -5,7 +5,7 @@ import os
 import signal
 import socket
 
-from . import __version__, config, notify, paths, procs, windows
+from . import __version__, config, notify, paths, procs, transcript, windows
 from .log import event
 from .registry import Registry
 
@@ -104,6 +104,17 @@ class Daemon:
         except windows.WindowError as e:
             event(logging.WARNING, "focus failed", id=sid, error=str(e))
 
+    def transcript_facts(self, before, request):
+        """Model and branch: from the request, else from the transcript, read only when they may have
+        changed (a new status) or are still unknown, so the frequent
+        same-status updates cost nothing."""
+        # An agent adapter may report these itself; that wins over the transcript.
+        given = {k: request[k] for k in ("model", "branch") if request.get(k)}
+        path = request.get("transcript_path") or (before or {}).get("transcript_path")
+        if not path or (before and before.get("status") == request.get("status") and before.get("model")):
+            return given
+        return {**transcript.info(path), **given}
+
     def prune(self):
         removed = self.registry.prune(self.is_alive)
         for sid, session in removed.items():
@@ -127,6 +138,8 @@ class Daemon:
                 request["session_id"], request.get("agent", "unknown"), request["status"],
                 cwd=request.get("cwd"), message=request.get("message"),
                 pid=request.get("pid"), pid_start=request.get("pid_start"),
+                transcript_path=request.get("transcript_path"),
+                **self.transcript_facts(before, request),
             )
             if previous is None:
                 event(logging.INFO, "session started", id=session["id"], agent=session["agent"],

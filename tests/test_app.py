@@ -9,12 +9,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from omaorchestra.app import theme as theme_file
 
 try:
-    from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+    from PySide6.QtCore import QEventLoop, QTimer
+    from qt_app import application
     HAVE_QT = True
 except ImportError:
     HAVE_QT = False
@@ -66,7 +68,7 @@ def wait_for(condition, timeout=5.0):
 class QtTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = application()
 
     def test_theme_reloads_when_the_file_changes(self):
         from omaorchestra.app.backend import Theme

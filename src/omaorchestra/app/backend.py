@@ -4,9 +4,11 @@ import subprocess
 import threading
 import time
 
-from PySide6.QtCore import Property, QFileSystemWatcher, QObject, Signal, Slot
+from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import client
+from .. import client, windows
+from . import present
 from . import theme as theme_file
 
 RECONNECT_SECONDS = 2
@@ -128,6 +130,44 @@ class Sessions(QObject):
         return Property(int, get, notify=notify)
 
     connected = Property(bool, lambda self: self._connected, notify=changed)
+    rows = Property("QVariantList", lambda self: present.ordered(self.by_id.values()), notify=changed)
+
+    @Slot(str, str, result="QVariantList")
+    def filtered(self, status, text):
+        return [r for r in present.ordered(self.by_id.values()) if present.matches(r, status, text)]
+
+    @Slot(float, float, result=str)
+    def duration(self, since, now):
+        return present.duration(now - since) if since else ""
+
+    @Slot(str)
+    def focus(self, session_id):
+        session = self.by_id.get(session_id)
+        if session:
+            # hyprctl calls block briefly; keep them off the UI thread.
+            threading.Thread(target=self._focus, args=(dict(session),), daemon=True).start()
+
+    @staticmethod
+    def _focus(session):
+        try:
+            windows.focus_session(session)
+        except windows.WindowError:
+            pass
+
+    @Slot(str)
+    def dismiss(self, session_id):
+        try:
+            client.request({"cmd": "remove", "session_id": session_id, "reason": "dismissed"})
+        except client.DaemonUnavailable:
+            pass
+
+    @Slot(str)
+    def copyPath(self, path):
+        QGuiApplication.clipboard().setText(path)
+
+    @Slot(str)
+    def openFolder(self, path):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
     total = _count()
     waiting = _count("needs-input")
     working = _count("working")

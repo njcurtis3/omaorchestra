@@ -33,6 +33,7 @@ def request_for(event, agent_process=None):
         "status": status,
         "cwd": event.get("cwd"),
         "message": event.get("message") if name == "Notification" else None,
+        "transcript_path": event.get("transcript_path"),
     }
     if agent_process and agent_process[1] is not None:
         request["pid"], request["pid_start"] = agent_process

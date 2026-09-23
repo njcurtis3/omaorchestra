@@ -19,6 +19,9 @@ ApplicationWindow {
   font.pixelSize: 14
 
   property string page: "sessions"
+  // Ticks every second so relative times stay current.
+  property real now: Date.now() / 1000
+  Timer { interval: 1000; running: true; repeat: true; onTriggered: window.now = Date.now() / 1000 }
 
   readonly property var pages: [
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
@@ -109,63 +112,19 @@ ApplicationWindow {
       Rectangle { Layout.fillWidth: true; height: 1; color: theme.selection }
 
       // Sessions
-      ColumnLayout {
-        visible: window.page === "sessions"
+      Label {
+        visible: window.page === "sessions" && !sessions.connected
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        color: theme.muted
+        text: "omaorchestrad is not running. Start it with `omaorchestra service install`; this window reconnects on its own."
+      }
+
+      SessionsPage {
+        visible: window.page === "sessions" && sessions.connected
         Layout.fillWidth: true
         Layout.fillHeight: true
-        spacing: 12
-
-        Label {
-          visible: !sessions.connected
-          Layout.fillWidth: true
-          wrapMode: Text.Wrap
-          color: theme.muted
-          text: "omaorchestrad is not running. Start it with `omaorchestra service install`; this window reconnects on its own."
-        }
-
-        RowLayout {
-          visible: sessions.connected
-          spacing: 12
-
-          Repeater {
-            model: [
-              { label: "Waiting", value: sessions.waiting, urgent: true },
-              { label: "Working", value: sessions.working, urgent: false },
-              { label: "Idle", value: sessions.idle, urgent: false }
-            ]
-
-            delegate: Rectangle {
-              required property var modelData
-              width: 150; height: 84; radius: 6
-              color: theme.surface
-              border.color: modelData.urgent && modelData.value > 0 ? theme.urgent : "transparent"
-
-              Column {
-                anchors.centerIn: parent
-                spacing: 4
-                Label {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: modelData.value
-                  font.pixelSize: 28
-                  color: modelData.urgent && modelData.value > 0 ? theme.urgent : theme.foreground
-                }
-                Label {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: modelData.label
-                  color: theme.muted
-                }
-              }
-            }
-          }
-        }
-
-        Label {
-          visible: sessions.connected
-          color: theme.muted
-          text: "The full session dashboard is coming next."
-        }
-
-        Item { Layout.fillHeight: true }
+        now: window.now
       }
 
       // Settings

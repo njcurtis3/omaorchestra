@@ -21,7 +21,7 @@ Newline-delimited JSON over the socket, one response per request:
 |---|---|
 | `{"cmd": "ping"}` | `{"ok": true, "version": ...}` |
 | `{"cmd": "list"}` | `{"ok": true, "sessions": [...]}` |
-| `{"cmd": "update", "session_id", "agent", "status", "cwd"?, "message"?, "pid"?, "pid_start"?}` | `{"ok": true, "session": {...}}` |
+| `{"cmd": "update", "session_id", "agent", "status", "cwd"?, "message"?, "pid"?, "pid_start"?, "transcript_path"?, "model"?, "branch"?}` | `{"ok": true, "session": {...}}` |
 | `{"cmd": "remove", "session_id", "reason"?}` | `{"ok": true, "removed": bool}` |
 | `{"cmd": "subscribe"}` | `{"ok": true, "sessions": [...]}`, then a stream (below) |
 

@@ -18,7 +18,10 @@ class Registry:
             except (OSError, ValueError):
                 self.sessions = {}
 
-    def update(self, session_id, agent, status, cwd=None, message=None, pid=None, pid_start=None):
+    # Optional facts a session may carry; None leaves the stored value alone.
+    EXTRA = ("transcript_path", "model", "branch")
+
+    def update(self, session_id, agent, status, cwd=None, message=None, pid=None, pid_start=None, **extra):
         if status not in STATUSES:
             raise ValueError(f"unknown status: {status}")
         now = time.time()
@@ -30,6 +33,9 @@ class Registry:
             session["cwd"] = cwd
         if pid is not None and pid_start is not None:
             session["pid"], session["pid_start"] = pid, pid_start
+        for key in self.EXTRA:
+            if extra.get(key) is not None:
+                session[key] = extra[key]
         self.save()
         return session
 
