@@ -39,7 +39,8 @@ class UnitTest(unittest.TestCase):
 
     def test_exit_code_constants_agree(self):
         self.assertEqual(daemon.ALREADY_RUNNING_EXIT, service.ALREADY_RUNNING_EXIT)
-        self.assertIn(f"RestartPreventExitStatus={service.ALREADY_RUNNING_EXIT}", service.render_unit("/x"))
+        self.assertEqual(daemon.CONFIG_ERROR_EXIT, service.CONFIG_ERROR_EXIT)
+        self.assertIn("RestartPreventExitStatus=2 3", service.render_unit("/x"))
 
     def test_quotes_paths_with_spaces(self):
         self.assertIn('ExecStart="/home/u/my dir/omaorchestra" daemon', service.render_unit("/home/u/my dir/omaorchestra"))

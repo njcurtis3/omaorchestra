@@ -106,8 +106,23 @@ daemon alongside a real one.
 
 ## Configuration
 
-Copy `config.example.toml` to `~/.config/omaorchestra/config.toml`. Personal
-settings live there, never in the source tree.
+Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).
+Every setting is optional; [config.example.toml](config.example.toml) lists them
+with their defaults.
+
+```bash
+omaorchestra config check   # validate the file
+omaorchestra config show    # effective settings, defaults included
+omaorchestra config path
+```
+
+A mistake in the file (bad TOML, an unknown key, a wrong type) is reported
+with the key's name rather than ignored. The daemon then exits with status 2
+and systemd does not restart it; agent hooks fall back to defaults and keep
+working. Personal settings belong in this file, never in the source tree.
+
+The session registry always lives in `~/.local/state/omaorchestra/`, where the
+bar widget reads it, so it is deliberately not configurable.
 
 ## Requirements
 

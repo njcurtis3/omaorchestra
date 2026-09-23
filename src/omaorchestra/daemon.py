@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 
-from . import __version__, paths, procs
+from . import __version__, config, paths, procs
 from .registry import Registry
 
 
@@ -28,7 +28,9 @@ def claim_socket(path):
 
 
 PRUNE_INTERVAL = 30
-# Kept in step with service.ALREADY_RUNNING_EXIT (the unit's RestartPreventExitStatus).
+# Kept in step with service.py: the unit's RestartPreventExitStatus lists both,
+# because restarting cannot fix either.
+CONFIG_ERROR_EXIT = 2
 ALREADY_RUNNING_EXIT = 3
 
 
@@ -94,6 +96,11 @@ async def serve(sock_path, registry, daemon=None):
 
 
 def run():
+    try:
+        settings = config.load()
+    except config.ConfigError as e:
+        print(f"omaorchestrad: {e}", file=sys.stderr)
+        return CONFIG_ERROR_EXIT
     sock_path = paths.socket_path()
     registry = Registry(paths.state_dir() / "sessions.json")
 
@@ -103,7 +110,7 @@ def run():
         daemon.prune()
         server = await serve(sock_path, registry, daemon)
         print(f"omaorchestrad {__version__} listening on {sock_path}", flush=True)
-        pruner = asyncio.create_task(prune_forever(daemon))
+        pruner = asyncio.create_task(prune_forever(daemon, settings["daemon"]["prune_interval"]))
         try:
             async with server:
                 await server.serve_forever()

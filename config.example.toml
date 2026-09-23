@@ -1,14 +1,17 @@
-# Copy to ~/.config/omaorchestra/config.toml
+# Copy to ~/.config/omaorchestra/config.toml. Every setting is optional;
+# the values below are the defaults. Check your file with
+# `omaorchestra config check`.
 
 [daemon]
-# Directory for the session registry and logs
-state_dir = "~/.local/state/omaorchestra"
+# Seconds between checks for sessions whose agent process has died
+prune_interval = 30
 
 [agents]
-# Agents omaorchestra may launch. Each needs an adapter.
+# Agents whose hook events are tracked
 enabled = ["claude"]
 
 [tasks]
+# Not used yet: these take effect with the task queue.
 # Maximum agents running at once
 max_parallel = 2
 # Give every task its own git worktree so parallel agents do not collide

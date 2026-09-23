@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, daemon, hooks, procs, service
+from . import __version__, claude_settings, client, config, daemon, hooks, procs, service
 
 
 def cmd_daemon(args):
@@ -44,6 +44,8 @@ def cmd_ls(args):
 def cmd_hook(args):
     # Called by agent hooks: never block or fail the agent, whatever happens.
     try:
+        if args.agent not in config.load_or_defaults()["agents"]["enabled"]:
+            return 0
         request = hooks.request_for(json.load(sys.stdin), procs.agent_process())
         if request:
             client.request(request, timeout=0.5)
@@ -68,6 +70,23 @@ def hook_command(args):
     if not binary:
         raise claude_settings.SettingsError("cannot find the omaorchestra binary; pass --command")
     return claude_settings.hook_command(binary)
+
+
+def cmd_config_path(args):
+    print(config.path())
+    return 0
+
+
+def cmd_config_show(args):
+    print(config.to_toml(config.load()), end="")
+    return 0
+
+
+def cmd_config_check(args):
+    config.load()
+    where = config.path()
+    print(f"{where}: ok" if where.exists() else f"{where}: not present, using defaults")
+    return 0
 
 
 def cmd_hooks_snippet(args):
@@ -173,6 +192,12 @@ def main(argv=None):
         if name in ("install", "snippet"):
             p.add_argument("--command", dest="hook_command", help="hook command to use (default: this omaorchestra, by absolute path)")
 
+    config_cmd = sub.add_parser("config", help="inspect the configuration")
+    config_sub = config_cmd.add_subparsers(dest="config_command", required=True)
+    config_sub.add_parser("path", help="print the config file path").set_defaults(func=cmd_config_path)
+    config_sub.add_parser("show", help="print the effective config, defaults included").set_defaults(func=cmd_config_show)
+    config_sub.add_parser("check", help="validate the config file").set_defaults(func=cmd_config_check)
+
     service_cmd = sub.add_parser("service", help="run the daemon as a systemd user service")
     service_sub = service_cmd.add_subparsers(dest="service_command", required=True)
     install_p = service_sub.add_parser("install", help="enable and start the service")
@@ -187,7 +212,7 @@ def main(argv=None):
         return 0
     try:
         return args.func(args)
-    except (claude_settings.SettingsError, service.ServiceError) as e:
+    except (claude_settings.SettingsError, service.ServiceError, config.ConfigError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

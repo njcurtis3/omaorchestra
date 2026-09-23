@@ -15,9 +15,10 @@ PACKAGED_BINARY = "/usr/bin/omaorchestra"
 PACKAGED_UNIT = Path("/usr/lib/systemd/user") / UNIT_NAME
 MARKER = "# Written by `omaorchestra service install`; `omaorchestra service uninstall` removes it."
 
-# The daemon exits with this when another instance already owns the socket.
-# The unit tells systemd not to restart on it, so a daemon started by hand
-# cannot throw the service into a restart loop.
+# Exit codes restarting cannot fix: a bad config file, and another daemon
+# already owning the socket. The unit tells systemd not to restart on them,
+# so neither can throw the service into a restart loop.
+CONFIG_ERROR_EXIT = 2
 ALREADY_RUNNING_EXIT = 3
 
 
@@ -47,7 +48,7 @@ ExecStart={systemd_quote(str(binary))} daemon
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=2
-RestartPreventExitStatus={ALREADY_RUNNING_EXIT}
+RestartPreventExitStatus={CONFIG_ERROR_EXIT} {ALREADY_RUNNING_EXIT}
 NoNewPrivileges=yes
 
 [Install]
