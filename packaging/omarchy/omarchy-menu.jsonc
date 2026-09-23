@@ -2,6 +2,7 @@
 // ~/.config/omarchy/extensions/omarchy-menu.jsonc; it reloads on save.
 {
   "omaorchestra": {"icon":"󰚩","label":"Agents","description":"omaorchestra agent sessions"},
+  "omaorchestra.app": {"icon":"󰖯","label":"App","action":"omaorchestra app"},
   "omaorchestra.panel": {"icon":"󰕮","label":"Sessions","action":"omarchy-shell shell toggle omaorchestra.sessions"},
   "omaorchestra.focus": {"icon":"󰁔","label":"Jump to agent","action":"omaorchestra focus --notify"},
   "omaorchestra.log": {"icon":"󰌱","label":"Daemon log","action":"omarchy-launch-or-focus-tui --app-id=org.omarchy.omaorchestra-log journalctl --user -u omaorchestrad -f"},

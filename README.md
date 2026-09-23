@@ -6,7 +6,8 @@ Run AI coding agents side by side, see which are working, waiting for you, or
 done, and jump into any of them, from the terminal or the Omarchy bar.
 
 > **Status:** early prototype. The daemon tracks Claude Code sessions through
-> hooks and a bar widget shows them; there is no task queue yet.
+> hooks; a bar widget and a first version of the desktop app show them.
+> There is no task queue yet.
 > omaorchestra is an independent, third-party project. It is not part of, or
 > endorsed by, Omarchy.
 
@@ -29,6 +30,7 @@ See [docs/architecture.md](docs/architecture.md).
 | Path | Purpose |
 |---|---|
 | `src/omaorchestra/` | daemon and CLI (Python, standard library only) |
+| `src/omaorchestra/app/` | desktop app (PySide6 + QML) |
 | `bin/` | entry-point scripts |
 | `plugin/` | Omarchy shell bar widget and panel (QML) |
 | `scripts/` | development helpers |
@@ -88,6 +90,26 @@ are dropped.
 Hooks also report the agent's process, so a session whose agent crashes or is
 killed without `SessionEnd` disappears within 30 seconds.
 
+## App
+
+`omaorchestra app` opens the omaorchestra window: a native Qt (PySide6 + QML)
+app, not a web page. It follows the current Omarchy theme and font, reconnects
+by itself when the daemon restarts, and keeps a single window (launching it
+again focuses the open one). Open it from the app launcher, the button at the
+top of the bar panel, the Omarchy menu, or a keybinding.
+
+```bash
+sudo pacman -S pyside6        # the app's one dependency
+omaorchestra app              # open it
+omaorchestra app --check      # load it offscreen and report whether it reaches the daemon
+```
+
+PySide6 from pacman is installed for the system Python, so `bin/omaorchestra`
+always runs `/usr/bin/python3`; a version manager's python3 earlier on PATH
+would not see it. The app's Wayland app id (and Hyprland class) is
+`omaorchestra`; [packaging/omarchy/windows.lua](packaging/omarchy/windows.lua)
+has a rule to float, center and size it.
+
 ## Bar widget
 
 `plugin/omaorchestra.sessions/` is an Omarchy shell plugin. It watches
@@ -106,8 +128,7 @@ change, so it needs no polling and keeps working while the daemon is down.
   does the same from a terminal).
 
 ```bash
-scripts/dev-install-plugin --restart          # copy into ~/.config/omarchy/plugins
-                                              # and link the CLI into ~/.local/bin
+scripts/dev-install --restart          # plugin, CLI link, desktop entry and icon
 omarchy bar put omaorchestra.sessions --before omarchy.agents
 ```
 
@@ -117,7 +138,7 @@ widget run `omarchy restart shell` (the `--restart` flag does it).
 ## Development
 
 ```bash
-python -m unittest discover tests   # daemon, registry, hooks
+/usr/bin/python3 -m unittest discover tests   # everything (app tests need PySide6)
 node --test tests/plugin            # bar widget formatting logic
 ```
 
@@ -156,11 +177,12 @@ classic one.
 
 - `bindings.lua` for `~/.config/hypr/bindings.lua`:
   **SUPER + ALT + A** jumps to the agent that needs you, and
-  **SUPER + CTRL + ALT + A** toggles the sessions panel on the focused monitor.
-  Both are free in a stock Omarchy.
+  **SUPER + CTRL + ALT + A** toggles the sessions panel on the focused monitor,
+  and **SUPER + SHIFT + CTRL + ALT + A** opens the app. All three are free in a
+  stock Omarchy.
 - `omarchy-menu.jsonc` for `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
-  an **Agents** submenu with Sessions, Jump to agent, Daemon log and Restart
-  daemon.
+  an **Agents** submenu with App, Sessions, Jump to agent, Daemon log and
+  Restart daemon.
 
 `omaorchestra focus --notify` reports a failure (no sessions, no window) as a
 notification, since a keybinding has no terminal to print to.

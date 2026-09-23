@@ -7,7 +7,7 @@ import "Format.js" as Format
 // Detail view: every session omaorchestrad knows about, the ones waiting on
 // you first. Each row has copy-path, open-folder and dismiss icons; clicking
 // anywhere else on it runs `omaorchestra focus <id>`, which (like dismiss) needs
-// omaorchestra on PATH (/usr/bin when packaged; scripts/dev-install-plugin
+// omaorchestra on PATH (/usr/bin when packaged; scripts/dev-install
 // links a checkout into ~/.local/bin). BarWidget.qml owns the data; this panel only renders
 // `hostWidget.sessions`.
 //
@@ -78,7 +78,29 @@ Panel {
       width: parent.width
       spacing: Style.space(10)
 
-      PanelSectionHeader { text: "Agent sessions" }
+      Item {
+        width: parent.width
+        height: Math.max(sectionHeader.implicitHeight, openApp.implicitHeight)
+
+        PanelSectionHeader {
+          id: sectionHeader
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Agent sessions"
+        }
+
+        ActionIcon {
+          id: openApp
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          glyph: "󰖯"
+          tip: "Open the omaorchestra app"
+          onActivated: {
+            Quickshell.execDetached(["omaorchestra", "app"])
+            root.close()
+          }
+        }
+      }
 
       Text {
         width: parent.width

@@ -1,0 +1,43 @@
+#!/bin/bash
+# Install this checkout for everyday use on an Omarchy machine:
+#   - the bar plugin, copied into ~/.config/omarchy/plugins
+#   - the CLI, linked into ~/.local/bin (the bar, keybindings and the app
+#     launcher all run `omaorchestra`)
+#   - the desktop entry and icon, so the app shows up in the launcher
+#
+# The plugin is copied, not symlinked: the shell watches its plugins
+# directory with inotifywait -r, which does not follow symlinked directories.
+# Even then, the shell's hot reload keeps previously compiled QML, so edited
+# widget code only takes effect after `omarchy restart shell`. Pass --restart
+# to do that here.
+set -euo pipefail
+
+root="$(dirname "$(readlink -f "$0")")/.."
+root="$(readlink -f "$root")"
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+src="$root/plugin/omaorchestra.sessions"
+dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/omaorchestra.sessions"
+[[ -L $dest ]] && rm "$dest"
+mkdir -p "$dest"
+cp "$src"/*.qml "$src"/*.js "$src"/manifest.json "$dest"/
+echo "installed plugin to $dest"
+
+link="$HOME/.local/bin/omaorchestra"
+if [[ -L $link || ! -e $link ]]; then
+  mkdir -p "$(dirname "$link")"
+  ln -sfn "$root/bin/omaorchestra" "$link"
+  echo "linked $link -> $root/bin/omaorchestra"
+else
+  echo "left $link alone: it is not a symlink"
+fi
+
+install -Dm644 "$root/packaging/omaorchestra.desktop" "$data/applications/omaorchestra.desktop"
+install -Dm644 "$root/packaging/icons/omaorchestra.svg" "$data/icons/hicolor/scalable/apps/omaorchestra.svg"
+echo "installed desktop entry and icon under $data"
+
+if [[ ${1:-} == --restart ]]; then
+  omarchy restart shell
+else
+  echo "run 'omarchy restart shell' (or pass --restart) to load changed widget QML"
+fi

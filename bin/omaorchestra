@@ -5,4 +5,8 @@ src="$(dirname "$(readlink -f "$0")")/../src"
 [[ -d $src/omaorchestra ]] && export PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}"
 # Tell the CLI where it lives, so `hooks install` can point hooks at it.
 export OMAORCHESTRA_BIN="$(readlink -f "$0")"
-exec python3 -m omaorchestra "$@"
+# The system Python: pacman installs PySide6 (for `omaorchestra app`) there,
+# and a version manager's python3 earlier on PATH would not see it.
+python=/usr/bin/python3
+[[ -x $python ]] || python=python3
+exec "$python" -m omaorchestra "$@"

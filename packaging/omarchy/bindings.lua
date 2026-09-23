@@ -7,3 +7,6 @@ o.bind("SUPER + ALT + A", "Jump to waiting agent", "omaorchestra focus --notify"
 
 -- Open or close the agent sessions panel on the focused monitor.
 o.bind("SUPER + CTRL + ALT + A", "Agent sessions", "omarchy-shell shell toggle omaorchestra.sessions")
+
+-- Open the omaorchestra app (a second press focuses the open window).
+o.bind("SUPER + SHIFT + CTRL + ALT + A", "omaorchestra", "omaorchestra app")

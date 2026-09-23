@@ -1,0 +1,191 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+// The app shell: navigation on the left, a page on the right, and the daemon
+// connection in the header. `theme`, `sessions`, `fontFamily`, `appVersion`
+// and `configPath` come from Python (app/main.py).
+ApplicationWindow {
+  id: window
+  title: "omaorchestra"
+  width: 1100
+  height: 720
+  minimumWidth: 640
+  minimumHeight: 420
+  visible: true
+  color: theme.background
+
+  font.family: fontFamily
+  font.pixelSize: 14
+
+  property string page: "sessions"
+
+  readonly property var pages: [
+    { id: "sessions", glyph: "󰚩", label: "Sessions" },
+    { id: "settings", glyph: "󰒓", label: "Settings" }
+  ]
+
+  RowLayout {
+    anchors.fill: parent
+    spacing: 0
+
+    // ---------------------------------------------------------- Navigation
+    Rectangle {
+      Layout.fillHeight: true
+      Layout.preferredWidth: 200
+      color: theme.surface
+
+      ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 16
+        spacing: 4
+
+        Label {
+          text: "omaorchestra"
+          color: theme.foreground
+          font.pixelSize: 18
+          font.bold: true
+          Layout.bottomMargin: 16
+        }
+
+        Repeater {
+          model: window.pages
+
+          delegate: ItemDelegate {
+            required property var modelData
+            Layout.fillWidth: true
+            highlighted: window.page === modelData.id
+            onClicked: window.page = modelData.id
+
+            contentItem: Label {
+              text: modelData.glyph + "  " + modelData.label
+              color: parent.highlighted ? theme.foreground : theme.muted
+            }
+            background: Rectangle {
+              radius: 4
+              color: parent.highlighted ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
+            }
+          }
+        }
+
+        Item { Layout.fillHeight: true }
+
+        Label {
+          text: "v" + appVersion
+          color: theme.muted
+          font.pixelSize: 12
+        }
+      }
+    }
+
+    // ---------------------------------------------------------- Page
+    ColumnLayout {
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      Layout.margins: 24
+      spacing: 16
+
+      RowLayout {
+        Layout.fillWidth: true
+
+        Label {
+          text: window.page === "sessions" ? "Sessions" : "Settings"
+          color: theme.foreground
+          font.pixelSize: 22
+          font.bold: true
+          Layout.fillWidth: true
+        }
+
+        Rectangle {
+          width: 8; height: 8; radius: 4
+          color: sessions.connected ? theme.accent : theme.urgent
+        }
+        Label {
+          text: sessions.connected ? "Connected" : "Daemon not running"
+          color: theme.muted
+        }
+      }
+
+      Rectangle { Layout.fillWidth: true; height: 1; color: theme.selection }
+
+      // Sessions
+      ColumnLayout {
+        visible: window.page === "sessions"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        spacing: 12
+
+        Label {
+          visible: !sessions.connected
+          Layout.fillWidth: true
+          wrapMode: Text.Wrap
+          color: theme.muted
+          text: "omaorchestrad is not running. Start it with `omaorchestra service install`; this window reconnects on its own."
+        }
+
+        RowLayout {
+          visible: sessions.connected
+          spacing: 12
+
+          Repeater {
+            model: [
+              { label: "Waiting", value: sessions.waiting, urgent: true },
+              { label: "Working", value: sessions.working, urgent: false },
+              { label: "Idle", value: sessions.idle, urgent: false }
+            ]
+
+            delegate: Rectangle {
+              required property var modelData
+              width: 150; height: 84; radius: 6
+              color: theme.surface
+              border.color: modelData.urgent && modelData.value > 0 ? theme.urgent : "transparent"
+
+              Column {
+                anchors.centerIn: parent
+                spacing: 4
+                Label {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: modelData.value
+                  font.pixelSize: 28
+                  color: modelData.urgent && modelData.value > 0 ? theme.urgent : theme.foreground
+                }
+                Label {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: modelData.label
+                  color: theme.muted
+                }
+              }
+            }
+          }
+        }
+
+        Label {
+          visible: sessions.connected
+          color: theme.muted
+          text: "The full session dashboard is coming next."
+        }
+
+        Item { Layout.fillHeight: true }
+      }
+
+      // Settings
+      ColumnLayout {
+        visible: window.page === "settings"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        spacing: 8
+
+        Label { text: "Configuration file"; color: theme.muted }
+        Label { text: configPath; color: theme.foreground }
+        Label {
+          Layout.topMargin: 12
+          Layout.fillWidth: true
+          wrapMode: Text.Wrap
+          color: theme.muted
+          text: "Editing settings here is coming soon. Until then, `omaorchestra config check` validates the file."
+        }
+        Item { Layout.fillHeight: true }
+      }
+    }
+  }
+}

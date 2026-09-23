@@ -124,6 +124,11 @@ def cmd_watch(args):
     return 0
 
 
+def cmd_app(args):
+    from .app import main as app_main
+    return app_main.run(check=args.check)
+
+
 def cmd_hook(args):
     # Called by agent hooks: never block or fail the agent, whatever happens.
     try:
@@ -260,6 +265,10 @@ def main(argv=None):
     focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
     focus_p.add_argument("--notify", action="store_true", help="report failures as a notification (for keybindings)")
     focus_p.set_defaults(func=cmd_focus)
+    app_p = sub.add_parser("app", help="open the omaorchestra app window")
+    app_p.add_argument("--check", action="store_true",
+                       help="load the app offscreen, report whether it reaches the daemon, and exit")
+    app_p.set_defaults(func=cmd_app)
     watch_p = sub.add_parser("watch", help="print session changes as they happen")
     watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
     watch_p.set_defaults(func=cmd_watch)

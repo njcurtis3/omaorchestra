@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=omaorchestra
+GenericName=Agent Sessions
+Comment=See and control your AI coding agents
+Exec=omaorchestra app
+Icon=omaorchestra
+Terminal=false
+Categories=Development;Utility;
+Keywords=agent;claude;ai;sessions;
+StartupWMClass=omaorchestra
