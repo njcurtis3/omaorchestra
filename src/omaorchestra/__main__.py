@@ -65,14 +65,7 @@ def cmd_focus(args):
     except client.DaemonUnavailable:
         print("omaorchestrad is not running", file=sys.stderr)
         return 1
-    session = pick_session(sessions, args.session)
-    if "pid" not in session:
-        raise windows.WindowError(f"session {session['id'][:8]} has no recorded process")
-    found = windows.find_window(session["pid"], windows.clients())
-    if not found:
-        raise windows.WindowError(f"no window found for session {session['id'][:8]} (running in tmux or over ssh?)")
-    window, exact = found
-    windows.focus(window)
+    window, exact = windows.focus_session(pick_session(sessions, args.session))
     note = "" if exact else " (best guess: that terminal owns several windows)"
     print(f"focused {window.get('class', '')} \"{window.get('title', '')}\"{note}")
     return 0

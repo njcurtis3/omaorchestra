@@ -23,6 +23,8 @@ class Registry:
             raise ValueError(f"unknown status: {status}")
         now = time.time()
         session = self.sessions.setdefault(session_id, {"id": session_id, "agent": agent, "started": now})
+        if session.get("status") != status:
+            session["status_since"] = now
         session.update(status=status, updated=now, message=message)
         if cwd:
             session["cwd"] = cwd

@@ -35,9 +35,15 @@ class FormatTest(unittest.TestCase):
     def test_console_lines_have_time_and_level(self):
         self.assertRegex(self.emit(False, logging.INFO, "started"), r"^\d\d:\d\d:\d\d INFO started\n$")
 
-    def test_under_journal(self):
-        self.assertTrue(log.under_journal({"JOURNAL_STREAM": "8:123"}))
-        self.assertFalse(log.under_journal({}))
+    def test_under_journal_needs_the_stream_itself(self):
+        with tempfile.TemporaryFile() as f:
+            st = os.fstat(f.fileno())
+            self.assertTrue(log.under_journal(f, {"JOURNAL_STREAM": f"{st.st_dev}:{st.st_ino}"}))
+            # Inherited from a parent whose stderr was the journal: not ours.
+            self.assertFalse(log.under_journal(f, {"JOURNAL_STREAM": f"{st.st_dev}:{st.st_ino + 1}"}))
+            self.assertFalse(log.under_journal(f, {}))
+            self.assertFalse(log.under_journal(f, {"JOURNAL_STREAM": "junk"}))
+        self.assertFalse(log.under_journal(io.StringIO(), {"JOURNAL_STREAM": "1:2"}))
 
     def test_fields_quote_awkward_values_and_skip_none(self):
         self.assertEqual(log.fields(a="x", b="has space", c=None, d='q"', e=""), 'a=x b="has space" d="q\\"" e=""')

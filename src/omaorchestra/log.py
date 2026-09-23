@@ -4,6 +4,7 @@ Messages are an event name followed by key=value fields, so they grep well:
     session changed id=... status=working cwd=/home/u/proj
 """
 
+import io
 import json
 import logging
 import os
@@ -20,14 +21,26 @@ class JournalFormatter(logging.Formatter):
         return f"<{PRIORITY.get(record.levelno, 6)}>{record.getMessage()}"
 
 
-def under_journal(env=None):
-    """True when stderr goes to the journal (systemd sets JOURNAL_STREAM)."""
-    return bool((os.environ if env is None else env).get("JOURNAL_STREAM"))
+def under_journal(stream=None, env=None):
+    """True when `stream` is connected to the journal.
+
+    systemd sets JOURNAL_STREAM to the device:inode of the journal stream, and
+    children inherit it even when their stderr goes elsewhere, so the variable
+    alone is not enough: it has to match the stream itself.
+    """
+    value = (os.environ if env is None else env).get("JOURNAL_STREAM", "")
+    try:
+        dev, ino = (int(part) for part in value.split(":"))
+        st = os.fstat((stream or sys.stderr).fileno())
+    except (ValueError, OSError, AttributeError, io.UnsupportedOperation):
+        return False
+    return (st.st_dev, st.st_ino) == (dev, ino)
 
 
 def setup(verbose=False, stream=None, journal=None):
-    handler = logging.StreamHandler(stream or sys.stderr)
-    if under_journal() if journal is None else journal:
+    stream = stream or sys.stderr
+    handler = logging.StreamHandler(stream)
+    if under_journal(stream) if journal is None else journal:
         handler.setFormatter(JournalFormatter())
     else:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S"))

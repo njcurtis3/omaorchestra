@@ -119,6 +119,17 @@ node --test tests/plugin            # bar widget formatting logic
 Set `OMAORCHESTRA_SOCKET` and `OMAORCHESTRA_STATE_DIR` to run a throwaway
 daemon alongside a real one.
 
+## Notifications
+
+When an agent starts waiting for you, a notification says so ("proj needs
+you", with the permission prompt) and has a **Focus** button that jumps to its
+terminal. Once you answer in the terminal, the notification closes itself.
+When an agent finishes after working at least two minutes, a quieter
+"finished" notification says how long it took. Both go through the normal
+notification server, so Omarchy's do-not-disturb silences them like any other
+app. Turn either off, or change the two-minute threshold, under
+`[notifications]` in the config.
+
 ## Jumping to a session
 
 ```bash

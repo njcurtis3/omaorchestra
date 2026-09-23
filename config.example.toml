@@ -12,6 +12,13 @@ verbose = false
 # Agents whose hook events are tracked
 enabled = ["claude"]
 
+[notifications]
+# Notify when an agent starts waiting for you (closed again once it stops)
+waiting = true
+# Notify when an agent finishes after working at least this many seconds;
+# 0 turns it off
+finished_after = 120
+
 [tasks]
 # Not used yet: these take effect with the task queue.
 # Maximum agents running at once

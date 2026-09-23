@@ -70,6 +70,17 @@ def active_workspace(run=subprocess.run):
         raise WindowError("could not read the active workspace") from e
 
 
+def focus_session(session, run=subprocess.run):
+    """Focus a session's window; returns (window, exact) or raises WindowError."""
+    if "pid" not in session:
+        raise WindowError(f"session {session['id'][:8]} has no recorded process")
+    found = find_window(session["pid"], clients(run=run))
+    if not found:
+        raise WindowError(f"no window found for session {session['id'][:8]} (running in tmux or over ssh?)")
+    focus(found[0], run=run)
+    return found
+
+
 def focus(window, run=subprocess.run):
     """Focus a window, first bringing it to the current workspace if it is
     parked on a special one (a scratchpad, or minimized)."""

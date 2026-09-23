@@ -46,6 +46,10 @@ SCHEMA = {
     "agents": {
         "enabled": (["claude"], _agents),
     },
+    "notifications": {
+        "waiting": (True, _bool),
+        "finished_after": (120, _int_between(0, 86400)),
+    },
     "tasks": {
         "max_parallel": (2, _int_between(1, 64)),
         "isolate_with_worktrees": (True, _bool),

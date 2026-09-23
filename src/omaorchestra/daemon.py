@@ -5,7 +5,7 @@ import os
 import signal
 import socket
 
-from . import __version__, config, paths, procs
+from . import __version__, config, notify, paths, procs, windows
 from .log import event
 from .registry import Registry
 
@@ -37,14 +37,29 @@ ALREADY_RUNNING_EXIT = 3
 
 
 class Daemon:
-    def __init__(self, registry, is_alive=procs.is_alive):
+    def __init__(self, registry, is_alive=procs.is_alive, notifier=None):
         self.registry = registry
         self.is_alive = is_alive
+        self.notifier = notifier
+
+    def changed(self, previous, session):
+        if self.notifier:
+            self.notifier.changed(previous, session)
+
+    async def focus(self, sid):
+        session = self.registry.sessions.get(sid)
+        if not session:
+            return
+        try:
+            await asyncio.to_thread(windows.focus_session, session)
+        except windows.WindowError as e:
+            event(logging.WARNING, "focus failed", id=sid, error=str(e))
 
     def prune(self):
         removed = self.registry.prune(self.is_alive)
         for sid, session in removed.items():
             event(logging.INFO, "session ended", id=sid, reason="process-gone", pid=session["pid"])
+            self.changed(session, None)
         return list(removed)
 
     def handle(self, request):
@@ -56,7 +71,9 @@ class Daemon:
             self.prune()
             return {"ok": True, "sessions": self.registry.list()}
         if cmd == "update":
-            previous = self.registry.sessions.get(request["session_id"], {}).get("status")
+            before = self.registry.sessions.get(request["session_id"])
+            before = dict(before) if before else None
+            previous = before["status"] if before else None
             session = self.registry.update(
                 request["session_id"], request.get("agent", "unknown"), request["status"],
                 cwd=request.get("cwd"), message=request.get("message"),
@@ -68,12 +85,14 @@ class Daemon:
             elif previous != session["status"]:
                 event(logging.INFO, "session changed", id=session["id"], status=session["status"],
                       message=session.get("message"))
+            self.changed(before, dict(session))
             return {"ok": True, "session": session}
         if cmd == "remove":
-            removed = self.registry.remove(request["session_id"]) is not None
+            removed = self.registry.remove(request["session_id"])
             if removed:
                 event(logging.INFO, "session ended", id=request["session_id"], reason="session-end")
-            return {"ok": True, "removed": removed}
+                self.changed(removed, None)
+            return {"ok": True, "removed": removed is not None}
         event(logging.WARNING, "bad request", error=f"unknown command: {cmd}")
         return {"ok": False, "error": f"unknown command: {cmd}"}
 
@@ -127,6 +146,7 @@ def run(verbose=False):
 
     async def main():
         daemon = Daemon(registry)
+        daemon.notifier = notify.Notifier(settings["notifications"], focus=daemon.focus)
         # Catch sessions that died while the daemon was down.
         daemon.prune()
         server = await serve(sock_path, registry, daemon)
