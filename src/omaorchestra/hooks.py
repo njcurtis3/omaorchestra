@@ -38,8 +38,3 @@ def request_for(event, agent_process=None):
         request["pid"], request["pid_start"] = agent_process
     return request
 
-
-def settings_snippet(command="omaorchestra hook claude"):
-    """The hooks block to merge into ~/.claude/settings.json."""
-    entry = [{"hooks": [{"type": "command", "command": command, "timeout": 5}]}]
-    return {"hooks": {name: entry for name in CLAUDE_EVENTS}}

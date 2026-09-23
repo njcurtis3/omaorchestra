@@ -62,8 +62,10 @@ class HookMappingTest(unittest.TestCase):
         self.assertIsNone(hooks.request_for({"hook_event_name": "PreCompact", "session_id": "s1"}))
         self.assertIsNone(hooks.request_for({"hook_event_name": "Stop"}))
 
-    def test_snippet_covers_every_event(self):
-        self.assertEqual(set(hooks.settings_snippet()["hooks"]), set(hooks.CLAUDE_EVENTS))
+    def test_install_covers_every_event(self):
+        from omaorchestra import claude_settings
+        installed = claude_settings.install({}, "/x/omaorchestra hook claude")
+        self.assertEqual(set(installed["hooks"]), set(hooks.CLAUDE_EVENTS))
 
 
 class SocketTest(unittest.TestCase):

@@ -39,12 +39,19 @@ See [docs/architecture.md](docs/architecture.md).
 
 ```bash
 bin/omaorchestra daemon &          # start the coordinator
-bin/omaorchestra hooks-snippet     # hooks block for ~/.claude/settings.json
+bin/omaorchestra hooks install     # add hooks to ~/.claude/settings.json
 bin/omaorchestra ls                # sessions and their state
 ```
 
-Merge the printed hooks block into `~/.claude/settings.json` (the `command`
-must resolve to this checkout's `bin/omaorchestra`, or an installed copy).
+`hooks install` merges omaorchestra's hooks into Claude Code's settings,
+pointing at this copy of `omaorchestra` by absolute path. It keeps every other
+setting and hook, backs the file up first
+(`settings.json.omaorchestra-backup-<time>`), refuses to touch a file that is
+not valid JSON, and is safe to run again. `hooks install --dry-run` shows the
+result without writing; `hooks status` checks it; `hooks uninstall` removes
+only omaorchestra's entries. `--settings <file>` targets another settings
+file (it also honours `CLAUDE_CONFIG_DIR`).
+
 Each Claude Code session then reports itself:
 
 | Hook | Status |
