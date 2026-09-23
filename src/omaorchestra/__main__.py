@@ -98,6 +98,32 @@ def cmd_dismiss(args):
     return 0
 
 
+def cmd_watch(args):
+    """Print session changes as they happen."""
+    try:
+        stream = client.subscribe()
+        sessions = next(stream)
+    except (client.DaemonUnavailable, StopIteration):
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    try:
+        if args.json:
+            print(json.dumps({"sessions": sessions}), flush=True)
+        else:
+            print(f"{len(sessions)} session(s); watching for changes (ctrl+c to stop)", flush=True)
+        for message in stream:
+            if args.json:
+                print(json.dumps(message), flush=True)
+            elif message["event"] == "session":
+                s = message["session"]
+                print(f"{time.strftime('%H:%M:%S')}  {s['id'][:8]}  {s['status']:<12} {s.get('cwd', '')}", flush=True)
+            else:
+                print(f"{time.strftime('%H:%M:%S')}  {message['id'][:8]}  ended ({message.get('reason')})", flush=True)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def cmd_hook(args):
     # Called by agent hooks: never block or fail the agent, whatever happens.
     try:
@@ -234,6 +260,9 @@ def main(argv=None):
     focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
     focus_p.add_argument("--notify", action="store_true", help="report failures as a notification (for keybindings)")
     focus_p.set_defaults(func=cmd_focus)
+    watch_p = sub.add_parser("watch", help="print session changes as they happen")
+    watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
+    watch_p.set_defaults(func=cmd_watch)
     dismiss_p = sub.add_parser("dismiss", help="remove a session from the list (it returns if the agent reports again)")
     dismiss_p.add_argument("session", help="session id or prefix")
     dismiss_p.set_defaults(func=cmd_dismiss)

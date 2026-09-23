@@ -41,6 +41,7 @@ See [docs/architecture.md](docs/architecture.md).
 bin/omaorchestra service install   # run the daemon as a systemd user service
 bin/omaorchestra hooks install     # add hooks to ~/.claude/settings.json
 bin/omaorchestra ls                # sessions and their state
+bin/omaorchestra watch             # follow changes live
 ```
 
 `service install` writes a user unit to `~/.config/systemd/user/` pointing at

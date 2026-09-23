@@ -30,6 +30,9 @@ def claim_socket(path):
 
 
 PRUNE_INTERVAL = 30
+# Events a subscriber may fall behind by before it is disconnected (it can
+# reconnect and get a fresh snapshot).
+SUBSCRIBER_BACKLOG = 1000
 # Kept in step with service.py: the unit's RestartPreventExitStatus lists both,
 # because restarting cannot fix either.
 CONFIG_ERROR_EXIT = 2
@@ -37,14 +40,60 @@ ALREADY_RUNNING_EXIT = 3
 
 
 class Daemon:
-    def __init__(self, registry, is_alive=procs.is_alive, notifier=None):
+    def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG):
         self.registry = registry
         self.is_alive = is_alive
         self.notifier = notifier
+        self.backlog = backlog
+        self.subscribers = set()
 
-    def changed(self, previous, session):
+    def changed(self, previous, session, reason=None):
         if self.notifier:
             self.notifier.changed(previous, session)
+        if session is not None:
+            self.publish({"event": "session", "session": session})
+        else:
+            self.publish({"event": "removed", "id": previous["id"], "reason": reason})
+
+    def publish(self, message):
+        for queue in list(self.subscribers):
+            try:
+                queue.put_nowait(message)
+            except asyncio.QueueFull:
+                # Too far behind: drop it rather than grow without bound.
+                self.subscribers.discard(queue)
+                queue.overflowed = True
+                event(logging.WARNING, "subscriber dropped", reason="backlog-full", backlog=self.backlog)
+
+    async def stream(self, reader, writer):
+        """Serve a subscription: a snapshot, then every change until the client leaves."""
+        queue = asyncio.Queue(maxsize=self.backlog)
+        queue.overflowed = False
+        # Snapshot and registration happen with no await in between, so no
+        # change can fall between them.
+        self.subscribers.add(queue)
+        snapshot = {"ok": True, "sessions": self.registry.list()}
+        event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
+        client_gone = asyncio.ensure_future(reader.read())  # EOF when the client disconnects
+        try:
+            writer.write(json.dumps(snapshot).encode() + b"\n")
+            await writer.drain()
+            while not client_gone.done():
+                if queue.overflowed and queue.empty():
+                    break
+                next_message = asyncio.ensure_future(queue.get())
+                done, _ = await asyncio.wait({next_message, client_gone}, return_when=asyncio.FIRST_COMPLETED)
+                if next_message not in done:
+                    next_message.cancel()
+                    break
+                writer.write(json.dumps(next_message.result()).encode() + b"\n")
+                await writer.drain()
+        except (ConnectionError, BrokenPipeError):
+            pass
+        finally:
+            self.subscribers.discard(queue)
+            client_gone.cancel()
+            event(logging.DEBUG, "unsubscribed", subscribers=len(self.subscribers))
 
     async def focus(self, sid):
         session = self.registry.sessions.get(sid)
@@ -59,7 +108,7 @@ class Daemon:
         removed = self.registry.prune(self.is_alive)
         for sid, session in removed.items():
             event(logging.INFO, "session ended", id=sid, reason="process-gone", pid=session["pid"])
-            self.changed(session, None)
+            self.changed(session, None, reason="process-gone")
         return list(removed)
 
     def handle(self, request):
@@ -90,9 +139,9 @@ class Daemon:
         if cmd == "remove":
             removed = self.registry.remove(request["session_id"])
             if removed:
-                event(logging.INFO, "session ended", id=request["session_id"],
-                      reason=request.get("reason", "session-end"))
-                self.changed(removed, None)
+                reason = request.get("reason", "session-end")
+                event(logging.INFO, "session ended", id=request["session_id"], reason=reason)
+                self.changed(removed, None, reason=reason)
             return {"ok": True, "removed": removed is not None}
         event(logging.WARNING, "bad request", error=f"unknown command: {cmd}")
         return {"ok": False, "error": f"unknown command: {cmd}"}
@@ -101,7 +150,12 @@ class Daemon:
         try:
             while line := await reader.readline():
                 try:
-                    response = self.handle(json.loads(line))
+                    request = json.loads(line)
+                    if isinstance(request, dict) and request.get("cmd") == "subscribe":
+                        event(logging.DEBUG, "request", cmd="subscribe")
+                        await self.stream(reader, writer)
+                        return
+                    response = self.handle(request)
                 except (ValueError, KeyError, TypeError) as e:
                     event(logging.WARNING, "bad request", error=repr(e))
                     response = {"ok": False, "error": str(e)}

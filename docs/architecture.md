@@ -21,10 +21,25 @@ Newline-delimited JSON over the socket, one response per request:
 |---|---|
 | `{"cmd": "ping"}` | `{"ok": true, "version": ...}` |
 | `{"cmd": "list"}` | `{"ok": true, "sessions": [...]}` |
-| `{"cmd": "update", "session_id", "agent", "status", "cwd"?, "message"?}` | `{"ok": true, "session": {...}}` |
-| `{"cmd": "remove", "session_id"}` | `{"ok": true, "removed": bool}` |
+| `{"cmd": "update", "session_id", "agent", "status", "cwd"?, "message"?, "pid"?, "pid_start"?}` | `{"ok": true, "session": {...}}` |
+| `{"cmd": "remove", "session_id", "reason"?}` | `{"ok": true, "removed": bool}` |
+| `{"cmd": "subscribe"}` | `{"ok": true, "sessions": [...]}`, then a stream (below) |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.
+
+### Subscriptions
+
+After `subscribe` the connection carries one JSON line per change until
+either side closes it:
+
+    {"event": "session", "session": {...}}                  # new or updated
+    {"event": "removed", "id": "...", "reason": "..."}      # session-end, dismissed, process-gone
+
+Every update is streamed, including ones that only move `updated`. The
+snapshot and the subscription are taken together, so nothing is missed in
+between. A subscriber more than 1000 events behind is disconnected; it can
+reconnect for a fresh snapshot. `omaorchestra watch` (or `watch --json`) is a
+reference client.
 Statuses: `idle`, `working`, `needs-input`. The registry persists to
 `$XDG_STATE_HOME/omaorchestra/sessions.json`.
 
