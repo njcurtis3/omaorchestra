@@ -12,3 +12,6 @@ config.toml
 *.key
 /pkg/
 /src/*.tar.*
+
+# private development notes, never published
+docs/ROADMAP.md
