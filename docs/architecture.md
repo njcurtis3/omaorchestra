@@ -31,8 +31,17 @@ Statuses: `idle`, `working`, `needs-input`. The registry persists to
 A second daemon refuses to start while one is answering on the socket; a stale
 socket file is replaced.
 
+## Liveness
+Hooks report the agent's process as `pid` plus `pid_start` (start time in
+clock ticks, field 22 of `/proc/<pid>/stat`). PIDs are reused, so the pair is
+the identity. The hook takes the PID from `CLAUDE_PID`, which Claude Code
+exports to its children, and otherwise walks up the process tree to the
+nearest process named `claude`.
+
+The daemon drops a session when that process is gone or the PID now belongs
+to a different process: on startup, on every `list`, and every 30 seconds.
+Sessions without a recorded process are kept.
+
 ## Open questions
-- Sessions that exit without `SessionEnd` (crash, kill) linger in the
-  registry. Needs a liveness check, e.g. a PID reported by the hook.
 - How each non-Claude agent reports state.
 - tmux sessions vs. plain terminal windows for attach/detach.

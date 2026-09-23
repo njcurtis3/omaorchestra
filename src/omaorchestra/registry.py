@@ -18,7 +18,7 @@ class Registry:
             except (OSError, ValueError):
                 self.sessions = {}
 
-    def update(self, session_id, agent, status, cwd=None, message=None):
+    def update(self, session_id, agent, status, cwd=None, message=None, pid=None, pid_start=None):
         if status not in STATUSES:
             raise ValueError(f"unknown status: {status}")
         now = time.time()
@@ -26,8 +26,26 @@ class Registry:
         session.update(status=status, updated=now, message=message)
         if cwd:
             session["cwd"] = cwd
+        if pid is not None and pid_start is not None:
+            session["pid"], session["pid_start"] = pid, pid_start
         self.save()
         return session
+
+    def prune(self, is_alive):
+        """Drop sessions whose agent process is gone; return their ids.
+
+        Sessions without a recorded process are kept: there is nothing to
+        check them against.
+        """
+        dead = [
+            sid for sid, s in self.sessions.items()
+            if "pid" in s and not is_alive(s["pid"], s["pid_start"])
+        ]
+        for sid in dead:
+            del self.sessions[sid]
+        if dead:
+            self.save()
+        return dead
 
     def remove(self, session_id):
         removed = self.sessions.pop(session_id, None)

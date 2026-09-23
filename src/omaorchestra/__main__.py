@@ -3,7 +3,7 @@ import json
 import sys
 import time
 
-from . import __version__, client, daemon, hooks
+from . import __version__, client, daemon, hooks, procs
 
 
 def cmd_daemon(args):
@@ -41,7 +41,7 @@ def cmd_ls(args):
 def cmd_hook(args):
     # Called by agent hooks: never block or fail the agent, whatever happens.
     try:
-        request = hooks.request_for(json.load(sys.stdin))
+        request = hooks.request_for(json.load(sys.stdin), procs.agent_process())
         if request:
             client.request(request, timeout=0.5)
     except Exception:

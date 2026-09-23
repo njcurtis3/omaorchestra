@@ -13,8 +13,12 @@ CLAUDE_EVENTS = {
 }
 
 
-def request_for(event):
-    """Build a daemon request from a Claude Code hook payload, or None to ignore it."""
+def request_for(event, agent_process=None):
+    """Build a daemon request from a Claude Code hook payload, or None to ignore it.
+
+    `agent_process` is the agent's (pid, start_time), recorded so the daemon
+    can drop the session if the agent dies without a SessionEnd.
+    """
     name = event.get("hook_event_name")
     session_id = event.get("session_id")
     if name not in CLAUDE_EVENTS or not session_id:
@@ -22,7 +26,7 @@ def request_for(event):
     status = CLAUDE_EVENTS[name]
     if status is None:
         return {"cmd": "remove", "session_id": session_id}
-    return {
+    request = {
         "cmd": "update",
         "session_id": session_id,
         "agent": "claude",
@@ -30,6 +34,9 @@ def request_for(event):
         "cwd": event.get("cwd"),
         "message": event.get("message") if name == "Notification" else None,
     }
+    if agent_process and agent_process[1] is not None:
+        request["pid"], request["pid_start"] = agent_process
+    return request
 
 
 def settings_snippet(command="omaorchestra hook claude"):

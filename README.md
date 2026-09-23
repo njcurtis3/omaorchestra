@@ -57,6 +57,9 @@ Each Claude Code session then reports itself:
 The hook command never fails or blocks the agent: if the daemon is down, events
 are dropped.
 
+Hooks also report the agent's process, so a session whose agent crashes or is
+killed without `SessionEnd` disappears within 30 seconds.
+
 ## Bar widget
 
 `plugin/omaorchestra.sessions/` is an Omarchy shell plugin. It watches
