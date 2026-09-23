@@ -71,20 +71,27 @@ class InstallTest(unittest.TestCase):
         fake = FakeSystemctl()
         self.install("/src/bin/omaorchestra", fake)
         self.assertTrue(service.written_by_us(self.unit))
-        self.assertEqual(fake.verbs(), ["daemon-reload", "enable", "is-active"])
+        self.assertEqual(fake.verbs(), ["daemon-reload", "enable"])
         self.assertEqual(fake.calls[1], ["enable", "--now", service.UNIT_NAME])
+
+    def test_fresh_install_does_not_restart_what_it_just_started(self):
+        # systemd reports the new service active right after enable --now
+        fake = FakeSystemctl(active=True)
+        done = self.install("/src/bin/omaorchestra", fake)
+        self.assertNotIn("restart", fake.verbs())
+        self.assertFalse(any("restarted" in d for d in done))
 
     def test_unchanged_reinstall_only_enables(self):
         self.install("/src/bin/omaorchestra", FakeSystemctl())
         fake = FakeSystemctl(active=True)
         self.install("/src/bin/omaorchestra", fake)
-        self.assertEqual(fake.verbs(), ["enable"])
+        self.assertEqual(fake.verbs(), ["is-active", "enable"])
 
     def test_changed_unit_restarts_a_running_service(self):
         self.install("/old/omaorchestra", FakeSystemctl())
         fake = FakeSystemctl(active=True)
         done = self.install("/new/omaorchestra", fake)
-        self.assertEqual(fake.verbs(), ["daemon-reload", "enable", "is-active", "restart"])
+        self.assertEqual(fake.verbs(), ["is-active", "daemon-reload", "enable", "restart"])
         self.assertIn("/new/omaorchestra", self.unit.read_text())
         self.assertTrue(any("restarted" in d for d in done))
 

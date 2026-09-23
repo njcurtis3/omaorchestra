@@ -83,7 +83,11 @@ def install(binary, unit_dir=None, packaged_unit=PACKAGED_UNIT, run=subprocess.r
 
     unit = Path(unit_dir or user_unit_dir()) / UNIT_NAME
     text = render_unit(binary)
-    changed = not unit.exists() or unit.read_text() != text
+    existed = unit.exists()
+    changed = not existed or unit.read_text() != text
+    # Only an update can leave an old version running; a fresh install is
+    # started by `enable --now` below.
+    was_active = existed and systemctl("is-active", "--quiet", UNIT_NAME, run=run, check=False).returncode == 0
     if changed:
         if unit.exists() and not written_by_us(unit):
             raise ServiceError(f"{unit} exists and was not written by omaorchestra; not overwriting it")
@@ -95,7 +99,7 @@ def install(binary, unit_dir=None, packaged_unit=PACKAGED_UNIT, run=subprocess.r
         systemctl("daemon-reload", run=run)
     systemctl("enable", "--now", UNIT_NAME, run=run)
     done.append(f"enabled {UNIT_NAME}")
-    if changed and systemctl("is-active", "--quiet", UNIT_NAME, run=run, check=False).returncode == 0:
+    if changed and was_active:
         # enable --now leaves an already-running old version alone
         systemctl("restart", UNIT_NAME, run=run)
         done.append("restarted it to pick up the new unit")
