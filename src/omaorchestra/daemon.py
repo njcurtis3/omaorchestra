@@ -28,6 +28,8 @@ def claim_socket(path):
 
 
 PRUNE_INTERVAL = 30
+# Kept in step with service.ALREADY_RUNNING_EXIT (the unit's RestartPreventExitStatus).
+ALREADY_RUNNING_EXIT = 3
 
 
 class Daemon:
@@ -112,7 +114,7 @@ def run():
         asyncio.run(main())
     except AlreadyRunning as e:
         print(f"omaorchestrad: {e}", file=sys.stderr)
-        return 1
+        return ALREADY_RUNNING_EXIT
     except KeyboardInterrupt:
         pass
     return 0

@@ -1,9 +1,14 @@
 [Unit]
 Description=omaorchestra agent coordinator daemon
+Documentation=https://github.com/njcurtis3/omaorchestra
 
 [Service]
 ExecStart=/usr/bin/omaorchestra daemon
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=3
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=default.target

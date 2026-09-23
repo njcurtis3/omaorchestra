@@ -38,10 +38,18 @@ See [docs/architecture.md](docs/architecture.md).
 ## Try it
 
 ```bash
-bin/omaorchestra daemon &          # start the coordinator
+bin/omaorchestra service install   # run the daemon as a systemd user service
 bin/omaorchestra hooks install     # add hooks to ~/.claude/settings.json
 bin/omaorchestra ls                # sessions and their state
 ```
+
+`service install` writes a user unit to `~/.config/systemd/user/` pointing at
+this checkout, then enables and starts it (`--dry-run` shows the unit first).
+With a packaged install it enables the packaged unit instead. `service status`
+and `service uninstall` do what they say; uninstall only deletes a unit that
+omaorchestra wrote. A second daemon exits with status 3, which the unit tells
+systemd not to restart on, so starting one by hand never causes a restart
+loop. To run it in the foreground instead: `bin/omaorchestra daemon`.
 
 `hooks install` merges omaorchestra's hooks into Claude Code's settings,
 pointing at this copy of `omaorchestra` by absolute path. It keeps every other

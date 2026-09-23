@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, daemon, hooks, procs
+from . import __version__, claude_settings, client, daemon, hooks, procs, service
 
 
 def cmd_daemon(args):
@@ -90,6 +90,34 @@ def change_settings(args, change):
     return 0
 
 
+def cmd_service_install(args):
+    binary = own_binary()
+    if not binary:
+        raise service.ServiceError("cannot find the omaorchestra binary")
+    if args.dry_run:
+        if service.uses_packaged_unit(binary):
+            print(f"would enable packaged {service.PACKAGED_UNIT}")
+        else:
+            print(f"would write {service.user_unit_dir() / service.UNIT_NAME}:\n")
+            print(service.render_unit(binary), end="")
+        return 0
+    for line in service.install(binary):
+        print(line)
+    return 0
+
+
+def cmd_service_uninstall(args):
+    for line in service.uninstall() or ["nothing to do"]:
+        print(line)
+    return 0
+
+
+def cmd_service_status(args):
+    enabled, active = service.status()
+    print(f"{service.UNIT_NAME}: {enabled}, {active}")
+    return 0 if active == "active" else 1
+
+
 def cmd_hooks_install(args):
     command = hook_command(args)
     return change_settings(args, lambda s: claude_settings.install(s, command))
@@ -145,13 +173,21 @@ def main(argv=None):
         if name in ("install", "snippet"):
             p.add_argument("--command", dest="hook_command", help="hook command to use (default: this omaorchestra, by absolute path)")
 
+    service_cmd = sub.add_parser("service", help="run the daemon as a systemd user service")
+    service_sub = service_cmd.add_subparsers(dest="service_command", required=True)
+    install_p = service_sub.add_parser("install", help="enable and start the service")
+    install_p.add_argument("--dry-run", action="store_true", help="show what would be done")
+    install_p.set_defaults(func=cmd_service_install)
+    service_sub.add_parser("uninstall", help="stop and disable the service").set_defaults(func=cmd_service_uninstall)
+    service_sub.add_parser("status", help="show whether the service is running").set_defaults(func=cmd_service_status)
+
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
     try:
         return args.func(args)
-    except claude_settings.SettingsError as e:
+    except (claude_settings.SettingsError, service.ServiceError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 
