@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,7 +47,7 @@ class TranscriptTest(unittest.TestCase):
             ])
             with open(p, "a") as f:
                 f.write("{broken json\n")
-            self.assertEqual(transcript.info(p), {"model": "claude-opus-5-5", "branch": "main"})
+            self.assertEqual(transcript.info(p), {"model": "claude-opus-5-5", "branch": "main", "title": None})
 
     def test_reads_only_the_tail(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -55,8 +56,8 @@ class TranscriptTest(unittest.TestCase):
             self.assertEqual(transcript.info(p, tail_bytes=200)["model"], "claude-haiku-4-5")
 
     def test_missing_file(self):
-        self.assertEqual(transcript.info("/nonexistent.jsonl"), {"model": None, "branch": None})
-        self.assertEqual(transcript.info(None), {"model": None, "branch": None})
+        self.assertEqual(transcript.info("/nonexistent.jsonl"), {"model": None, "branch": None, "title": None})
+        self.assertEqual(transcript.info(None), {"model": None, "branch": None, "title": None})
 
     def test_model_names(self):
         cases = {"claude-opus-5-5": "Opus 5.5", "claude-sonnet-5": "Sonnet 5",
@@ -163,6 +164,85 @@ class DashboardRenderTest(unittest.TestCase):
                 page.setProperty("statusFilter", "needs-input")
                 self.assertEqual([r["id"] for r in page.property("shown")], ["n"])
                 page.deleteLater()
+        finally:
+            qInstallMessageHandler(previous)
+        self.assertEqual(warnings, [])
+
+
+class TimelineTest(unittest.TestCase):
+    def test_durations_between_changes(self):
+        items = present.timeline({"status": "idle", "history": [
+            {"status": "working", "at": 100}, {"status": "needs-input", "at": 160}, {"status": "idle", "at": 200}]})
+        self.assertEqual([(i["label"], i["at"], i["until"]) for i in items],
+                         [("Working", 100, 160), ("Waiting", 160, 200), ("Idle", 200, None)])
+
+    def test_session_without_history(self):
+        self.assertEqual(present.timeline({"status": "working", "status_since": 50}),
+                         [{"status": "working", "label": "Working", "at": 50, "until": None}])
+        self.assertEqual(present.timeline({}), [])
+
+    def test_clocks(self):
+        self.assertRegex(present.clock(1790000000), r"^\d\d:\d\d:\d\d$")
+        self.assertRegex(present.iso_clock("2026-09-23T21:17:03.511Z"), r"^\d\d:\d\d:\d\d$")
+        self.assertEqual((present.clock(0), present.iso_clock(""), present.iso_clock("nope")), ("", "", ""))
+
+
+@unittest.skipUnless(HAVE_QT, "PySide6 not available to this Python")
+class DetailRenderTest(unittest.TestCase):
+    def test_detail_tabs_render_without_warnings(self):
+        from omaorchestra.app.backend import Sessions, Theme
+        application()
+        warnings = []
+        previous = qInstallMessageHandler(lambda mode, ctx, msg: warnings.append(msg))
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "proj"
+                repo.mkdir()
+                subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+                (repo / "a.txt").write_text("x\n")
+                subprocess.run(["git", "-C", str(repo), "add", "a.txt"], check=True)
+                t = Path(tmp) / "t.jsonl"
+                write_transcript(t, [
+                    {"type": "user", "timestamp": "2026-09-23T21:17:03Z", "message": {"content": "do it"}},
+                    {"type": "assistant", "timestamp": "2026-09-23T21:17:04Z",
+                     "message": {"model": "claude-opus-5-5", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]}},
+                ])
+                sessions = Sessions()
+                sessions._on_snapshot([{
+                    "id": "d1", "agent": "claude", "status": "needs-input", "cwd": str(repo), "started": 1,
+                    "updated": 2, "status_since": 2, "message": "Allow Bash?", "title": "Doing it",
+                    "transcript_path": str(t), "history": [{"status": "working", "at": 1}, {"status": "needs-input", "at": 2}],
+                }])
+                results = []
+                sessions.changesReady.connect(lambda sid, r: results.append((sid, r)))
+                engine = QQmlEngine()
+                theme = Theme(Path(tmp) / "none" / "colors.toml")  # keep a reference: QML does not
+                engine.rootContext().setContextProperty("theme", theme)
+                engine.rootContext().setContextProperty("sessions", sessions)
+                qml = ROOT / "src" / "omaorchestra" / "app" / "qml" / "SessionsPage.qml"
+                component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml)))
+                page = component.createWithInitialProperties({"width": 900, "height": 600, "selectedId": "d1"})
+                self.assertIsNotNone(page, component.errorString())
+                loop = QEventLoop()
+
+                def spin(ms=100):
+                    QTimer.singleShot(ms, loop.quit)
+                    loop.exec()
+
+                spin()
+                self.assertEqual([i["text"] for i in sessions.activity("d1")], ["do it", "Bash: ls"])
+                sessions.requestChanges("d1")
+                for _ in range(50):
+                    if results:
+                        break
+                    spin(50)
+                self.assertTrue(results and results[0][1]["repo"])
+                self.assertIn("+x", results[0][1]["diff"])
+                # The session going away shows the "ended" state.
+                sessions._on_event({"event": "removed", "id": "d1", "reason": "session-end"})
+                spin()
+                page.deleteLater()
+                spin()
         finally:
             qInstallMessageHandler(previous)
         self.assertEqual(warnings, [])

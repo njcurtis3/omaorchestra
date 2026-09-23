@@ -19,7 +19,8 @@ class Registry:
                 self.sessions = {}
 
     # Optional facts a session may carry; None leaves the stored value alone.
-    EXTRA = ("transcript_path", "model", "branch")
+    EXTRA = ("transcript_path", "model", "branch", "title")
+    HISTORY_LIMIT = 100
 
     def update(self, session_id, agent, status, cwd=None, message=None, pid=None, pid_start=None, **extra):
         if status not in STATUSES:
@@ -28,6 +29,9 @@ class Registry:
         session = self.sessions.setdefault(session_id, {"id": session_id, "agent": agent, "started": now})
         if session.get("status") != status:
             session["status_since"] = now
+            history = session.setdefault("history", [])
+            history.append({"status": status, "at": now})
+            del history[: -self.HISTORY_LIMIT]
         session.update(status=status, updated=now, message=message)
         if cwd:
             session["cwd"] = cwd

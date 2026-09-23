@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import client, windows
+from .. import changes, client, control, transcript, windows
 from . import present
 from . import theme as theme_file
 
@@ -75,6 +75,7 @@ class Sessions(QObject):
     """
 
     changed = Signal()
+    changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
     _snapshot = Signal(list)
     _event = Signal(dict)
     _lost = Signal()
@@ -153,6 +154,49 @@ class Sessions(QObject):
             windows.focus_session(session)
         except windows.WindowError:
             pass
+
+    @Slot(str, result="QVariantMap")
+    def row(self, session_id):
+        session = self.by_id.get(session_id)
+        return present.row(session) if session else {}
+
+    @Slot(str, result="QVariantList")
+    def activity(self, session_id):
+        session = self.by_id.get(session_id) or {}
+        return transcript.activity(session.get("transcript_path")) if session.get("transcript_path") else []
+
+    @Slot(str, result="QVariantList")
+    def timeline(self, session_id):
+        return present.timeline(self.by_id.get(session_id) or {})
+
+    @Slot(str)
+    def requestChanges(self, session_id):
+        cwd = (self.by_id.get(session_id) or {}).get("cwd")
+
+        def work():
+            self.changesReady.emit(session_id, changes.uncommitted(cwd))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result=str)
+    def stop(self, session_id):
+        """Stop the agent; returns an error message, or "" on success."""
+        session = self.by_id.get(session_id)
+        if not session:
+            return "that session is gone"
+        try:
+            control.stop(session)
+        except control.ControlError as e:
+            return str(e)
+        return ""
+
+    @Slot(float, result=str)
+    def clock(self, timestamp):
+        return present.clock(timestamp)
+
+    @Slot(str, result=str)
+    def isoClock(self, iso):
+        return present.iso_clock(iso)
 
     @Slot(str)
     def dismiss(self, session_id):

@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, config, daemon, hooks, procs, service, windows
+from . import __version__, claude_settings, client, config, control, daemon, hooks, procs, service, windows
 
 
 def cmd_daemon(args):
@@ -126,7 +126,26 @@ def cmd_watch(args):
 
 def cmd_app(args):
     from .app import main as app_main
-    return app_main.run(check=args.check)
+    return app_main.run(check=args.check, session=args.session or "")
+
+
+def cmd_stop(args):
+    try:
+        session = pick_session(client.request({"cmd": "list"})["sessions"], args.session)
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    label = f"{session['id'][:8]} ({session.get('cwd', '')})"
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("omaorchestra: refusing to stop an agent without confirmation; pass --yes", file=sys.stderr)
+            return 1
+        if input(f"Stop the agent for {label}? It ends that agent process. [y/N] ").strip().lower() not in ("y", "yes"):
+            print("left it running")
+            return 1
+    control.stop(session)
+    print(f"asked the agent for {label} to stop")
+    return 0
 
 
 def cmd_hook(args):
@@ -268,10 +287,15 @@ def main(argv=None):
     app_p = sub.add_parser("app", help="open the omaorchestra app window")
     app_p.add_argument("--check", action="store_true",
                        help="load the app offscreen, report whether it reaches the daemon, and exit")
+    app_p.add_argument("--session", help="open on this session's details (id or prefix)")
     app_p.set_defaults(func=cmd_app)
     watch_p = sub.add_parser("watch", help="print session changes as they happen")
     watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
     watch_p.set_defaults(func=cmd_watch)
+    stop_p = sub.add_parser("stop", help="stop a session's agent process (asks first)")
+    stop_p.add_argument("session", help="session id or prefix")
+    stop_p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
+    stop_p.set_defaults(func=cmd_stop)
     dismiss_p = sub.add_parser("dismiss", help="remove a session from the list (it returns if the agent reports again)")
     dismiss_p.add_argument("session", help="session id or prefix")
     dismiss_p.set_defaults(func=cmd_dismiss)
@@ -316,7 +340,8 @@ def main(argv=None):
         return 0
     try:
         return args.func(args)
-    except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError) as e:
+    except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
+            control.ControlError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

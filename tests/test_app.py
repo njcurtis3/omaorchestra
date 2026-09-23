@@ -102,12 +102,15 @@ class QtTest(unittest.TestCase):
         from omaorchestra.app import instance
         name = f"omaorchestra-test-{os.getpid()}"
         activated = []
-        server = instance.listen(lambda: activated.append(True), name=name)
+        server = instance.listen(activated.append, name=name)
         try:
             self.assertTrue(instance.ask_running_instance(name))
             self.assertTrue(wait_for(lambda: activated))
+            self.assertTrue(instance.ask_running_instance(name, session="a808f7f3"))
+            self.assertTrue(wait_for(lambda: len(activated) == 2))
         finally:
             server.close()
+        self.assertEqual(activated, ["", "a808f7f3"])
         self.assertFalse(instance.ask_running_instance(name))
 
 

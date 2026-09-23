@@ -19,6 +19,26 @@ ApplicationWindow {
   font.pixelSize: 14
 
   property string page: "sessions"
+
+  // Called from Python when asked to open a session (`app --session <id>`).
+  // A prefix is enough; it is matched against the current sessions.
+  function showSession(id) {
+    const match = sessions.rows.find(s => s.id.startsWith(id))
+    window.page = "sessions"
+    sessionsPage.selectedId = match ? match.id : id
+  }
+  Component.onCompleted: if (initialSession) showSession(initialSession)
+  Connections {
+    // At startup the session list has not arrived yet, so a prefix cannot be
+    // matched; match it once the first snapshot lands.
+    target: sessions
+    enabled: !!initialSession
+    function onChanged() {
+      if (!sessions.connected) return
+      window.showSession(initialSession)
+      enabled = false
+    }
+  }
   // Ticks every second so relative times stay current.
   property real now: Date.now() / 1000
   Timer { interval: 1000; running: true; repeat: true; onTriggered: window.now = Date.now() / 1000 }
@@ -121,6 +141,7 @@ ApplicationWindow {
       }
 
       SessionsPage {
+        id: sessionsPage
         visible: window.page === "sessions" && sessions.connected
         Layout.fillWidth: true
         Layout.fillHeight: true

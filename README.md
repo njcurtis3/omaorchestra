@@ -98,11 +98,18 @@ by itself when the daemon restarts, and keeps a single window (launching it
 again focuses the open one). Open it from the app launcher, the button at the
 top of the bar panel, the Omarchy menu, or a keybinding.
 
-The **Sessions** page lists every session, waiting first: project, git
-branch, model, the waiting message, and how long it has been in its current
-state. Filter by status or by text (project, path, branch, model), switch
-between a list and a grid, click a session to jump to its terminal, or copy
-its path, open its folder, or dismiss it. The model and branch come from the
+The **Sessions** page lists every session, waiting first: project, title,
+git branch, model, the waiting message, and how long it has been in its
+current state. Filter by status or by text, switch between a list and a grid,
+and use a row's icons to jump to its terminal, copy its path, open its folder
+or dismiss it.
+
+Click a session for its details: the latest prompts, replies and tool calls
+from its transcript, a timeline of its status changes, and the uncommitted
+git changes in its folder (all changes there, not only the agent's). From
+there you can focus it, dismiss it, or stop its agent process (after a
+confirmation). `omaorchestra app --session <id>` opens the app on a session,
+or switches the open window to it. The model and branch come from the
 agent's transcript (Claude Code), or from the agent itself when it reports
 them.
 
@@ -163,6 +170,13 @@ When an agent finishes after working at least two minutes, a quieter
 notification server, so Omarchy's do-not-disturb silences them like any other
 app. Turn either off, or change the two-minute threshold, under
 `[notifications]` in the config.
+
+## Stopping an agent
+
+`omaorchestra stop <id>` asks before ending the session's agent process
+(`--yes` skips the question). It checks that the PID still belongs to the same
+process first, so a reused PID is never signalled. The conversation stays in
+the agent's transcript.
 
 ## Jumping to a session
 

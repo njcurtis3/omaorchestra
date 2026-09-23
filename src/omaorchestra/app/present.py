@@ -1,6 +1,8 @@
 """How sessions are ordered and labelled in the app. No Qt here, so it is testable anywhere."""
 
 import os
+import time
+from datetime import datetime
 
 from ..transcript import model_name
 
@@ -43,8 +45,35 @@ def matches(r, status_filter, text):
     needle = (text or "").strip().lower()
     if not needle:
         return True
-    haystack = " ".join(str(r.get(k) or "") for k in ("project", "cwd", "branch", "modelName", "agent", "id"))
+    haystack = " ".join(str(r.get(k) or "") for k in ("project", "title", "cwd", "branch", "modelName", "agent", "id"))
     return needle in haystack.lower()
+
+
+def timeline(session):
+    """Status history, oldest first, with how long each status lasted
+    (`until` is None for the current one)."""
+    history = session.get("history") or []
+    if not history and session.get("status"):
+        history = [{"status": session["status"], "at": session.get("status_since") or session.get("started") or 0}]
+    items = []
+    for i, h in enumerate(history):
+        until = history[i + 1]["at"] if i + 1 < len(history) else None
+        items.append({"status": h["status"], "label": STATUS_LABEL.get(h["status"], h["status"]),
+                      "at": h["at"], "until": until})
+    return items
+
+
+def clock(timestamp):
+    """Local time of day for an epoch timestamp."""
+    return time.strftime("%H:%M:%S", time.localtime(timestamp)) if timestamp else ""
+
+
+def iso_clock(iso):
+    """Local time of day for a transcript timestamp such as 2026-09-23T21:17:03.511Z."""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%H:%M:%S")
+    except (ValueError, AttributeError):
+        return ""
 
 
 def duration(seconds):

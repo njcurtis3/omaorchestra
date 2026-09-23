@@ -21,7 +21,7 @@ def activate_own_window():
         pass
 
 
-def run(check=False):
+def run(check=False, session=""):
     if check:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
@@ -44,10 +44,8 @@ def run(check=False):
     QQuickStyle.setStyle("Basic")  # plain controls that take the theme's colours
 
     server = None
-    if not check:
-        if instance.ask_running_instance():
-            return 0
-        server = instance.listen(activate_own_window)  # noqa: F841 (kept alive by the local)
+    if not check and instance.ask_running_instance(session=session):
+        return 0
 
     theme = backend.Theme()
     sessions = backend.Sessions()
@@ -58,11 +56,22 @@ def run(check=False):
     ctx.setContextProperty("appVersion", __version__)
     ctx.setContextProperty("fontFamily", backend.monospace_family())
     ctx.setContextProperty("configPath", str(config.path()))
+    ctx.setContextProperty("initialSession", session)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     if not engine.rootObjects():
         print("omaorchestra app: the interface failed to load", file=sys.stderr)
         return 1
     sessions.start()
+
+    if not check:
+        root = engine.rootObjects()[0]
+
+        def activate(session_id):
+            if session_id:
+                root.showSession(session_id)
+            activate_own_window()
+
+        server = instance.listen(activate)  # noqa: F841 (kept alive by the local)
 
     if check:
         # Self-test: load the UI offscreen, wait for the daemon, report, exit.

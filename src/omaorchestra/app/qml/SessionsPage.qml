@@ -3,13 +3,15 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // The sessions dashboard: filters, then every session as a list or a grid,
-// waiting first. Click a session to jump to its terminal. `sessions` and
+// waiting first. Click a session for its details; the jump icon focuses its terminal. `sessions` and
 // `theme` come from Python; `now` ticks from the window.
 ColumnLayout {
   id: page
   property real now: Date.now() / 1000
   property string statusFilter: ""
   property bool grid: false
+  // The session shown in detail, or "" for the list.
+  property string selectedId: ""
 
   spacing: 16
 
@@ -23,8 +25,18 @@ ColumnLayout {
     return status === "needs-input" ? theme.urgent : status === "working" ? theme.accent : theme.muted
   }
 
+  SessionDetail {
+    visible: page.selectedId !== ""
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+    sessionId: page.selectedId
+    now: page.now
+    onBack: page.selectedId = ""
+  }
+
   // ---------------------------------------------------------- Filters
   RowLayout {
+    visible: page.selectedId === ""
     Layout.fillWidth: true
     spacing: 8
 
@@ -60,7 +72,7 @@ ColumnLayout {
       id: search
       Layout.fillWidth: true
       Layout.leftMargin: 8
-      placeholderText: "Filter by project, path, branch or model"
+      placeholderText: "Filter by project, title, path, branch or model"
       placeholderTextColor: theme.muted
       color: theme.foreground
       selectionColor: theme.selection
@@ -76,7 +88,7 @@ ColumnLayout {
 
   // ---------------------------------------------------------- Empty states
   Label {
-    visible: page.shown.length === 0
+    visible: page.selectedId === "" && page.shown.length === 0
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
@@ -88,7 +100,7 @@ ColumnLayout {
 
   // ---------------------------------------------------------- List
   ListView {
-    visible: !page.grid && page.shown.length > 0
+    visible: page.selectedId === "" && !page.grid && page.shown.length > 0
     Layout.fillWidth: true
     Layout.fillHeight: true
     clip: true
@@ -110,7 +122,7 @@ ColumnLayout {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: sessions.focus(listRow.modelData.id)
+        onClicked: page.selectedId = listRow.modelData.id
       }
 
       RowLayout {
@@ -144,6 +156,13 @@ ColumnLayout {
             }
           }
           Label {
+            visible: !!listRow.modelData.title
+            Layout.fillWidth: true
+            text: listRow.modelData.title || ""
+            color: theme.foreground
+            elide: Text.ElideRight
+          }
+          Label {
             Layout.fillWidth: true
             text: listRow.modelData.cwd || ""
             color: theme.muted
@@ -168,6 +187,7 @@ ColumnLayout {
         Row {
           Layout.alignment: Qt.AlignTop
           spacing: 12
+          IconButton { glyph: "󰁔"; tip: "Jump to its terminal"; onActivated: sessions.focus(listRow.modelData.id) }
           IconButton { glyph: "󰆏"; tip: "Copy path"; visible: !!listRow.modelData.cwd; onActivated: sessions.copyPath(listRow.modelData.cwd) }
           IconButton { glyph: "󰉋"; tip: "Open folder"; visible: !!listRow.modelData.cwd; onActivated: sessions.openFolder(listRow.modelData.cwd) }
           IconButton { glyph: "󰅖"; tip: "Dismiss (returns if the agent reports again)"; onActivated: sessions.dismiss(listRow.modelData.id) }
@@ -179,7 +199,7 @@ ColumnLayout {
   // ---------------------------------------------------------- Grid
   GridView {
     id: gridView
-    visible: page.grid && page.shown.length > 0
+    visible: page.selectedId === "" && page.grid && page.shown.length > 0
     Layout.fillWidth: true
     Layout.fillHeight: true
     clip: true
@@ -207,7 +227,7 @@ ColumnLayout {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: sessions.focus(cell.modelData.id)
+          onClicked: page.selectedId = cell.modelData.id
         }
 
         ColumnLayout {
@@ -248,6 +268,7 @@ ColumnLayout {
           Row {
             Layout.alignment: Qt.AlignRight
             spacing: 12
+            IconButton { glyph: "󰁔"; tip: "Jump to its terminal"; onActivated: sessions.focus(cell.modelData.id) }
             IconButton { glyph: "󰆏"; tip: "Copy path"; visible: !!cell.modelData.cwd; onActivated: sessions.copyPath(cell.modelData.cwd) }
             IconButton { glyph: "󰉋"; tip: "Open folder"; visible: !!cell.modelData.cwd; onActivated: sessions.openFolder(cell.modelData.cwd) }
             IconButton { glyph: "󰅖"; tip: "Dismiss (returns if the agent reports again)"; onActivated: sessions.dismiss(cell.modelData.id) }
