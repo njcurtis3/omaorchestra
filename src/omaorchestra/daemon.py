@@ -62,6 +62,9 @@ class Daemon:
 
 async def serve(sock_path, registry):
     claim_socket(sock_path)
+    # Write the registry up front so file watchers (the bar widget) see it
+    # exist from the moment the daemon runs.
+    registry.save()
     sock_path.parent.mkdir(parents=True, exist_ok=True)
     old_umask = os.umask(0o177)
     try:

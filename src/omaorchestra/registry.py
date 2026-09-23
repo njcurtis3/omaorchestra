@@ -26,19 +26,19 @@ class Registry:
         session.update(status=status, updated=now, message=message)
         if cwd:
             session["cwd"] = cwd
-        self._save()
+        self.save()
         return session
 
     def remove(self, session_id):
         removed = self.sessions.pop(session_id, None)
         if removed:
-            self._save()
+            self.save()
         return removed
 
     def list(self):
         return sorted(self.sessions.values(), key=lambda s: s["started"])
 
-    def _save(self):
+    def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.sessions, indent=2))

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Copy the bar plugin into the Omarchy plugins directory.
+#
+# A copy, not a symlink: the shell watches ~/.config/omarchy/plugins with
+# inotifywait -r, which does not follow symlinked directories.
+#
+# Even with a copy, the shell's plugin hot-reload keeps the previously compiled
+# QML, so edited widget code only takes effect after `omarchy restart shell`.
+# Pass --restart to do that here.
+set -euo pipefail
+
+src="$(dirname "$(readlink -f "$0")")/../plugin/omaorchestra.sessions"
+dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/omaorchestra.sessions"
+
+[[ -L $dest ]] && rm "$dest"
+mkdir -p "$dest"
+cp "$src"/*.qml "$src"/*.js "$src"/manifest.json "$dest"/
+echo "installed plugin to $dest"
+
+if [[ ${1:-} == --restart ]]; then
+  omarchy restart shell
+else
+  echo "run 'omarchy restart shell' (or pass --restart) to load changed QML"
+fi

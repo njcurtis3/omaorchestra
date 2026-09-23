@@ -125,6 +125,14 @@ class SocketTest(unittest.TestCase):
                 await server.wait_closed()
         asyncio.run(start_twice())
 
+    def test_start_writes_registry_file(self):
+        async def start():
+            server = await daemon.serve(self.sock, self.registry)
+            server.close()
+            await server.wait_closed()
+        asyncio.run(start())
+        self.assertTrue(self.registry.path.exists())
+
     def test_replaces_stale_socket(self):
         self.sock.touch()
         async def start():
