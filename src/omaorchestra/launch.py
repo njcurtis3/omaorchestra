@@ -27,8 +27,8 @@ def claude_bin():
     return os.environ.get("OMAORCHESTRA_CLAUDE") or "claude"
 
 
-def claude_command(task, session_id, permission_mode=None, model=None, extra=()):
-    command = [claude_bin(), "--session-id", session_id]
+def claude_command(task, session_id, permission_mode=None, model=None, extra=(), agent_bin=None):
+    command = [agent_bin or claude_bin(), "--session-id", session_id]
     if permission_mode:
         command += ["--permission-mode", permission_mode]
     if model:
@@ -46,8 +46,15 @@ def short(task, limit=80):
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def agent_environment():
+    """What a queued task needs to launch later as if launched now: the
+    agent's full path and PATH (the daemon's own PATH, from systemd, usually
+    lacks version-manager folders)."""
+    return {"agent_bin": shutil.which(claude_bin()), "path": os.environ.get("PATH")}
+
+
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
-        spawn=subprocess.Popen, request=client.request):
+        spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
@@ -60,8 +67,9 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     cwd = Path(cwd).expanduser().resolve()
     if not cwd.is_dir():
         raise LaunchError(f"{cwd} is not a directory")
-    if not shutil.which(claude_bin()):
-        raise LaunchError(f"{claude_bin()} is not installed")
+    agent_bin = agent_bin or claude_bin()
+    if not shutil.which(agent_bin, path=path):
+        raise LaunchError(f"{agent_bin} is not installed")
     if worktree is None:
         worktree = config.load_or_defaults()["tasks"]["isolate_with_worktrees"]
     session_id = str(uuid.uuid4())
@@ -82,10 +90,11 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
                  "worktree": record["path"] if record else None})
     except client.DaemonUnavailable:
         tracked = False
-    command = terminal_command(workdir, claude_command(task, session_id, permission_mode, model, extra))
+    command = terminal_command(workdir, claude_command(task, session_id, permission_mode, model, extra, agent_bin))
+    env = {**os.environ, "PATH": path} if path else None
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-              start_new_session=True)
+              start_new_session=True, env=env)
     except OSError as e:
         if tracked:
             try:

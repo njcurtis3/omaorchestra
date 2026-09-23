@@ -55,7 +55,12 @@ class SubscribeTest(unittest.TestCase):
 
     @staticmethod
     async def next_event(reader):
-        return json.loads(await reader.readline())
+        """The next session event, skipping queue updates (sent when the
+        number of busy agents changes)."""
+        while True:
+            message = json.loads(await reader.readline())
+            if message.get("event") != "queue":
+                return message
 
     def update(self, sid, status, **extra):
         return {"cmd": "update", "session_id": sid, "agent": "claude", "status": status, **extra}

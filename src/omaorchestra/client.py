@@ -9,7 +9,8 @@ class DaemonUnavailable(Exception):
 
 
 def subscribe(connect_timeout=1.0):
-    """Yield the snapshot (a list of sessions), then one event dict per change.
+    """Yield the snapshot ({"sessions": [...], "queue": {...}}), then one
+    event dict per change.
 
     Blocks between events; ends when the daemon closes the connection.
     """
@@ -27,7 +28,7 @@ def subscribe(connect_timeout=1.0):
             first = True
             for line in stream:
                 message = json.loads(line)
-                yield message["sessions"] if first else message
+                yield message
                 first = False
     finally:
         sock.close()

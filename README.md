@@ -6,8 +6,8 @@ Run AI coding agents side by side, see which are working, waiting for you, or
 done, and jump into any of them, from the terminal or the Omarchy bar.
 
 > **Status:** early prototype. The daemon tracks Claude Code sessions through
-> hooks, and can start new ones on a task; a bar widget and the desktop app
-> show them. There is no task queue yet.
+> hooks, starts new ones on a task (now or from a queue); a bar widget and
+> the desktop app show them.
 > omaorchestra is an independent, third-party project. It is not part of, or
 > endorsed by, Omarchy.
 
@@ -202,6 +202,34 @@ agent stays silent it is shown as waiting for you ("Not started yet: its
 window may be asking whether to trust this folder"), with a notification.
 omaorchestra never answers that question for you. A launch whose agent never
 appears is dropped after a minute.
+
+## The queue
+
+Queue tasks to start one after another as agents free up, instead of all at
+once:
+
+```bash
+omaorchestra queue add "update the dependencies" --in ~/code/app
+omaorchestra queue                      # the queue and how many slots are busy
+omaorchestra queue up|down <id>         # or: move <id> <position>
+omaorchestra queue pause|resume <id>    # resume also retries a failed task
+omaorchestra queue run <id>             # start it now, whatever the limit
+omaorchestra queue cancel <id>
+omaorchestra queue hold|release         # stop starting new tasks, and resume
+```
+
+The daemon starts the next task whenever fewer than `tasks.max_parallel`
+agents are busy. Busy means working or waiting for you; an idle agent has
+finished and does not hold a slot. Every agent counts, including ones you
+started yourself. A task that fails to start stays in the queue, marked
+failed with the reason. The queue is kept across daemon restarts. In the
+app, **Add to queue** on the New task page queues instead of launching, and
+the **Queue** page shows and controls it live.
+
+A queued task records the agent's full path and the `PATH` of whoever queued
+it, because the daemon runs under systemd, whose `PATH` usually lacks
+version-manager folders (mise, asdf). Nothing else from that environment is
+kept.
 
 ## Worktrees
 

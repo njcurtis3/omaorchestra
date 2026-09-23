@@ -103,7 +103,7 @@ def cmd_watch(args):
     """Print session changes as they happen."""
     try:
         stream = client.subscribe()
-        sessions = next(stream)
+        sessions = next(stream)["sessions"]
     except (client.DaemonUnavailable, StopIteration):
         print("omaorchestrad is not running", file=sys.stderr)
         return 1
@@ -115,6 +115,10 @@ def cmd_watch(args):
         for message in stream:
             if args.json:
                 print(json.dumps(message), flush=True)
+            elif message["event"] == "queue":
+                q = message["queue"]
+                print(f"{time.strftime('%H:%M:%S')}  queue: {len(q['tasks'])} task(s), {q['busy']}/{q['limit']} busy"
+                      + (", held" if q["held"] else ""), flush=True)
             elif message["event"] == "session":
                 s = message["session"]
                 print(f"{time.strftime('%H:%M:%S')}  {s['id'][:8]}  {s['status']:<12} {s.get('cwd', '')}", flush=True)
@@ -142,6 +146,70 @@ def cmd_run(args):
         print(f"  ({result['note']})")
     if not result["tracked"]:
         print("(omaorchestrad is not running, so this session is not tracked)")
+    return 0
+
+
+def queue_request(payload):
+    try:
+        response = client.request(payload, timeout=30)  # a start may create a worktree
+    except client.DaemonUnavailable:
+        raise launch.LaunchError("omaorchestrad is not running; the queue lives in the daemon") from None
+    if not response.get("ok"):
+        raise launch.LaunchError(response.get("error") or "the daemon refused")
+    return response
+
+
+def print_queue(q):
+    state = "held" if q["held"] else "running"
+    print(f"{q['busy']} of {q['limit']} agent slots busy; queue {state}")
+    if not q["tasks"]:
+        print("no queued tasks")
+    for i, t in enumerate(q["tasks"], 1):
+        mark = {"pending": " ", "paused": "‖", "failed": "!"}.get(t["state"], "?")
+        print(f"{i:>2} {mark} {t['id'][:8]}  {launch.short(t['task'], 60)}")
+        print(f"             {t['cwd']}" + (f"   (failed: {t['error']})" if t.get("error") else ""))
+
+
+def cmd_queue_list(args):
+    print_queue(queue_request({"cmd": "queue-list"})["queue"])
+    return 0
+
+
+def cmd_queue_add(args):
+    cwd = launch.Path(args.dir).expanduser().resolve()
+    item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
+            "worktree": args.worktree, "extra": args.agent_args, **launch.agent_environment()}
+    response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
+    print(f"queued {response['item']['id'][:8]}")
+    print_queue(response["queue"])
+    return 0
+
+
+def cmd_queue_action(args):
+    cmd = {"cancel": "queue-cancel", "pause": "queue-pause", "resume": "queue-resume", "run": "queue-run",
+           "hold": "queue-hold", "release": "queue-release"}[args.queue_command]
+    payload = {"cmd": cmd}
+    if getattr(args, "id", None):
+        payload["id"] = args.id
+    response = queue_request(payload)
+    if cmd == "queue-run":
+        print(f"started {response['session_id'][:8]}")
+        return 0
+    print_queue(response["queue"])
+    return 0
+
+
+def cmd_queue_move(args):
+    q = queue_request({"cmd": "queue-list"})["queue"]
+    ids = [t["id"] for t in q["tasks"]]
+    match = [i for i in ids if i.startswith(args.id)]
+    if len(match) != 1:
+        raise launch.LaunchError(f"no single queued task matching {args.id}")
+    now = ids.index(match[0])
+    position = {"up": now - 1, "down": now + 1}.get(args.queue_command)
+    if position is None:
+        position = args.position - 1  # people count from 1
+    print_queue(queue_request({"cmd": "queue-move", "id": match[0], "position": position})["queue"])
     return 0
 
 
@@ -386,6 +454,36 @@ def main(argv=None):
     run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
+    qp = sub.add_parser("queue", help="tasks waiting for a free agent slot")
+    qp.set_defaults(func=cmd_queue_list)
+    q_sub = qp.add_subparsers(dest="queue_command")
+    q_sub.add_parser("list", help="the queue and how many slots are busy").set_defaults(func=cmd_queue_list)
+    qa = q_sub.add_parser("add", help="queue a task (anything after -- goes to the agent)")
+    qa.add_argument("task")
+    qa.add_argument("--in", dest="dir", default=".")
+    qa.add_argument("--model")
+    qa.add_argument("--permission-mode")
+    qa.add_argument("--worktree", dest="worktree", action="store_true", default=None)
+    qa.add_argument("--no-worktree", dest="worktree", action="store_false")
+    qa.add_argument("--paused", action="store_true", help="add it paused")
+    qa.set_defaults(func=cmd_queue_add, agent_args=[])
+    for name, text in (("cancel", "remove a task from the queue"), ("pause", "skip it until resumed"),
+                       ("resume", "let it run again (also retries a failed task)"),
+                       ("run", "start it now, whatever the limit")):
+        p = q_sub.add_parser(name, help=text)
+        p.add_argument("id", help="queued task id or prefix")
+        p.set_defaults(func=cmd_queue_action)
+    for name, text in (("hold", "start nothing new until released"), ("release", "let the queue run again")):
+        q_sub.add_parser(name, help=text).set_defaults(func=cmd_queue_action)
+    mv = q_sub.add_parser("move", help="put a task at a position (1 = next)")
+    mv.add_argument("id")
+    mv.add_argument("position", type=int)
+    mv.set_defaults(func=cmd_queue_move)
+    for name in ("up", "down"):
+        p = q_sub.add_parser(name, help=f"move a task one place {name}")
+        p.add_argument("id")
+        p.set_defaults(func=cmd_queue_move)
+
     wt = sub.add_parser("worktree", help="task worktrees: list, review, merge, remove")
     wt_sub = wt.add_subparsers(dest="worktree_command", required=True)
     wt_sub.add_parser("list", help="every task worktree and how it stands").set_defaults(func=cmd_worktree_list)
@@ -448,7 +546,7 @@ def main(argv=None):
     # otherwise mix them up with run's own options.
     argv = list(sys.argv[1:] if argv is None else argv)
     agent_args = []
-    if argv[:1] == ["run"] and "--" in argv:
+    if (argv[:1] == ["run"] or argv[:2] == ["queue", "add"]) and "--" in argv:
         split = argv.index("--")
         argv, agent_args = argv[:split], argv[split + 1:]
     args = parser.parse_args(argv)

@@ -68,10 +68,11 @@ class UiFlowTest(unittest.TestCase):
 
         self.theme, self.sessions, self.settings = backend.Theme(), backend.Sessions(), backend.Settings()
         self.worktrees = backend.Worktrees()
+        self.queue = backend.Queue(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees),
+                            ("worktrees", self.worktrees), ("queue", self.queue),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -235,6 +236,33 @@ class UiFlowTest(unittest.TestCase):
         QMetaObject.invokeMethod(confirm, "accept")
         self.assertTrue(wait_for(lambda: not self.shown(name)), "worktree still listed after removing")
         self.assertFalse(Path(record["path"]).exists())
+        self.assertEqual(self.warnings, [])
+
+    def test_queue_from_the_form_then_pause_resume_cancel(self):
+        # Hold first, so nothing is actually launched during the test.
+        self.click("nav-queue")
+        self.click("queue-hold")
+        self.assertTrue(wait_for(lambda: self.queue.held), "queue not held")
+
+        QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+        self.assertTrue(wait_for(lambda: self.shown("task-prompt")), "form not open")
+        self.click("task-prompt")
+        for key in ("Key_L", "Key_A", "Key_T", "Key_E", "Key_R"):
+            QTest.keyClick(self.window, getattr(Qt.Key, key))
+        self.find("task-folder").setProperty("text", self.tmp.name)
+        spin()
+        self.click("task-queue")
+        self.assertTrue(wait_for(lambda: self.shown("queued-0")), "did not switch to the queue with the task")
+        (task,) = self.queue.tasks
+        self.assertEqual((task["task"], task["state"], task["cwd"]), ("later", "pending", self.tmp.name))
+        self.assertTrue(task["path"], "the environment PATH travels with the task")
+
+        self.click("queued-pause-0")
+        self.assertTrue(wait_for(lambda: self.queue.tasks and self.queue.tasks[0]["state"] == "paused"), "not paused")
+        self.click("queued-pause-0")
+        self.assertTrue(wait_for(lambda: self.queue.tasks and self.queue.tasks[0]["state"] == "pending"), "not resumed")
+        self.click("queued-cancel-0")
+        self.assertTrue(wait_for(lambda: not self.queue.tasks and not self.shown("queued-0")), "not cancelled")
         self.assertEqual(self.warnings, [])
 
     def test_reconnects_after_the_daemon_restarts(self):

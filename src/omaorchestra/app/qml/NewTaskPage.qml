@@ -9,6 +9,7 @@ ColumnLayout {
   id: page
   spacing: 14
   signal launched(string sessionId)
+  signal queued()
 
   property string error: ""
   readonly property bool folderOk: sessions.folderExists(folder.text)
@@ -19,6 +20,14 @@ ColumnLayout {
     prompt.text = ""
     error = ""
     prompt.forceActiveFocus()
+  }
+  function addToQueue() {
+    if (!ready) return
+    const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
+                             page.inRepo && worktreeSwitch.checked, false)
+    if (result.error) { error = result.error; return }
+    reset()
+    queued()
   }
   function launch() {
     if (!ready) return
@@ -217,7 +226,16 @@ ColumnLayout {
       wrapMode: Text.Wrap
       color: theme.muted
       font.pixelSize: 12
-      text: "Opens in a new terminal window. The first time an agent works in a folder it asks whether to trust it; answer there."
+      text: "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
+    }
+    Button {
+      objectName: "task-queue"
+      text: "Add to queue"
+      flat: true
+      enabled: page.ready
+      onClicked: page.addToQueue()
+      contentItem: Label { text: parent.text; color: parent.enabled ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
+      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
     }
     Button {
       objectName: "task-launch"

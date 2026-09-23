@@ -6,7 +6,9 @@ import signal
 import socket
 import time
 
-from . import __version__, config, notify, paths, procs, transcript, windows
+import subprocess
+
+from . import __version__, config, launch, notify, paths, procs, taskqueue, transcript, windows
 from .log import event
 from .registry import Registry
 
@@ -59,6 +61,89 @@ class Daemon:
         self.settings = settings or config.defaults()
         self.force_verbose = force_verbose  # --verbose on the command line wins over the config
         self.pruner = None
+        self.queue = taskqueue.TaskQueue(registry.path.parent / "queue.json")
+        self.spawn = subprocess.Popen  # how queued agents are started (tests replace it)
+        self._dispatching = False
+
+    # ---------------------------------------------------------------- queue
+
+    def busy(self):
+        """Agents holding a slot: working, or waiting for the user."""
+        return sum(1 for s in self.registry.sessions.values() if s.get("status") in ("working", "needs-input"))
+
+    def queue_snapshot(self):
+        return self.queue.snapshot(self.busy(), self.settings["tasks"]["max_parallel"])
+
+    def publish_queue(self):
+        self.publish({"event": "queue", "queue": self.queue_snapshot()})
+
+    def start_task(self, item):
+        """Launch a queued task now; returns the session id, or None if it
+        failed (the task then stays in the queue, marked failed)."""
+        try:
+            result = launch.run(
+                item["task"], item["cwd"], permission_mode=item.get("permission_mode"), model=item.get("model"),
+                extra=item.get("extra") or (), worktree=item.get("worktree"), agent_bin=item.get("agent_bin"),
+                path=item.get("path"), spawn=self.spawn, request=self.handle,
+            )
+        except launch.LaunchError as e:
+            self.queue.fail(item, str(e))
+            event(logging.WARNING, "task failed to start", task=item["id"], error=str(e))
+            return None
+        self.queue.tasks.remove(item)
+        self.queue.save()
+        event(logging.INFO, "task started", task=item["id"], id=result["id"])
+        return result["id"]
+
+    def dispatch(self):
+        """Start pending tasks while there are free slots."""
+        if self._dispatching or self.queue.held:
+            return
+        self._dispatching = True
+        try:
+            changed = False
+            while self.busy() < self.settings["tasks"]["max_parallel"]:
+                item = self.queue.next_pending()
+                if item is None:
+                    break
+                self.start_task(item)
+                changed = True
+            if changed:
+                self.publish_queue()
+        finally:
+            self._dispatching = False
+
+    def handle_queue(self, cmd, request):
+        q = self.queue
+        if cmd == "queue-list":
+            return {"ok": True, "queue": self.queue_snapshot()}
+        if cmd == "queue-add":
+            item = q.add(request.get("item") or {}, paused=bool(request.get("paused")))
+            event(logging.INFO, "task queued", task=item["id"], cwd=item["cwd"])
+        elif cmd == "queue-cancel":
+            item = q.remove(request["id"])
+            event(logging.INFO, "task cancelled", task=item["id"])
+        elif cmd == "queue-move":
+            item = q.move(request["id"], int(request["position"]))
+        elif cmd in ("queue-pause", "queue-resume"):
+            item = q.set_state(request["id"], "paused" if cmd == "queue-pause" else "pending")
+        elif cmd in ("queue-hold", "queue-release"):
+            q.held = cmd == "queue-hold"
+            q.save()
+            item = None
+            event(logging.INFO, "queue " + ("held" if q.held else "released"))
+        elif cmd == "queue-run":
+            item = q.find(request["id"])
+            session_id = self.start_task(item)
+            self.publish_queue()
+            if session_id is None:
+                return {"ok": False, "error": item["error"]}
+            return {"ok": True, "session_id": session_id}
+        else:
+            return {"ok": False, "error": f"unknown command: {cmd}"}
+        self.publish_queue()
+        self.dispatch()
+        return {"ok": True, "item": item, "queue": self.queue_snapshot()}
 
     def start_pruner(self):
         if self.pruner:
@@ -83,6 +168,8 @@ class Daemon:
             self.notifier.settings = new["notifications"]
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()
+        self.publish_queue()
+        self.dispatch()  # max_parallel may have grown
         event(logging.INFO, "config reloaded", prune_interval=new["daemon"]["prune_interval"],
               verbose=new["daemon"]["verbose"], waiting=new["notifications"]["waiting"],
               finished_after=new["notifications"]["finished_after"])
@@ -95,6 +182,14 @@ class Daemon:
             self.publish({"event": "session", "session": session})
         else:
             self.publish({"event": "removed", "id": previous["id"], "reason": reason})
+        # A slot may have freed up (or filled): keep the queue moving, and
+        # keep subscribers' busy count current.
+        if not self._dispatching:
+            busy_before = (previous or {}).get("status") in ("working", "needs-input")
+            busy_after = (session or {}).get("status") in ("working", "needs-input")
+            if busy_before != busy_after:
+                self.publish_queue()
+                self.dispatch()
 
     def publish(self, message):
         for queue in list(self.subscribers):
@@ -113,7 +208,7 @@ class Daemon:
         # Snapshot and registration happen with no await in between, so no
         # change can fall between them.
         self.subscribers.add(queue)
-        snapshot = {"ok": True, "sessions": self.registry.list()}
+        snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot()}
         event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
         client_gone = asyncio.ensure_future(reader.read())  # EOF when the client disconnects
         try:
@@ -218,6 +313,11 @@ class Daemon:
                       message=session.get("message"))
             self.changed(before, dict(session))
             return {"ok": True, "session": session}
+        if cmd.startswith("queue-"):
+            try:
+                return self.handle_queue(cmd, request)
+            except taskqueue.QueueError as e:
+                return {"ok": False, "error": str(e)}
         if cmd == "reload":
             error = self.reload()
             return {"ok": not error, "error": error} if error else {"ok": True}
@@ -302,6 +402,7 @@ def run(verbose=False):
         loop.add_signal_handler(signal.SIGHUP, daemon.reload)
         daemon.start_pruner()
         daemon.start_launch_watch()
+        daemon.dispatch()  # tasks may have been waiting while the daemon was down
         try:
             async with server:
                 await stop.wait()

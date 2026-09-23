@@ -61,6 +61,7 @@ ApplicationWindow {
   readonly property var pages: [
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
     { id: "new", glyph: "󰐕", label: "New task" },
+    { id: "queue", glyph: "󰒲", label: "Queue" },
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
@@ -172,6 +173,14 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.fillHeight: true
         onLaunched: id => window.showSession(id)
+        onQueued: window.page = "queue"
+      }
+
+      // Queue
+      QueuePage {
+        visible: window.page === "queue"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
       }
 
       // Worktrees

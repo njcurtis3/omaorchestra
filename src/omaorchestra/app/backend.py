@@ -124,6 +124,66 @@ class Settings(QObject):
     path = Property(str, lambda self: str(config.path()), notify=changed)
 
 
+class Queue(QObject):
+    """The daemon's task queue, kept current from the session subscription."""
+
+    changed = Signal()
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self._state = {"held": False, "busy": 0, "limit": 0, "tasks": []}
+        sessions.queueUpdated.connect(self._update)
+
+    @Slot("QVariantMap")
+    def _update(self, snapshot):
+        self._state = dict(snapshot)
+        self.changed.emit()
+
+    def _send(self, payload):
+        try:
+            response = client.request(payload, timeout=30)  # a start may create a worktree
+        except client.DaemonUnavailable:
+            return {"error": "omaorchestrad is not running"}
+        if not response.get("ok"):
+            return {"error": response.get("error") or "the daemon refused"}
+        if "queue" in response:
+            self._update(response["queue"])
+        return response
+
+    @Slot(str, str, str, str, bool, bool, result="QVariantMap")
+    def add(self, task, folder, model, permission_mode, worktree, paused):
+        import os
+        item = {"task": task, "cwd": os.path.expanduser(folder), "model": model or None,
+                "permission_mode": permission_mode or None, "worktree": worktree, "extra": [],
+                **launch.agent_environment()}
+        return self._send({"cmd": "queue-add", "item": item, "paused": paused})
+
+    @Slot(str, result="QVariantMap")
+    def cancel(self, task_id):
+        return self._send({"cmd": "queue-cancel", "id": task_id})
+
+    @Slot(str, bool, result="QVariantMap")
+    def setPaused(self, task_id, paused):
+        return self._send({"cmd": "queue-pause" if paused else "queue-resume", "id": task_id})
+
+    @Slot(str, result="QVariantMap")
+    def runNow(self, task_id):
+        return self._send({"cmd": "queue-run", "id": task_id})
+
+    @Slot(str, int, result="QVariantMap")
+    def move(self, task_id, position):
+        return self._send({"cmd": "queue-move", "id": task_id, "position": position})
+
+    @Slot(bool, result="QVariantMap")
+    def setHeld(self, held):
+        return self._send({"cmd": "queue-hold" if held else "queue-release"})
+
+    tasks = Property("QVariantList", lambda self: self._state["tasks"], notify=changed)
+    held = Property(bool, lambda self: self._state["held"], notify=changed)
+    busy = Property(int, lambda self: self._state["busy"], notify=changed)
+    limit = Property(int, lambda self: self._state["limit"], notify=changed)
+
+
 class Worktrees(QObject):
     """Task worktrees for the Worktrees page."""
 
@@ -187,6 +247,7 @@ class Sessions(QObject):
 
     changed = Signal()
     changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
+    queueUpdated = Signal("QVariantMap")  # taskqueue snapshot, from the same subscription
     _snapshot = Signal(list)
     _event = Signal(dict)
     _lost = Signal()
@@ -208,7 +269,10 @@ class Sessions(QObject):
         while True:
             try:
                 stream = client.subscribe()
-                self._snapshot.emit(next(stream))
+                snapshot = next(stream)
+                self._snapshot.emit(snapshot["sessions"])
+                if "queue" in snapshot:
+                    self.queueUpdated.emit(snapshot["queue"])
                 for message in stream:
                     self._event.emit(message)
             except (client.DaemonUnavailable, StopIteration, OSError, ValueError):
@@ -224,6 +288,9 @@ class Sessions(QObject):
 
     @Slot(dict)
     def _on_event(self, message):
+        if message.get("event") == "queue":
+            self.queueUpdated.emit(message["queue"])
+            return
         if message.get("event") == "session":
             self.by_id[message["session"]["id"]] = message["session"]
         elif message.get("event") == "removed":
