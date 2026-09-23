@@ -1,0 +1,9 @@
+// omaorchestra entries for the Omarchy menu. Merge into the object in
+// ~/.config/omarchy/extensions/omarchy-menu.jsonc; it reloads on save.
+{
+  "omaorchestra": {"icon":"󰚩","label":"Agents","description":"omaorchestra agent sessions"},
+  "omaorchestra.panel": {"icon":"󰕮","label":"Sessions","action":"omarchy-shell shell toggle omaorchestra.sessions"},
+  "omaorchestra.focus": {"icon":"󰁔","label":"Jump to agent","action":"omaorchestra focus --notify"},
+  "omaorchestra.log": {"icon":"󰌱","label":"Daemon log","action":"omarchy-launch-or-focus-tui --app-id=org.omarchy.omaorchestra-log journalctl --user -u omaorchestrad -f"},
+  "omaorchestra.restart": {"icon":"󰜉","label":"Restart daemon","action":"systemctl --user restart omaorchestrad"}
+}

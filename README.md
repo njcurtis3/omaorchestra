@@ -149,6 +149,21 @@ and `focus` says so. Agents inside tmux or over ssh have no window to find.
 It works with both Hyprland's Lua dispatch syntax (0.55 and later) and the
 classic one.
 
+## Keybindings and menu
+
+[packaging/omarchy/](packaging/omarchy/) has ready-made snippets:
+
+- `bindings.lua` for `~/.config/hypr/bindings.lua`:
+  **SUPER + ALT + A** jumps to the agent that needs you, and
+  **SUPER + CTRL + ALT + A** toggles the sessions panel on the focused monitor.
+  Both are free in a stock Omarchy.
+- `omarchy-menu.jsonc` for `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
+  an **Agents** submenu with Sessions, Jump to agent, Daemon log and Restart
+  daemon.
+
+`omaorchestra focus --notify` reports a failure (no sessions, no window) as a
+notification, since a keybinding has no terminal to print to.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).

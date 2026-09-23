@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -59,13 +60,27 @@ def pick_session(sessions, wanted):
     return matches[0]
 
 
+def tell(message, notify):
+    """Report a problem on stderr, and as a notification when run from a keybinding."""
+    print(f"omaorchestra: {message}", file=sys.stderr)
+    if notify:
+        try:
+            subprocess.run(["notify-send", "--app-name=omaorchestra", "--urgency=low", "omaorchestra", message],
+                           capture_output=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
 def cmd_focus(args):
     try:
         sessions = client.request({"cmd": "list"})["sessions"]
+        window, exact = windows.focus_session(pick_session(sessions, args.session))
     except client.DaemonUnavailable:
-        print("omaorchestrad is not running", file=sys.stderr)
+        tell("omaorchestrad is not running", args.notify)
         return 1
-    window, exact = windows.focus_session(pick_session(sessions, args.session))
+    except windows.WindowError as e:
+        tell(str(e), args.notify)
+        return 1
     note = "" if exact else " (best guess: that terminal owns several windows)"
     print(f"focused {window.get('class', '')} \"{window.get('title', '')}\"{note}")
     return 0
@@ -217,6 +232,7 @@ def main(argv=None):
     ls.set_defaults(func=cmd_ls)
     focus_p = sub.add_parser("focus", help="focus a session's terminal window")
     focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
+    focus_p.add_argument("--notify", action="store_true", help="report failures as a notification (for keybindings)")
     focus_p.set_defaults(func=cmd_focus)
     dismiss_p = sub.add_parser("dismiss", help="remove a session from the list (it returns if the agent reports again)")
     dismiss_p.add_argument("session", help="session id or prefix")
