@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, config, daemon, hooks, procs, service
+from . import __version__, claude_settings, client, config, daemon, hooks, procs, service, windows
 
 
 def cmd_daemon(args):
@@ -38,6 +38,43 @@ def cmd_ls(args):
     for s in sessions:
         ago = int(now - s["updated"])
         print(f"{s['id'][:8]}  {s['agent']:<7} {s['status']:<12} {ago:>5}s ago  {s.get('cwd', '')}")
+    return 0
+
+
+# Same order as the bar panel: the session that needs you first.
+STATUS_ORDER = {"needs-input": 0, "working": 1, "idle": 2}
+
+
+def pick_session(sessions, wanted):
+    """The session whose id starts with `wanted`, or the first by panel order."""
+    if not wanted:
+        if not sessions:
+            raise windows.WindowError("no agent sessions")
+        return sorted(sessions, key=lambda s: (STATUS_ORDER.get(s["status"], 3), -s["updated"]))[0]
+    matches = [s for s in sessions if s["id"].startswith(wanted)]
+    if not matches:
+        raise windows.WindowError(f"no session matching {wanted}")
+    if len(matches) > 1:
+        raise windows.WindowError(f"{wanted} matches {len(matches)} sessions; give more of the id")
+    return matches[0]
+
+
+def cmd_focus(args):
+    try:
+        sessions = client.request({"cmd": "list"})["sessions"]
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    session = pick_session(sessions, args.session)
+    if "pid" not in session:
+        raise windows.WindowError(f"session {session['id'][:8]} has no recorded process")
+    found = windows.find_window(session["pid"], windows.clients())
+    if not found:
+        raise windows.WindowError(f"no window found for session {session['id'][:8]} (running in tmux or over ssh?)")
+    window, exact = found
+    windows.focus(window)
+    note = "" if exact else " (best guess: that terminal owns several windows)"
+    print(f"focused {window.get('class', '')} \"{window.get('title', '')}\"{note}")
     return 0
 
 
@@ -173,6 +210,9 @@ def main(argv=None):
     ls = sub.add_parser("ls", help="list agent sessions")
     ls.add_argument("--json", action="store_true")
     ls.set_defaults(func=cmd_ls)
+    focus_p = sub.add_parser("focus", help="focus a session's terminal window")
+    focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
+    focus_p.set_defaults(func=cmd_focus)
     hook = sub.add_parser("hook", help="receive an agent hook event on stdin")
     hook.add_argument("agent", choices=["claude"])
     hook.set_defaults(func=cmd_hook)
@@ -214,7 +254,7 @@ def main(argv=None):
         return 0
     try:
         return args.func(args)
-    except (claude_settings.SettingsError, service.ServiceError, config.ConfigError) as e:
+    except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

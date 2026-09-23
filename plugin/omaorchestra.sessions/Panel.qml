@@ -5,7 +5,9 @@ import qs.Ui
 import "Format.js" as Format
 
 // Detail view: every session omaorchestrad knows about, the ones waiting on
-// you first. BarWidget.qml owns the data; this panel only renders
+// you first. Clicking a session runs `omaorchestra focus <id>`, which needs
+// omaorchestra on PATH (/usr/bin when packaged; scripts/dev-install-plugin
+// links a checkout into ~/.local/bin). BarWidget.qml owns the data; this panel only renders
 // `hostWidget.sessions`.
 //
 // Plain Column/Item with explicit widths rather than ColumnLayout: a Layout
@@ -66,60 +68,80 @@ Panel {
       Repeater {
         model: root.sessions
 
-        Column {
+        // Click a session to jump to its terminal window.
+        Item {
+          id: row
           required property var modelData
           readonly property bool waiting: modelData.status === "needs-input"
 
           width: content.width
-          spacing: Style.space(2)
+          height: rowContent.implicitHeight
 
-          // "left"/"right" would shadow Item's anchor lines, hence plain Texts.
-          Item {
-            width: parent.width
-            height: Math.max(nameText.implicitHeight, statusText.implicitHeight)
-
-            Text {
-              id: nameText
-              anchors.left: parent.left
-              anchors.right: statusText.left
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              text: Format.projectName(modelData.cwd)
-              elide: Text.ElideRight
-              color: Color.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
-            }
-
-            Text {
-              id: statusText
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              text: Format.statusLabel(modelData.status)
-              color: waiting ? Color.urgent : modelData.status === "working" ? Color.foreground : Color.muted
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
+          MouseArea {
+            id: rowMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              Quickshell.execDetached(["omaorchestra", "focus", row.modelData.id])
+              root.close()
             }
           }
 
-          Text {
+          Column {
+            id: rowContent
             width: parent.width
-            text: String(modelData.agent || "agent") + " · " + Format.ago(root.now - Number(modelData.updated))
-              + " · " + String(modelData.cwd || "")
-            elide: Text.ElideMiddle
-            color: Color.muted
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
-          }
+            spacing: Style.space(2)
 
-          Text {
-            width: parent.width
-            visible: waiting && !!modelData.message
-            text: String(modelData.message || "")
-            wrapMode: Text.Wrap
-            color: Color.urgent
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
+            // "left"/"right" would shadow Item's anchor lines, hence plain Texts.
+            Item {
+              width: parent.width
+              height: Math.max(nameText.implicitHeight, statusText.implicitHeight)
+
+              Text {
+                id: nameText
+                anchors.left: parent.left
+                anchors.right: statusText.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                text: Format.projectName(row.modelData.cwd)
+                elide: Text.ElideRight
+                color: Color.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
+                font.underline: rowMouse.containsMouse
+              }
+
+              Text {
+                id: statusText
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: Format.statusLabel(row.modelData.status)
+                color: row.waiting ? Color.urgent : row.modelData.status === "working" ? Color.foreground : Color.muted
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
+              }
+            }
+
+            Text {
+              width: parent.width
+              text: String(row.modelData.agent || "agent") + " · " + Format.ago(root.now - Number(row.modelData.updated))
+                + " · " + String(row.modelData.cwd || "")
+              elide: Text.ElideMiddle
+              color: Color.muted
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              width: parent.width
+              visible: row.waiting && !!row.modelData.message
+              text: String(row.modelData.message || "")
+              wrapMode: Text.Wrap
+              color: Color.urgent
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
           }
         }
       }

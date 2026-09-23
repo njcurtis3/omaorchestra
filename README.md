@@ -97,9 +97,12 @@ change, so it needs no polling and keeps working while the daemon is down.
   colour when an agent is blocked on you.
 - Click to open a panel listing each session (waiting first, with the
   permission message), right-click to reload.
+- Click a session in the panel to jump to its terminal window. A window that
+  is minimized or on a scratchpad is brought to the current workspace first.
 
 ```bash
 scripts/dev-install-plugin --restart          # copy into ~/.config/omarchy/plugins
+                                              # and link the CLI into ~/.local/bin
 omarchy bar put omaorchestra.sessions --before omarchy.agents
 ```
 
@@ -115,6 +118,21 @@ node --test tests/plugin            # bar widget formatting logic
 
 Set `OMAORCHESTRA_SOCKET` and `OMAORCHESTRA_STATE_DIR` to run a throwaway
 daemon alongside a real one.
+
+## Jumping to a session
+
+```bash
+omaorchestra focus            # the session that needs you most (waiting first)
+omaorchestra focus 55a4e525   # a session by id or id prefix
+```
+
+omaorchestra walks up the process tree from the agent to the nearest process
+that owns a Hyprland window. Terminals that run a process per window (foot,
+alacritty, kitty) give an exact match; single-process terminals such as
+ghostty or `foot --server` own several windows, so the match is a best guess
+and `focus` says so. Agents inside tmux or over ssh have no window to find.
+It works with both Hyprland's Lua dispatch syntax (0.55 and later) and the
+classic one.
 
 ## Configuration
 

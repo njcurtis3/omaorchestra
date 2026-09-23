@@ -17,6 +17,17 @@ mkdir -p "$dest"
 cp "$src"/*.qml "$src"/*.js "$src"/manifest.json "$dest"/
 echo "installed plugin to $dest"
 
+# The panel runs `omaorchestra focus`, so the CLI must be on the shell's PATH.
+cli="$(dirname "$(readlink -f "$0")")/../bin/omaorchestra"
+link="$HOME/.local/bin/omaorchestra"
+if [[ -L $link || ! -e $link ]]; then
+  mkdir -p "$(dirname "$link")"
+  ln -sfn "$(readlink -f "$cli")" "$link"
+  echo "linked $link -> $(readlink -f "$cli")"
+else
+  echo "left $link alone: it is not a symlink"
+fi
+
 if [[ ${1:-} == --restart ]]; then
   omarchy restart shell
 else
