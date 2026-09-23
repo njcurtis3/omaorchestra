@@ -26,3 +26,7 @@ max_parallel = 2
 # In a git repository, give each task its own worktree and branch so parallel
 # agents do not collide (`run --no-worktree` or the New task form can opt out)
 isolate_with_worktrees = true
+# Start no queued task while any of the agent's subscription rate limits
+# (as Omarchy's usage records report them) is at or above this percentage;
+# 0 turns it off
+pause_at_usage = 90

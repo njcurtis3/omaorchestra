@@ -162,6 +162,8 @@ def queue_request(payload):
 def print_queue(q):
     state = "held" if q["held"] else "running"
     print(f"{q['busy']} of {q['limit']} agent slots busy; queue {state}")
+    if q.get("blocked"):
+        print(f"waiting: {q['blocked']['text']}")
     if not q["tasks"]:
         print("no queued tasks")
     for i, t in enumerate(q["tasks"], 1):

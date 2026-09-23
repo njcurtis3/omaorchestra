@@ -40,7 +40,7 @@ def _agents(value):
 
 
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
-           ("tasks", "max_parallel"): (1, 64)}
+           ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100)}
 
 # section -> key -> (default, validator)
 SCHEMA = {
@@ -58,6 +58,7 @@ SCHEMA = {
     "tasks": {
         "max_parallel": (2, _int_between(*_RANGES[("tasks", "max_parallel")])),
         "isolate_with_worktrees": (True, _bool),
+        "pause_at_usage": (90, _int_between(*_RANGES[("tasks", "pause_at_usage")])),
     },
 }
 
@@ -95,6 +96,9 @@ METADATA = {
                                                "(working or waiting for you)."),
             "isolate_with_worktrees": ("Separate worktree per task",
                                        "In a git repository, give each task its own worktree and branch."),
+            "pause_at_usage": ("Hold the queue at usage (%)",
+                               "Start no queued task while any of the agent's subscription limits is at or "
+                               "above this (from Omarchy's usage records); 0 turns it off."),
         },
     },
 }

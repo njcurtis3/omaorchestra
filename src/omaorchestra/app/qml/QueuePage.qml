@@ -32,6 +32,24 @@ ColumnLayout {
     }
   }
 
+  Rectangle {
+    objectName: "queue-blocked"
+    visible: !!queue.blockedText
+    Layout.fillWidth: true
+    implicitHeight: blockedLabel.implicitHeight + 20
+    radius: 6
+    color: Qt.alpha(theme.urgent, 0.12)
+    border.color: theme.urgent
+    Label {
+      id: blockedLabel
+      anchors.fill: parent
+      anchors.margins: 10
+      wrapMode: Text.Wrap
+      color: theme.urgent
+      text: "Waiting: " + queue.blockedText + ". Queued tasks start once it is below the limit set in Settings (Start now overrides it)."
+    }
+  }
+
   Label {
     visible: !!page.message
     Layout.fillWidth: true
@@ -104,7 +122,8 @@ ColumnLayout {
 
         Label {
           Layout.alignment: Qt.AlignTop
-          text: row.modelData.state === "pending" ? (queue.held ? "held" : "waiting") : row.modelData.state
+          text: row.modelData.state === "pending" ? (queue.held ? "held" : queue.blockedText ? "usage limit" : "waiting")
+                : row.modelData.state
           color: row.modelData.state === "failed" ? theme.urgent : theme.muted
         }
 

@@ -8,7 +8,7 @@ import time
 
 import subprocess
 
-from . import __version__, config, launch, notify, paths, procs, taskqueue, transcript, windows
+from . import __version__, config, launch, notify, paths, procs, taskqueue, transcript, usage, windows
 from .log import event
 from .registry import Registry
 
@@ -64,6 +64,10 @@ class Daemon:
         self.queue = taskqueue.TaskQueue(registry.path.parent / "queue.json")
         self.spawn = subprocess.Popen  # how queued agents are started (tests replace it)
         self._dispatching = False
+        self.usage_check = usage.blocking  # tests replace it
+        self.usage_refresh = usage.refresh_in_background
+        self.blocked = None  # the usage limit holding the queue, if any
+        self._last_refresh = 0
 
     # ---------------------------------------------------------------- queue
 
@@ -72,7 +76,19 @@ class Daemon:
         return sum(1 for s in self.registry.sessions.values() if s.get("status") in ("working", "needs-input"))
 
     def queue_snapshot(self):
-        return self.queue.snapshot(self.busy(), self.settings["tasks"]["max_parallel"])
+        blocked = dict(self.blocked, text=usage.describe(self.blocked)) if self.blocked else None
+        return self.queue.snapshot(self.busy(), self.settings["tasks"]["max_parallel"], blocked)
+
+    def usage_block(self):
+        """The subscription limit that should hold the queue now, if any.
+        Also asks Omarchy to refresh an old record (at most every 5 minutes)."""
+        threshold = self.settings["tasks"]["pause_at_usage"] / 100
+        block = self.usage_check("claude", threshold)
+        rec_age = usage.age(usage.record("claude"))
+        if (rec_age is None or rec_age > usage.REFRESH_AFTER) and time.time() - self._last_refresh > 300:
+            self._last_refresh = time.time()
+            self.usage_refresh("claude")
+        return block
 
     def publish_queue(self):
         self.publish({"event": "queue", "queue": self.queue_snapshot()})
@@ -102,11 +118,23 @@ class Daemon:
         self._dispatching = True
         try:
             changed = False
+            blocked = self.blocked
             while self.busy() < self.settings["tasks"]["max_parallel"]:
                 item = self.queue.next_pending()
                 if item is None:
+                    blocked = None
+                    break
+                blocked = self.usage_block()
+                if blocked:
                     break
                 self.start_task(item)
+                changed = True
+            if blocked != self.blocked:
+                if blocked:
+                    event(logging.INFO, "queue waiting", reason=usage.describe(blocked))
+                elif self.blocked:
+                    event(logging.INFO, "queue resumed", reason="usage limit no longer reached")
+                self.blocked = blocked
                 changed = True
             if changed:
                 self.publish_queue()
@@ -354,6 +382,9 @@ async def prune_forever(daemon, interval=PRUNE_INTERVAL):
     while True:
         await asyncio.sleep(interval)
         daemon.prune()
+        # A queue waiting on a usage limit gets another look (limits reset).
+        if daemon.queue.next_pending():
+            daemon.dispatch()
 
 
 async def serve(sock_path, registry, daemon=None):

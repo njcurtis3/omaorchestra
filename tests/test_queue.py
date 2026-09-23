@@ -61,6 +61,11 @@ class DispatchTest(unittest.TestCase):
         self.d = daemon.Daemon(Registry(Path(self.tmp.name) / "sessions.json"), settings=settings)
         self.spawned = []
         self.d.spawn = lambda cmd, **kw: self.spawned.append((cmd, kw.get("env")))
+        # Never the real usage records (they may well be near a limit).
+        self.limit = None
+        self.d.usage_check = lambda agent, threshold: self.limit
+        self.refreshes = []
+        self.d.usage_refresh = self.refreshes.append
 
     def tearDown(self):
         self.env.stop()
@@ -129,6 +134,23 @@ class DispatchTest(unittest.TestCase):
         Path(os.environ["OMAORCHESTRA_CONFIG"]).write_text("[tasks]\nmax_parallel = 3\n")
         self.d.handle({"cmd": "reload"})
         self.assertEqual(self.started(), ["a", "b", "c"])
+
+    def test_usage_limit_holds_the_queue_until_it_clears(self):
+        self.limit = {"agent": "claude", "name": "Claude Code", "label": "Session (5-hour)", "percent": 0.93,
+                      "resetsAt": None}
+        self.queue("a")
+        self.assertEqual(self.started(), [], "a nearly used limit holds the queue")
+        snap = self.d.handle({"cmd": "queue-list"})["queue"]
+        self.assertEqual(snap["blocked"]["text"], "Claude Code's Session (5-hour) limit is at 93%")
+        response = self.d.handle({"cmd": "queue-run", "id": self.d.queue.tasks[0]["id"]})
+        self.assertTrue(response["ok"], "run now overrides the limit")
+        self.queue("b")
+        self.finish_all()
+        self.assertEqual(self.started(), ["a"])
+        self.limit = None
+        self.d.dispatch()  # what the periodic check does
+        self.assertEqual(self.started(), ["a", "b"])
+        self.assertIsNone(self.d.handle({"cmd": "queue-list"})["queue"]["blocked"])
 
     def test_queue_survives_a_restart(self):
         self.d.handle({"cmd": "queue-hold"})

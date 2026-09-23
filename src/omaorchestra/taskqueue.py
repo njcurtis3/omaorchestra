@@ -93,5 +93,8 @@ class TaskQueue:
     def next_pending(self):
         return next((t for t in self.tasks if t["state"] == "pending"), None)
 
-    def snapshot(self, busy, limit):
-        return {"held": self.held, "busy": busy, "limit": limit, "tasks": [dict(t) for t in self.tasks]}
+    def snapshot(self, busy, limit, blocked=None):
+        """`blocked` says why pending tasks are not starting despite free
+        slots (a nearly used subscription limit), or is None."""
+        return {"held": self.held, "busy": busy, "limit": limit, "blocked": blocked,
+                "tasks": [dict(t) for t in self.tasks]}

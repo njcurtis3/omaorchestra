@@ -25,7 +25,7 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "remove", "session_id", "reason"?}` | `{"ok": true, "removed": bool}` |
 | `{"cmd": "subscribe"}` | `{"ok": true, "sessions": [...], "queue": {...}}`, then a stream (below) |
 | `{"cmd": "reload"}` | `{"ok": true}`, or the error that kept the old settings |
-| `{"cmd": "queue-list"}` | `{"ok": true, "queue": {"held", "busy", "limit", "tasks": [...]}}` |
+| `{"cmd": "queue-list"}` | `{"ok": true, "queue": {"held", "busy", "limit", "blocked", "tasks": [...]}}` |
 | `{"cmd": "queue-add", "item", "paused"?}`, `queue-cancel`, `queue-move` (`id`, `position`), `queue-pause`, `queue-resume`, `queue-hold`, `queue-release` | `{"ok": true, "queue": {...}}` |
 | `{"cmd": "queue-run", "id"}` | `{"ok": true, "session_id"}` |
 

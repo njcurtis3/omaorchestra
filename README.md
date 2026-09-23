@@ -226,6 +226,15 @@ failed with the reason. The queue is kept across daemon restarts. In the
 app, **Add to queue** on the New task page queues instead of launching, and
 the **Queue** page shows and controls it live.
 
+The queue also watches your subscription's rate limits, as Omarchy's agents
+widget records them (`~/.local/state/omarchy/agents/usage/`): while any
+limit is at or above `tasks.pause_at_usage` (90% by default; 0 turns it
+off), no queued task starts, and the queue says why ("Claude Code's Session
+(5-hour) limit is at 92%, resets 19:39"). A limit whose reset time has
+passed no longer counts, a record over an hour old is ignored, and an old
+record is refreshed in the background with Omarchy's own updater. `queue
+run` starts a task anyway.
+
 A queued task records the agent's full path and the `PATH` of whoever queued
 it, because the daemon runs under systemd, whose `PATH` usually lacks
 version-manager folders (mise, asdf). Nothing else from that environment is

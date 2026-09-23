@@ -131,7 +131,7 @@ class Queue(QObject):
 
     def __init__(self, sessions, parent=None):
         super().__init__(parent)
-        self._state = {"held": False, "busy": 0, "limit": 0, "tasks": []}
+        self._state = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
         sessions.queueUpdated.connect(self._update)
 
     @Slot("QVariantMap")
@@ -182,6 +182,7 @@ class Queue(QObject):
     held = Property(bool, lambda self: self._state["held"], notify=changed)
     busy = Property(int, lambda self: self._state["busy"], notify=changed)
     limit = Property(int, lambda self: self._state["limit"], notify=changed)
+    blockedText = Property(str, lambda self: (self._state.get("blocked") or {}).get("text", ""), notify=changed)
 
 
 class Worktrees(QObject):
