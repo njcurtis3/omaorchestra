@@ -267,6 +267,11 @@ def run(verbose=False):
         try:
             async with server:
                 await stop.wait()
+                # Subscriptions never end on their own, and the server waits
+                # for every connection before it finishes closing (Python
+                # 3.12+), so close them, or stopping hangs while an app is open.
+                server.close()
+                server.close_clients()
         finally:
             daemon.pruner.cancel()
             # Remove the socket only if it is still the one we bound.

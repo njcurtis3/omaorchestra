@@ -22,6 +22,7 @@ def activate_own_window():
 
 
 def run(check=False, session=""):
+    warnings = []
     if check:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
@@ -36,6 +37,16 @@ def run(check=False, session=""):
 
     from .. import __version__
     from . import backend, instance
+
+    if check:
+        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+
+        # A self-test fails on any QML warning, not only on a missing daemon.
+        def collect(mode, context, message):
+            if mode != QtMsgType.QtDebugMsg:
+                warnings.append(message)
+
+        qInstallMessageHandler(collect)
 
     app = QGuiApplication(sys.argv[:1])
     app.setApplicationName("omaorchestra")
@@ -80,13 +91,14 @@ def run(check=False, session=""):
 
         def report():
             result.update(loaded=True, connected=sessions.connected, sessions=sessions.total,
-                          window=engine.rootObjects()[0].property("title"), background=theme.background)
+                          window=engine.rootObjects()[0].property("title"), background=theme.background,
+                          warnings=warnings)
             app.quit()
 
         sessions.changed.connect(lambda: sessions.connected and report())
         QTimer.singleShot(5000, report)
         app.exec()
         print(json.dumps(result))
-        return 0 if result.get("connected") else 1
+        return 0 if result.get("connected") and not warnings else 1
 
     return app.exec()

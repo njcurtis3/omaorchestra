@@ -58,6 +58,7 @@ ColumnLayout {
       background: Rectangle { radius: 4; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
     }
     Button {
+      objectName: "settings-save"
       text: "Save"
       enabled: page.dirty
       onClicked: page.save()
@@ -137,6 +138,7 @@ ColumnLayout {
 
                 Switch {
                   id: toggle
+                  objectName: "setting-" + fieldRow.modelData.section + "." + fieldRow.modelData.key
                   visible: fieldRow.modelData.kind === "bool"
                   checked: fieldRow.modelData.kind === "bool" && fieldRow.current === true
                   onToggled: page.setValue(fieldRow.modelData, checked)

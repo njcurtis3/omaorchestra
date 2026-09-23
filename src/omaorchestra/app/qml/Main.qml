@@ -76,6 +76,7 @@ ApplicationWindow {
 
           delegate: ItemDelegate {
             required property var modelData
+            objectName: "nav-" + modelData.id
             Layout.fillWidth: true
             highlighted: window.page === modelData.id
             onClicked: window.page = modelData.id

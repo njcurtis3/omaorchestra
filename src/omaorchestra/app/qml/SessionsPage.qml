@@ -26,6 +26,7 @@ ColumnLayout {
   }
 
   SessionDetail {
+    objectName: "detail"
     visible: page.selectedId !== ""
     Layout.fillWidth: true
     Layout.fillHeight: true
@@ -50,6 +51,7 @@ ColumnLayout {
 
       delegate: Button {
         required property var modelData
+        objectName: "filter-" + (modelData.status || "all")
         readonly property bool selected: page.statusFilter === modelData.status
         text: modelData.label + "  " + modelData.count
         flat: true
@@ -70,6 +72,7 @@ ColumnLayout {
 
     TextField {
       id: search
+      objectName: "search"
       Layout.fillWidth: true
       Layout.leftMargin: 8
       placeholderText: "Filter by project, title, path, branch or model"
@@ -112,6 +115,7 @@ ColumnLayout {
     delegate: Rectangle {
       id: listRow
       required property var modelData
+      objectName: "row-" + modelData.id
       width: ListView.view.width
       height: listContent.implicitHeight + 20
       radius: 6

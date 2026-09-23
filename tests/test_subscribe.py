@@ -143,6 +143,35 @@ class SubscribeTest(unittest.TestCase):
         self.assertTrue(self.run_async(scenario)["ok"])
 
 
+class ShutdownWithSubscriberTest(unittest.TestCase):
+    def test_sigterm_does_not_wait_for_subscribers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "OMAORCHESTRA_SOCKET": str(Path(tmp) / "o.sock"),
+                   "OMAORCHESTRA_STATE_DIR": str(Path(tmp) / "state"),
+                   "OMAORCHESTRA_CONFIG": str(Path(tmp) / "none.toml")}
+            bin_ = str(ROOT / "bin" / "omaorchestra")
+            d = subprocess.Popen([bin_, "daemon"], env=env, stderr=subprocess.DEVNULL)
+            watcher = None
+            try:
+                for _ in range(50):
+                    if Path(env["OMAORCHESTRA_SOCKET"]).exists():
+                        break
+                    time.sleep(0.1)
+                watcher = subprocess.Popen([bin_, "watch", "--json"], env=env, stdout=subprocess.PIPE, text=True)
+                watcher.stdout.readline()  # subscribed
+                started = time.monotonic()
+                d.terminate()
+                code = d.wait(timeout=5)
+                took = time.monotonic() - started
+                watcher.wait(timeout=5)  # its connection was closed, so it ends too
+            finally:
+                for p in (d, watcher):
+                    if p and p.poll() is None:
+                        p.kill()
+        self.assertEqual(code, 0)
+        self.assertLess(took, 2)
+
+
 class WatchCliTest(unittest.TestCase):
     def test_watch_prints_live_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

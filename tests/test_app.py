@@ -141,8 +141,7 @@ class CheckCommandTest(unittest.TestCase):
                 d.terminate()
                 d.wait(timeout=5)
             self.assertEqual(code, 0, err)
-            self.assertEqual((result["connected"], result["window"]), (True, "omaorchestra"))
-            self.assertNotIn("qml", err.lower(), "QML warnings while loading")
+            self.assertEqual((result["connected"], result["window"], result["warnings"]), (True, "omaorchestra", []))
 
 
 if __name__ == "__main__":

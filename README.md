@@ -155,10 +155,17 @@ widget run `omarchy restart shell` (the `--restart` flag does it).
 ```bash
 /usr/bin/python3 -m unittest discover tests   # everything (app tests need PySide6)
 node --test tests/plugin            # bar widget formatting logic
+omaorchestra app --check            # load the app offscreen; fails on QML warnings or no daemon
 ```
 
 Set `OMAORCHESTRA_SOCKET` and `OMAORCHESTRA_STATE_DIR` to run a throwaway
 daemon alongside a real one.
+
+The app tests run offscreen (`QT_QPA_PLATFORM=offscreen`). Besides unit
+tests and per-page renders, `tests/test_ui_flows.py` drives the whole window
+against a throwaway daemon with simulated clicks and keys (sessions appearing
+live, details and Esc, filters, search, saving a setting, reconnecting after
+a daemon restart) and fails on any QML warning.
 
 ## Notifications
 
