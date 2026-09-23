@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import changes, client, control, transcript, windows
+from .. import changes, client, config, control, transcript, windows
 from . import present
 from . import theme as theme_file
 
@@ -65,6 +65,63 @@ class Theme(QObject):
     urgent = _color("urgent")
     dark = Property(bool, lambda self: self.colors["mode"] != "light", notify=changed)
     del _color
+
+
+class Settings(QObject):
+    """The config file, as the settings screen edits it."""
+
+    changed = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._error = ""
+        self._sections = []
+        self.reload()
+
+    @Slot()
+    def reload(self):
+        try:
+            current = config.load()
+            self._error = ""
+        except config.ConfigError as e:
+            # Show the defaults, and say why the file could not be used.
+            current, self._error = config.defaults(), str(e)
+        self._sections = config.describe(current)
+        self.changed.emit()
+
+    @Slot("QVariantMap", result=str)
+    def save(self, changes):
+        """Write {"section.key": value} changes and tell the daemon; returns a
+        message for the user (empty when everything worked)."""
+        grouped = {}
+        for name, value in changes.items():
+            section, _, key = name.partition(".")
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)  # QML numbers arrive as floats
+            grouped.setdefault(section, {})[key] = value
+        try:
+            config.save(grouped)
+        except config.ConfigError as e:
+            return str(e)
+        finally:
+            self.reload()
+        try:
+            response = client.request({"cmd": "reload"})
+        except client.DaemonUnavailable:
+            return ""  # it reads the file when it starts
+        return "" if response.get("ok") else f"Saved, but the daemon kept its old settings: {response.get('error')}"
+
+    @Slot()
+    def openInEditor(self):
+        path = config.path()
+        if not path.exists():
+            config.save({})  # an editor needs a file to open
+        subprocess.Popen(["omarchy-launch-editor", str(path)], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    sections = Property("QVariantList", lambda self: self._sections, notify=changed)
+    error = Property(str, lambda self: self._error, notify=changed)
+    path = Property(str, lambda self: str(config.path()), notify=changed)
 
 
 class Sessions(QObject):

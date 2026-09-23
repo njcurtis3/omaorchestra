@@ -189,6 +189,34 @@ def cmd_config_show(args):
     return 0
 
 
+def cmd_config_set(args):
+    section, _, key = args.setting.partition(".")
+    value = config.parse_value(section, key, args.value)
+    config.save({section: {key: value}})
+    print(f"{args.setting} = {config.toml_value(value)}")
+    return reload_daemon(quiet_if_down=True)
+
+
+def reload_daemon(quiet_if_down=False):
+    try:
+        response = client.request({"cmd": "reload"})
+    except client.DaemonUnavailable:
+        if not quiet_if_down:
+            print("omaorchestrad is not running", file=sys.stderr)
+            return 1
+        print("(omaorchestrad is not running; it will use this when it starts)")
+        return 0
+    if not response.get("ok"):
+        print(f"omaorchestra: the daemon kept its old settings: {response.get('error')}", file=sys.stderr)
+        return 1
+    print("omaorchestrad reloaded its settings")
+    return 0
+
+
+def cmd_config_reload(args):
+    return reload_daemon()
+
+
 def cmd_config_check(args):
     config.load()
     where = config.path()
@@ -325,6 +353,11 @@ def main(argv=None):
     config_sub.add_parser("path", help="print the config file path").set_defaults(func=cmd_config_path)
     config_sub.add_parser("show", help="print the effective config, defaults included").set_defaults(func=cmd_config_show)
     config_sub.add_parser("check", help="validate the config file").set_defaults(func=cmd_config_check)
+    set_p = config_sub.add_parser("set", help="change a setting, keeping the file's comments")
+    set_p.add_argument("setting", help="section.key, e.g. notifications.finished_after")
+    set_p.add_argument("value", help="true/false, a number, or a comma-separated list")
+    set_p.set_defaults(func=cmd_config_set)
+    config_sub.add_parser("reload", help="make the daemon re-read the config").set_defaults(func=cmd_config_reload)
 
     service_cmd = sub.add_parser("service", help="run the daemon as a systemd user service")
     service_sub = service_cmd.add_subparsers(dest="service_command", required=True)

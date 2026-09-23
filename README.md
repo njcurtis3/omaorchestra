@@ -216,10 +216,18 @@ Every setting is optional; [config.example.toml](config.example.toml) lists them
 with their defaults.
 
 ```bash
-omaorchestra config check   # validate the file
-omaorchestra config show    # effective settings, defaults included
+omaorchestra config check                               # validate the file
+omaorchestra config show                                # effective settings, defaults included
+omaorchestra config set notifications.finished_after 300
+omaorchestra config reload                              # or: systemctl --user reload omaorchestrad
 omaorchestra config path
 ```
+
+The app's **Settings** page edits the same file. Saving (from the app or
+`config set`) changes only the lines it needs to, so comments and layout
+stay; the result is validated first, the previous file is kept as
+`config.toml.bak`, and the daemon picks the change up at once without a
+restart. A reload that finds a broken file keeps the running settings.
 
 A mistake in the file (bad TOML, an unknown key, a wrong type) is reported
 with the key's name rather than ignored. The daemon then exits with status 2

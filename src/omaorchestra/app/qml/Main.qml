@@ -3,8 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // The app shell: navigation on the left, a page on the right, and the daemon
-// connection in the header. `theme`, `sessions`, `fontFamily`, `appVersion`
-// and `configPath` come from Python (app/main.py).
+// connection in the header. `theme`, `sessions`, `settings`, `fontFamily`,
+// `appVersion` and `initialSession` come from Python (app/main.py).
 ApplicationWindow {
   id: window
   title: "omaorchestra"
@@ -149,22 +149,10 @@ ApplicationWindow {
       }
 
       // Settings
-      ColumnLayout {
+      SettingsPage {
         visible: window.page === "settings"
         Layout.fillWidth: true
         Layout.fillHeight: true
-        spacing: 8
-
-        Label { text: "Configuration file"; color: theme.muted }
-        Label { text: configPath; color: theme.foreground }
-        Label {
-          Layout.topMargin: 12
-          Layout.fillWidth: true
-          wrapMode: Text.Wrap
-          color: theme.muted
-          text: "Editing settings here is coming soon. Until then, `omaorchestra config check` validates the file."
-        }
-        Item { Layout.fillHeight: true }
       }
     }
   }

@@ -45,6 +45,7 @@ Documentation=https://github.com/njcurtis3/omaorchestra
 
 [Service]
 ExecStart={systemd_quote(str(binary))} daemon
+ExecReload=/bin/kill -HUP $MAINPID
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=2

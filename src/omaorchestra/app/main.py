@@ -34,7 +34,7 @@ def run(check=False, session=""):
               "(and run with the system python3, which pacman installs it for)", file=sys.stderr)
         return 1
 
-    from .. import __version__, config
+    from .. import __version__
     from . import backend, instance
 
     app = QGuiApplication(sys.argv[:1])
@@ -49,13 +49,14 @@ def run(check=False, session=""):
 
     theme = backend.Theme()
     sessions = backend.Sessions()
+    settings = backend.Settings()
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
     ctx.setContextProperty("theme", theme)
     ctx.setContextProperty("sessions", sessions)
+    ctx.setContextProperty("settings", settings)
     ctx.setContextProperty("appVersion", __version__)
     ctx.setContextProperty("fontFamily", backend.monospace_family())
-    ctx.setContextProperty("configPath", str(config.path()))
     ctx.setContextProperty("initialSession", session)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     if not engine.rootObjects():

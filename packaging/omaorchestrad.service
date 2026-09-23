@@ -4,6 +4,7 @@ Documentation=https://github.com/njcurtis3/omaorchestra
 
 [Service]
 ExecStart=/usr/bin/omaorchestra daemon
+ExecReload=/bin/kill -HUP $MAINPID
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=2

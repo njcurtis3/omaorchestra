@@ -40,12 +40,44 @@ ALREADY_RUNNING_EXIT = 3
 
 
 class Daemon:
-    def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG):
+    def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
+                 settings=None, force_verbose=False):
         self.registry = registry
         self.is_alive = is_alive
         self.notifier = notifier
         self.backlog = backlog
         self.subscribers = set()
+        self.settings = settings or config.defaults()
+        self.force_verbose = force_verbose  # --verbose on the command line wins over the config
+        self.pruner = None
+
+    def start_pruner(self):
+        if self.pruner:
+            self.pruner.cancel()
+        self.pruner = asyncio.get_running_loop().create_task(
+            prune_forever(self, self.settings["daemon"]["prune_interval"]))
+
+    def reload(self):
+        """Re-read the config and apply it; returns an error message, or "".
+
+        A bad file leaves the running settings untouched.
+        """
+        from . import log
+        try:
+            new = config.load()
+        except config.ConfigError as e:
+            event(logging.WARNING, "reload failed", error=str(e))
+            return str(e)
+        old, self.settings = self.settings, new
+        log.set_verbose(self.force_verbose or new["daemon"]["verbose"])
+        if self.notifier:
+            self.notifier.settings = new["notifications"]
+        if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
+            self.start_pruner()
+        event(logging.INFO, "config reloaded", prune_interval=new["daemon"]["prune_interval"],
+              verbose=new["daemon"]["verbose"], waiting=new["notifications"]["waiting"],
+              finished_after=new["notifications"]["finished_after"])
+        return ""
 
     def changed(self, previous, session, reason=None):
         if self.notifier:
@@ -149,6 +181,9 @@ class Daemon:
                       message=session.get("message"))
             self.changed(before, dict(session))
             return {"ok": True, "session": session}
+        if cmd == "reload":
+            error = self.reload()
+            return {"ok": not error, "error": error} if error else {"ok": True}
         if cmd == "remove":
             removed = self.registry.remove(request["session_id"])
             if removed:
@@ -213,7 +248,7 @@ def run(verbose=False):
     registry = Registry(paths.state_dir() / "sessions.json")
 
     async def main():
-        daemon = Daemon(registry)
+        daemon = Daemon(registry, settings=settings, force_verbose=verbose)
         daemon.notifier = notify.Notifier(settings["notifications"], focus=daemon.focus)
         # Catch sessions that died while the daemon was down.
         daemon.prune()
@@ -226,12 +261,14 @@ def run(verbose=False):
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, lambda s=sig: (event(logging.INFO, "stopping", signal=s.name), stop.set()))
-        pruner = asyncio.create_task(prune_forever(daemon, settings["daemon"]["prune_interval"]))
+        # `systemctl --user reload omaorchestrad` sends SIGHUP.
+        loop.add_signal_handler(signal.SIGHUP, daemon.reload)
+        daemon.start_pruner()
         try:
             async with server:
                 await stop.wait()
         finally:
-            pruner.cancel()
+            daemon.pruner.cancel()
             # Remove the socket only if it is still the one we bound.
             try:
                 if os.stat(sock_path).st_ino == socket_inode:
