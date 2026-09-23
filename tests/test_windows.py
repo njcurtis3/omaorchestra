@@ -113,5 +113,33 @@ class PickSessionTest(unittest.TestCase):
             pick_session([], None)
 
 
+class DismissCliTest(unittest.TestCase):
+    def test_dismiss_by_prefix_sends_reason(self):
+        import contextlib
+        import io
+        from unittest import mock
+        from omaorchestra.__main__ import main
+        sent = []
+
+        def fake_request(payload, timeout=1.0):
+            sent.append(payload)
+            if payload["cmd"] == "list":
+                return {"ok": True, "sessions": PickSessionTest.SESSIONS}
+            return {"ok": True, "removed": True}
+
+        out = io.StringIO()
+        with mock.patch("omaorchestra.client.request", fake_request), contextlib.redirect_stdout(out):
+            self.assertEqual(main(["dismiss", "ccc"]), 0)
+        self.assertEqual(sent[-1], {"cmd": "remove", "session_id": "ccc333", "reason": "dismissed"})
+        self.assertIn("dismissed ccc333", out.getvalue())
+
+    def test_dismiss_needs_an_id(self):
+        import contextlib
+        import io
+        from omaorchestra.__main__ import main
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            main(["dismiss"])
+
+
 if __name__ == "__main__":
     unittest.main()

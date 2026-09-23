@@ -99,6 +99,10 @@ change, so it needs no polling and keeps working while the daemon is down.
   permission message), right-click to reload.
 - Click a session in the panel to jump to its terminal window. A window that
   is minimized or on a scratchpad is brought to the current workspace first.
+- Each session row has icons to copy its path, open its folder, and dismiss
+  it. A dismissed session comes back if its agent reports again, so dismiss
+  is for sessions whose agent is gone for good (`omaorchestra dismiss <id>`
+  does the same from a terminal).
 
 ```bash
 scripts/dev-install-plugin --restart          # copy into ~/.config/omarchy/plugins

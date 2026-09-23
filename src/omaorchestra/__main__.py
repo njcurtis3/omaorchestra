@@ -71,6 +71,18 @@ def cmd_focus(args):
     return 0
 
 
+def cmd_dismiss(args):
+    try:
+        sessions = client.request({"cmd": "list"})["sessions"]
+        session = pick_session(sessions, args.session)
+        client.request({"cmd": "remove", "session_id": session["id"], "reason": "dismissed"})
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    print(f"dismissed {session['id'][:8]} ({session.get('cwd', '')})")
+    return 0
+
+
 def cmd_hook(args):
     # Called by agent hooks: never block or fail the agent, whatever happens.
     try:
@@ -206,6 +218,9 @@ def main(argv=None):
     focus_p = sub.add_parser("focus", help="focus a session's terminal window")
     focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
     focus_p.set_defaults(func=cmd_focus)
+    dismiss_p = sub.add_parser("dismiss", help="remove a session from the list (it returns if the agent reports again)")
+    dismiss_p.add_argument("session", help="session id or prefix")
+    dismiss_p.set_defaults(func=cmd_dismiss)
     hook = sub.add_parser("hook", help="receive an agent hook event on stdin")
     hook.add_argument("agent", choices=["claude"])
     hook.set_defaults(func=cmd_hook)

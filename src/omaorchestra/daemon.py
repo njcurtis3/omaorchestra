@@ -90,7 +90,8 @@ class Daemon:
         if cmd == "remove":
             removed = self.registry.remove(request["session_id"])
             if removed:
-                event(logging.INFO, "session ended", id=request["session_id"], reason="session-end")
+                event(logging.INFO, "session ended", id=request["session_id"],
+                      reason=request.get("reason", "session-end"))
                 self.changed(removed, None)
             return {"ok": True, "removed": removed is not None}
         event(logging.WARNING, "bad request", error=f"unknown command: {cmd}")

@@ -73,6 +73,11 @@ class DaemonEventsTest(unittest.TestCase):
         ended = self.messages(lambda: self.d.handle({"cmd": "remove", "session_id": "s1"}))
         self.assertEqual(ended, ["session ended id=s1 reason=session-end"])
 
+    def test_dismiss_is_logged_with_its_reason(self):
+        self.update("idle")
+        msgs = self.messages(lambda: self.d.handle({"cmd": "remove", "session_id": "s1", "reason": "dismissed"}))
+        self.assertEqual(msgs, ["session ended id=s1 reason=dismissed"])
+
     def test_repeated_status_is_quiet_at_info(self):
         self.update("working")
         with self.assertNoLogs("omaorchestra", level="INFO"):

@@ -5,7 +5,8 @@ import qs.Ui
 import "Format.js" as Format
 
 // Detail view: every session omaorchestrad knows about, the ones waiting on
-// you first. Clicking a session runs `omaorchestra focus <id>`, which needs
+// you first. Each row has copy-path, open-folder and dismiss icons; clicking
+// anywhere else on it runs `omaorchestra focus <id>`, which (like dismiss) needs
 // omaorchestra on PATH (/usr/bin when packaged; scripts/dev-install-plugin
 // links a checkout into ~/.local/bin). BarWidget.qml owns the data; this panel only renders
 // `hostWidget.sessions`.
@@ -29,6 +30,30 @@ Panel {
   readonly property real now: hostWidget ? hostWidget.now : Date.now() / 1000
 
   readonly property int cardWidth: Style.space(340)
+
+  // A small glyph button: muted until hovered.
+  component ActionIcon: Text {
+    id: icon
+    property string glyph: ""
+    property string tip: ""
+    signal activated()
+
+    text: glyph
+    color: !enabled ? Color.muted : iconMouse.containsMouse ? Color.foreground : Color.muted
+    opacity: enabled ? 1 : 0.4
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
+
+    MouseArea {
+      id: iconMouse
+      anchors.fill: parent
+      anchors.margins: -Style.space(3)
+      hoverEnabled: true
+      enabled: icon.enabled
+      cursorShape: Qt.PointingHandCursor
+      onClicked: icon.activated()
+    }
+  }
 
   KeyboardPanel {
     id: panel
@@ -123,14 +148,59 @@ Panel {
               }
             }
 
-            Text {
+            Item {
               width: parent.width
-              text: String(row.modelData.agent || "agent") + " · " + Format.ago(root.now - Number(row.modelData.updated))
-                + " · " + String(row.modelData.cwd || "")
-              elide: Text.ElideMiddle
-              color: Color.muted
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
+              height: Math.max(metaText.implicitHeight, actions.implicitHeight)
+
+              Text {
+                id: metaText
+                anchors.left: parent.left
+                anchors.right: actions.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                text: String(row.modelData.agent || "agent") + " · " + Format.ago(root.now - Number(row.modelData.updated))
+                  + " · " + String(row.modelData.cwd || "")
+                elide: Text.ElideMiddle
+                color: Color.muted
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+
+              // Declared after the row's MouseArea, so these take the click.
+              Row {
+                id: actions
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(10)
+
+                ActionIcon {
+                  id: copyIcon
+                  glyph: copied ? "󰄬" : "󰆏"
+                  tip: "Copy path"
+                  enabled: !!row.modelData.cwd
+                  property bool copied: false
+                  onActivated: {
+                    Quickshell.execDetached(["wl-copy", "--", String(row.modelData.cwd)])
+                    copied = true
+                    copiedReset.restart()
+                  }
+                  Timer { id: copiedReset; interval: 1200; onTriggered: copyIcon.copied = false }
+                }
+                ActionIcon {
+                  glyph: "󰉋"
+                  tip: "Open folder"
+                  enabled: !!row.modelData.cwd
+                  onActivated: {
+                    Quickshell.execDetached(["xdg-open", String(row.modelData.cwd)])
+                    root.close()
+                  }
+                }
+                ActionIcon {
+                  glyph: "󰅖"
+                  tip: "Dismiss (returns if the agent reports again)"
+                  onActivated: Quickshell.execDetached(["omaorchestra", "dismiss", row.modelData.id])
+                }
+              }
             }
 
             Text {
