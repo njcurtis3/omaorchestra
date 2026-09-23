@@ -1,10 +1,12 @@
 import asyncio
 import json
+import logging
 import os
+import signal
 import socket
-import sys
 
 from . import __version__, config, paths, procs
+from .log import event
 from .registry import Registry
 
 
@@ -40,9 +42,13 @@ class Daemon:
         self.is_alive = is_alive
 
     def prune(self):
-        return self.registry.prune(self.is_alive)
+        removed = self.registry.prune(self.is_alive)
+        for sid, session in removed.items():
+            event(logging.INFO, "session ended", id=sid, reason="process-gone", pid=session["pid"])
+        return list(removed)
 
     def handle(self, request):
+        event(logging.DEBUG, "request", **{k: v for k, v in request.items() if k != "message"})
         cmd = request.get("cmd")
         if cmd == "ping":
             return {"ok": True, "version": __version__}
@@ -50,14 +56,25 @@ class Daemon:
             self.prune()
             return {"ok": True, "sessions": self.registry.list()}
         if cmd == "update":
+            previous = self.registry.sessions.get(request["session_id"], {}).get("status")
             session = self.registry.update(
                 request["session_id"], request.get("agent", "unknown"), request["status"],
                 cwd=request.get("cwd"), message=request.get("message"),
                 pid=request.get("pid"), pid_start=request.get("pid_start"),
             )
+            if previous is None:
+                event(logging.INFO, "session started", id=session["id"], agent=session["agent"],
+                      status=session["status"], pid=session.get("pid"), cwd=session.get("cwd"))
+            elif previous != session["status"]:
+                event(logging.INFO, "session changed", id=session["id"], status=session["status"],
+                      message=session.get("message"))
             return {"ok": True, "session": session}
         if cmd == "remove":
-            return {"ok": True, "removed": self.registry.remove(request["session_id"]) is not None}
+            removed = self.registry.remove(request["session_id"]) is not None
+            if removed:
+                event(logging.INFO, "session ended", id=request["session_id"], reason="session-end")
+            return {"ok": True, "removed": removed}
+        event(logging.WARNING, "bad request", error=f"unknown command: {cmd}")
         return {"ok": False, "error": f"unknown command: {cmd}"}
 
     async def serve_client(self, reader, writer):
@@ -66,6 +83,7 @@ class Daemon:
                 try:
                     response = self.handle(json.loads(line))
                 except (ValueError, KeyError, TypeError) as e:
+                    event(logging.WARNING, "bad request", error=repr(e))
                     response = {"ok": False, "error": str(e)}
                 writer.write(json.dumps(response).encode() + b"\n")
                 await writer.drain()
@@ -95,12 +113,15 @@ async def serve(sock_path, registry, daemon=None):
     return server
 
 
-def run():
+def run(verbose=False):
+    from . import log
+    log.setup(verbose)
     try:
         settings = config.load()
     except config.ConfigError as e:
-        print(f"omaorchestrad: {e}", file=sys.stderr)
+        event(logging.ERROR, "bad config", error=str(e))
         return CONFIG_ERROR_EXIT
+    log.set_verbose(verbose or settings["daemon"]["verbose"])
     sock_path = paths.socket_path()
     registry = Registry(paths.state_dir() / "sessions.json")
 
@@ -109,19 +130,31 @@ def run():
         # Catch sessions that died while the daemon was down.
         daemon.prune()
         server = await serve(sock_path, registry, daemon)
-        print(f"omaorchestrad {__version__} listening on {sock_path}", flush=True)
+        socket_inode = os.stat(sock_path).st_ino
+        event(logging.INFO, "started", version=__version__, socket=sock_path,
+              registry=registry.path, sessions=len(registry.sessions),
+              prune_interval=settings["daemon"]["prune_interval"], config=config.path())
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig: (event(logging.INFO, "stopping", signal=s.name), stop.set()))
         pruner = asyncio.create_task(prune_forever(daemon, settings["daemon"]["prune_interval"]))
         try:
             async with server:
-                await server.serve_forever()
+                await stop.wait()
         finally:
             pruner.cancel()
+            # Remove the socket only if it is still the one we bound.
+            try:
+                if os.stat(sock_path).st_ino == socket_inode:
+                    os.unlink(sock_path)
+            except OSError:
+                pass
+        event(logging.INFO, "stopped")
 
     try:
         asyncio.run(main())
     except AlreadyRunning as e:
-        print(f"omaorchestrad: {e}", file=sys.stderr)
+        event(logging.ERROR, "already running", error=str(e))
         return ALREADY_RUNNING_EXIT
-    except KeyboardInterrupt:
-        pass
     return 0

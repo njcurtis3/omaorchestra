@@ -51,6 +51,18 @@ omaorchestra wrote. A second daemon exits with status 3, which the unit tells
 systemd not to restart on, so starting one by hand never causes a restart
 loop. To run it in the foreground instead: `bin/omaorchestra daemon`.
 
+The daemon logs to the journal with proper priorities, one `key=value` line
+per event: start and stop, sessions starting, changing state and ending (with
+the reason), and bad requests.
+
+```bash
+journalctl --user -u omaorchestrad -f            # follow
+journalctl --user -u omaorchestrad -p warning    # problems only
+```
+
+`daemon --verbose` (or `verbose = true` under `[daemon]` in the config) also
+logs every request. Waiting messages are never included in request lines.
+
 `hooks install` merges omaorchestra's hooks into Claude Code's settings,
 pointing at this copy of `omaorchestra` by absolute path. It keeps every other
 setting and hook, backs the file up first

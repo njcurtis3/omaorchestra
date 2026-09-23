@@ -5,6 +5,8 @@
 [daemon]
 # Seconds between checks for sessions whose agent process has died
 prune_interval = 30
+# Log every request, not just session changes (same as `daemon --verbose`)
+verbose = false
 
 [agents]
 # Agents whose hook events are tracked

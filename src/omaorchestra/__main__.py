@@ -10,7 +10,7 @@ from . import __version__, claude_settings, client, config, daemon, hooks, procs
 
 
 def cmd_daemon(args):
-    return daemon.run()
+    return daemon.run(verbose=args.verbose)
 
 
 def cmd_ping(args):
@@ -166,7 +166,9 @@ def main(argv=None):
     parser.add_argument("--version", action="version", version=f"omaorchestra {__version__}")
     sub = parser.add_subparsers(dest="subcommand")
 
-    sub.add_parser("daemon", help="run the coordinator daemon").set_defaults(func=cmd_daemon)
+    daemon_p = sub.add_parser("daemon", help="run the coordinator daemon")
+    daemon_p.add_argument("-v", "--verbose", action="store_true", help="log every request")
+    daemon_p.set_defaults(func=cmd_daemon)
     sub.add_parser("ping", help="check whether the daemon is running").set_defaults(func=cmd_ping)
     ls = sub.add_parser("ls", help="list agent sessions")
     ls.add_argument("--json", action="store_true")

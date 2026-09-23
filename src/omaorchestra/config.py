@@ -41,6 +41,7 @@ def _agents(value):
 SCHEMA = {
     "daemon": {
         "prune_interval": (30, _int_between(5, 3600)),
+        "verbose": (False, _bool),
     },
     "agents": {
         "enabled": (["claude"], _agents),

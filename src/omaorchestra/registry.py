@@ -32,15 +32,15 @@ class Registry:
         return session
 
     def prune(self, is_alive):
-        """Drop sessions whose agent process is gone; return their ids.
+        """Drop sessions whose agent process is gone; return them by id.
 
         Sessions without a recorded process are kept: there is nothing to
         check them against.
         """
-        dead = [
-            sid for sid, s in self.sessions.items()
+        dead = {
+            sid: s for sid, s in self.sessions.items()
             if "pid" in s and not is_alive(s["pid"], s["pid_start"])
-        ]
+        }
         for sid in dead:
             del self.sessions[sid]
         if dead:

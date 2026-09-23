@@ -84,7 +84,7 @@ class PruneTest(unittest.TestCase):
         r.update("dead", "claude", "working", pid=2, pid_start=20)
         r.update("unknown", "claude", "idle")
         removed = r.prune(lambda pid, start: pid == 1)
-        self.assertEqual(removed, ["dead"])
+        self.assertEqual(list(removed), ["dead"])
         self.assertEqual(sorted(s["id"] for s in Registry(r.path).list()), ["alive", "unknown"])
 
     def test_new_process_replaces_old_identity(self):
