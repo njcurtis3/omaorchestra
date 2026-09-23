@@ -6,8 +6,8 @@ Run AI coding agents side by side, see which are working, waiting for you, or
 done, and jump into any of them, from the terminal or the Omarchy bar.
 
 > **Status:** early prototype. The daemon tracks Claude Code sessions through
-> hooks; a bar widget and the desktop app's sessions dashboard show them.
-> There is no task queue yet.
+> hooks, and can start new ones on a task; a bar widget and the desktop app
+> show them. There is no task queue yet.
 > omaorchestra is an independent, third-party project. It is not part of, or
 > endorsed by, Omarchy.
 
@@ -177,6 +177,28 @@ When an agent finishes after working at least two minutes, a quieter
 notification server, so Omarchy's do-not-disturb silences them like any other
 app. Turn either off, or change the two-minute threshold, under
 `[notifications]` in the config.
+
+## Starting an agent
+
+```bash
+omaorchestra run "fix the flaky login test" --in ~/code/app
+omaorchestra run "add a changelog entry" --model sonnet -- --add-dir ../docs
+```
+
+`run` opens Claude Code on the task in a new terminal window (your default
+terminal, the same way Omarchy opens its agent), and the session is in the bar
+and the app at once: omaorchestra picks the session id and registers it before
+the agent starts. `--model` and anything after `--` go to the agent;
+`--permission-mode` sets its permission mode (by default its own setting
+applies, so it asks before acting).
+
+Claude Code asks whether to trust a folder the first time it works there, and
+does nothing, hooks included, until that is answered. omaorchestra finds the
+new agent's process by its session id within a couple of seconds, and if the
+agent stays silent it is shown as waiting for you ("Not started yet: its
+window may be asking whether to trust this folder"), with a notification.
+omaorchestra never answers that question for you. A launch whose agent never
+appears is dropped after a minute.
 
 ## Stopping an agent
 

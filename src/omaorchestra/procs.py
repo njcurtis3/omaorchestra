@@ -39,6 +39,40 @@ def parent(pid, proc=PROC):
     return fields[0], int(fields[1][1])
 
 
+def _argv(pid, proc=PROC):
+    try:
+        with open(f"{proc}/{pid}/cmdline", "rb") as f:
+            return f.read().split(b"\0")
+    except OSError:
+        return []
+
+
+def find_session_process(session_id, proc=PROC):
+    """(pid, start_time) of the process started with `--session-id <id>`, or None.
+
+    Its terminal's command line usually contains the same arguments (as
+    `-e claude --session-id ...`), so of the matches, take the deepest: the
+    one none of the other matches is a child of.
+    """
+    wanted = [b"--session-id", session_id.encode()]
+    matches = set()
+    try:
+        pids = [int(p) for p in os.listdir(proc) if p.isdigit()]
+    except OSError:
+        return None
+    for pid in pids:
+        argv = _argv(pid, proc)
+        if any(argv[i:i + 2] == wanted for i in range(len(argv) - 1)):
+            matches.add(pid)
+    parents = {info[1] for pid in matches if (info := parent(pid, proc))}
+    leaves = sorted(pid for pid in matches if pid not in parents)
+    for pid in reversed(leaves):
+        started = start_time(pid, proc)
+        if started is not None:
+            return pid, started
+    return None
+
+
 def agent_process(env=None, start=None, names=("claude",), proc=PROC):
     """(pid, start_time) of the agent running this hook, or None.
 

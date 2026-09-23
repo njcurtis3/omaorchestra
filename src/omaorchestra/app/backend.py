@@ -245,6 +245,17 @@ class Sessions(QObject):
             control.stop(session)
         except control.ControlError as e:
             return str(e)
+
+        def settle(session=dict(session)):
+            # Once it has exited, have the daemon prune it now (a `list`
+            # prunes) instead of at its next periodic check.
+            if control.wait_until_gone(session):
+                try:
+                    client.request({"cmd": "list"})
+                except client.DaemonUnavailable:
+                    pass
+
+        threading.Thread(target=settle, daemon=True).start()
         return ""
 
     @Slot(float, result=str)

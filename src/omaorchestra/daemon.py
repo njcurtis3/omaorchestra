@@ -4,6 +4,7 @@ import logging
 import os
 import signal
 import socket
+import time
 
 from . import __version__, config, notify, paths, procs, transcript, windows
 from .log import event
@@ -30,6 +31,14 @@ def claim_socket(path):
 
 
 PRUNE_INTERVAL = 30
+# How often launched agents are looked for until their first hook arrives, and
+# how long a found agent may stay silent before it is shown as waiting for you
+# (a new agent often starts by asking whether to trust its folder, and runs no
+# hooks until that is answered).
+LAUNCH_CHECK_INTERVAL = 2
+LAUNCH_QUIET_SECONDS = 10
+NOT_STARTED_MESSAGE = "Not started yet: its window may be asking whether to trust this folder."
+
 # Events a subscriber may fall behind by before it is disconnected (it can
 # reconnect and get a fresh snapshot).
 SUBSCRIBER_BACKLOG = 1000
@@ -141,17 +150,45 @@ class Daemon:
         changed (a new status) or are still unknown, so the frequent
         same-status updates cost nothing."""
         # An agent adapter may report these itself; that wins over the transcript.
-        given = {k: request[k] for k in ("model", "branch", "title") if request.get(k)}
+        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching") if request.get(k)}
         path = request.get("transcript_path") or (before or {}).get("transcript_path")
         if not path or (before and before.get("status") == request.get("status") and before.get("model")):
             return given
         return {**transcript.info(path), **given}
 
+    def claim_launches(self, now=None, find=procs.find_session_process):
+        """Find the processes of launched agents that have not reported yet,
+        and flag the ones that stay silent as waiting for the user."""
+        now = time.time() if now is None else now
+        for sid, s in list(self.registry.sessions.items()):
+            if not s.get("launching"):
+                continue
+            if "pid" not in s:
+                found = find(sid)
+                if found:
+                    self.registry.attach_process(sid, *found)
+                    event(logging.INFO, "agent found", id=sid, pid=found[0])
+                    self.changed(dict(s), dict(self.registry.sessions[sid]))
+            elif now - s.get("started", now) > LAUNCH_QUIET_SECONDS and s["status"] != "needs-input":
+                before = dict(s)
+                session = self.registry.update(sid, s["agent"], "needs-input", message=NOT_STARTED_MESSAGE)
+                event(logging.INFO, "session changed", id=sid, status="needs-input", message=NOT_STARTED_MESSAGE)
+                self.changed(before, dict(session))
+
+    def start_launch_watch(self, interval=LAUNCH_CHECK_INTERVAL):
+        async def watch():
+            while True:
+                await asyncio.sleep(interval)
+                if any(s.get("launching") for s in self.registry.sessions.values()):
+                    self.claim_launches()
+        self.launch_watch = asyncio.get_running_loop().create_task(watch())
+
     def prune(self):
         removed = self.registry.prune(self.is_alive)
         for sid, session in removed.items():
-            event(logging.INFO, "session ended", id=sid, reason="process-gone", pid=session["pid"])
-            self.changed(session, None, reason="process-gone")
+            reason = "process-gone" if "pid" in session else "did-not-start"
+            event(logging.INFO, "session ended", id=sid, reason=reason, pid=session.get("pid"))
+            self.changed(session, None, reason=reason)
         return list(removed)
 
     def handle(self, request):
@@ -264,6 +301,7 @@ def run(verbose=False):
         # `systemctl --user reload omaorchestrad` sends SIGHUP.
         loop.add_signal_handler(signal.SIGHUP, daemon.reload)
         daemon.start_pruner()
+        daemon.start_launch_watch()
         try:
             async with server:
                 await stop.wait()
@@ -274,6 +312,7 @@ def run(verbose=False):
                 server.close_clients()
         finally:
             daemon.pruner.cancel()
+            daemon.launch_watch.cancel()
             # Remove the socket only if it is still the one we bound.
             try:
                 if os.stat(sock_path).st_ino == socket_inode:

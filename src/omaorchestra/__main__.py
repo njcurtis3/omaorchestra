@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, claude_settings, client, config, control, daemon, hooks, procs, service, windows
+from . import __version__, claude_settings, client, config, control, daemon, hooks, launch, procs, service, windows
 
 
 def cmd_daemon(args):
@@ -129,6 +129,16 @@ def cmd_app(args):
     return app_main.run(check=args.check, session=args.session or "")
 
 
+def cmd_run(args):
+    session_id, tracked = launch.run(args.task, args.dir, permission_mode=args.permission_mode,
+                                     model=args.model, extra=args.agent_args)
+    where = launch.Path(args.dir).expanduser().resolve()
+    print(f"started {session_id[:8]} in {where}")
+    if not tracked:
+        print("(omaorchestrad is not running, so this session is not tracked)")
+    return 0
+
+
 def cmd_stop(args):
     try:
         session = pick_session(client.request({"cmd": "list"})["sessions"], args.session)
@@ -144,7 +154,11 @@ def cmd_stop(args):
             print("left it running")
             return 1
     control.stop(session)
-    print(f"asked the agent for {label} to stop")
+    if control.wait_until_gone(session):
+        client.request({"cmd": "list"})  # prunes it now rather than at the next check
+        print(f"stopped the agent for {label}")
+    else:
+        print(f"asked the agent for {label} to stop; it has not exited yet")
     return 0
 
 
@@ -320,6 +334,13 @@ def main(argv=None):
     watch_p = sub.add_parser("watch", help="print session changes as they happen")
     watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
     watch_p.set_defaults(func=cmd_watch)
+    run_p = sub.add_parser("run", help="start an agent on a task in a new terminal window")
+    run_p.add_argument("task", help="what the agent should do")
+    run_p.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
+    run_p.add_argument("--model", help="model to use, passed to the agent")
+    run_p.add_argument("--permission-mode", help="the agent's permission mode (default: its own setting)")
+    run_p.set_defaults(func=cmd_run, agent_args=[])
+    run_p.epilog = "Anything after -- is passed to the agent as is."
     stop_p = sub.add_parser("stop", help="stop a session's agent process (asks first)")
     stop_p.add_argument("session", help="session id or prefix")
     stop_p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
@@ -367,14 +388,23 @@ def main(argv=None):
     service_sub.add_parser("uninstall", help="stop and disable the service").set_defaults(func=cmd_service_uninstall)
     service_sub.add_parser("status", help="show whether the service is running").set_defaults(func=cmd_service_status)
 
+    # `run ... -- <agent args>`: split them off first, since argparse would
+    # otherwise mix them up with run's own options.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    agent_args = []
+    if argv[:1] == ["run"] and "--" in argv:
+        split = argv.index("--")
+        argv, agent_args = argv[:split], argv[split + 1:]
     args = parser.parse_args(argv)
+    if agent_args:
+        args.agent_args = agent_args
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
     try:
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
-            control.ControlError) as e:
+            control.ControlError, launch.LaunchError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

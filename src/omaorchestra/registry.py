@@ -19,7 +19,10 @@ class Registry:
                 self.sessions = {}
 
     # Optional facts a session may carry; None leaves the stored value alone.
-    EXTRA = ("transcript_path", "model", "branch", "title")
+    EXTRA = ("transcript_path", "model", "branch", "title", "task", "launching")
+    # A session registered by `omaorchestra run` that no agent has claimed
+    # (reported a process for) by then is dropped: the launch failed.
+    LAUNCH_TIMEOUT = 60
     HISTORY_LIMIT = 100
 
     def update(self, session_id, agent, status, cwd=None, message=None, pid=None, pid_start=None, **extra):
@@ -37,27 +40,41 @@ class Registry:
             session["cwd"] = cwd
         if pid is not None and pid_start is not None:
             session["pid"], session["pid_start"] = pid, pid_start
+            session.pop("launching", None)  # the agent has started and claimed it
         for key in self.EXTRA:
             if extra.get(key) is not None:
                 session[key] = extra[key]
         self.save()
         return session
 
-    def prune(self, is_alive):
-        """Drop sessions whose agent process is gone; return them by id.
+    def prune(self, is_alive, now=None):
+        """Drop sessions whose agent process is gone, and launches no agent
+        claimed in time; return them by id.
 
-        Sessions without a recorded process are kept: there is nothing to
-        check them against.
+        Other sessions without a recorded process are kept: there is nothing
+        to check them against.
         """
+        now = time.time() if now is None else now
         dead = {
             sid: s for sid, s in self.sessions.items()
-            if "pid" in s and not is_alive(s["pid"], s["pid_start"])
+            if ("pid" in s and not is_alive(s["pid"], s["pid_start"]))
+            or ("pid" not in s and s.get("launching") and now - s.get("started", now) > self.LAUNCH_TIMEOUT)
         }
         for sid in dead:
             del self.sessions[sid]
         if dead:
             self.save()
         return dead
+
+    def attach_process(self, session_id, pid, pid_start):
+        """Record a launched agent's process before its first hook arrives
+        (it stays `launching` until then)."""
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        session["pid"], session["pid_start"] = pid, pid_start
+        self.save()
+        return session
 
     def remove(self, session_id):
         removed = self.sessions.pop(session_id, None)

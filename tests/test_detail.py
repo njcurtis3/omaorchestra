@@ -127,6 +127,11 @@ class StopTest(unittest.TestCase):
             with self.assertRaises(control.ControlError):
                 control.stop(session, is_alive=lambda pid, st: alive, kill=lambda pid, sig: self.fail("signalled"))
 
+    def test_wait_until_gone(self):
+        alive = iter([True, True, False])
+        self.assertTrue(control.wait_until_gone({"pid": 1, "pid_start": 1}, is_alive=lambda p, s: next(alive)))
+        self.assertFalse(control.wait_until_gone({"pid": 1, "pid_start": 1}, timeout=0.2, is_alive=lambda p, s: True))
+
     def test_stops_a_real_process(self):
         from omaorchestra import procs
         proc = subprocess.Popen(["sleep", "30"])
