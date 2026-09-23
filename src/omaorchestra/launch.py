@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import client
+from . import client, recent
 
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
@@ -74,4 +74,8 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), spawn=subprocess.
             except client.DaemonUnavailable:
                 pass
         raise LaunchError(f"could not open a terminal: {e}") from e
+    try:
+        recent.add(cwd)
+    except OSError:
+        pass  # only a convenience
     return session_id, tracked

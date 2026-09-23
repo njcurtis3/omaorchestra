@@ -18,6 +18,20 @@ ApplicationWindow {
   font.family: fontFamily
   font.pixelSize: 14
 
+  // Theme colours for every control that reads the palette (popups, menus,
+  // text fields); controls that draw themselves take theme.* directly.
+  palette.window: theme.surface
+  palette.windowText: theme.foreground
+  palette.base: theme.surface
+  palette.text: theme.foreground
+  palette.button: theme.surface
+  palette.buttonText: theme.foreground
+  palette.highlight: theme.selection
+  palette.highlightedText: theme.foreground
+  palette.placeholderText: theme.muted
+  palette.mid: theme.selection
+  palette.dark: theme.muted
+
   property string page: "sessions"
 
   // Called from Python when asked to open a session (`app --session <id>`).
@@ -28,6 +42,7 @@ ApplicationWindow {
     sessionsPage.selectedId = match ? match.id : id
   }
   Component.onCompleted: if (initialSession) showSession(initialSession)
+  Shortcut { sequence: "Ctrl+N"; onActivated: window.page = "new" }
   Connections {
     // At startup the session list has not arrived yet, so a prefix cannot be
     // matched; match it once the first snapshot lands.
@@ -45,6 +60,7 @@ ApplicationWindow {
 
   readonly property var pages: [
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
+    { id: "new", glyph: "󰐕", label: "New task" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
 
@@ -113,7 +129,7 @@ ApplicationWindow {
         Layout.fillWidth: true
 
         Label {
-          text: window.page === "sessions" ? "Sessions" : "Settings"
+          text: window.pages.find(p => p.id === window.page).label
           color: theme.foreground
           font.pixelSize: 22
           font.bold: true
@@ -147,6 +163,14 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.fillHeight: true
         now: window.now
+      }
+
+      // New task
+      NewTaskPage {
+        visible: window.page === "new"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        onLaunched: id => window.showSession(id)
       }
 
       // Settings

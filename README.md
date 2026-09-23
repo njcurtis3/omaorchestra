@@ -185,7 +185,10 @@ omaorchestra run "fix the flaky login test" --in ~/code/app
 omaorchestra run "add a changelog entry" --model sonnet -- --add-dir ../docs
 ```
 
-`run` opens Claude Code on the task in a new terminal window (your default
+In the app, **New task** (Ctrl+N) does the same with a form: the task, the
+folder (typed, browsed, or picked from folders you have launched in or that
+have sessions), the model, and the permission mode; after launching, the app
+shows the new session. `run` opens Claude Code on the task in a new terminal window (your default
 terminal, the same way Omarchy opens its agent), and the session is in the bar
 and the app at once: omaorchestra picks the session id and registers it before
 the agent starts. `--model` and anything after `--` go to the agent;

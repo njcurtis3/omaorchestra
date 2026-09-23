@@ -165,6 +165,36 @@ class UiFlowTest(unittest.TestCase):
 
         self.assertEqual(self.warnings, [])
 
+    def test_new_task_form_launches_and_opens_the_session(self):
+        from omaorchestra import launch
+        calls = []
+
+        def fake_run(task, cwd, model=None, permission_mode=None, **kw):
+            calls.append((task, cwd, model, permission_mode))
+            # What a real launch does first: register the session.
+            self.add_session("new-1", "working", cwd, title=task, launching=True)
+            return "new-1", True
+
+        with mock.patch.object(launch, "run", fake_run):
+            QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+            self.assertTrue(wait_for(lambda: self.shown("task-prompt")), "Ctrl+N did not open the form")
+            self.click("task-prompt")
+            for key in ("Key_F", "Key_I", "Key_X", "Key_Space", "Key_I", "Key_T"):
+                QTest.keyClick(self.window, getattr(Qt.Key, key))
+            folder = self.find("task-folder")
+            folder.setProperty("text", "/definitely/not/a/folder")
+            spin()
+            self.assertFalse(self.find("task-launch").property("enabled"), "launch allowed with a missing folder")
+            folder.setProperty("text", self.tmp.name)
+            spin()
+            self.assertTrue(self.find("task-launch").property("enabled"))
+            self.click("task-launch")
+            self.assertTrue(wait_for(lambda: self.shown("detail")), "did not open the new session")
+        self.assertEqual(calls, [("fix it", self.tmp.name, None, None)])
+        self.assertEqual(self.page().property("selectedId"), "new-1")
+        self.assertEqual(self.find("task-prompt").property("text"), "", "form not cleared after launching")
+        self.assertEqual(self.warnings, [])
+
     def test_reconnects_after_the_daemon_restarts(self):
         self.add_session("w1", "idle", "/tmp/a")
         self.assertTrue(wait_for(lambda: self.shown("row-w1")))

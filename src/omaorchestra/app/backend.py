@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import changes, client, config, control, transcript, windows
+from .. import changes, client, config, control, launch, recent, transcript, windows
 from . import present
 from . import theme as theme_file
 
@@ -257,6 +257,29 @@ class Sessions(QObject):
 
         threading.Thread(target=settle, daemon=True).start()
         return ""
+
+    modelChoices = Property("QVariantList", lambda self: present.MODEL_CHOICES, constant=True)
+    permissionChoices = Property("QVariantList", lambda self: present.PERMISSION_CHOICES, constant=True)
+
+    @Slot(result="QVariantList")
+    def recentFolders(self):
+        return present.recent_folders(recent.load(), self.by_id.values())
+
+    @Slot(str, result=bool)
+    def folderExists(self, folder):
+        import os
+        return bool(folder) and os.path.isdir(os.path.expanduser(folder))
+
+    @Slot(str, str, str, str, result="QVariantMap")
+    def launch(self, task, folder, model, permission_mode):
+        """Start an agent on `task`; returns {"id": ...} or {"error": ...}."""
+        import os
+        try:
+            session_id, tracked = launch.run(task, os.path.expanduser(folder), model=model or None,
+                                             permission_mode=permission_mode or None)
+        except launch.LaunchError as e:
+            return {"error": str(e)}
+        return {"id": session_id, "tracked": tracked}
 
     @Slot(float, result=str)
     def clock(self, timestamp):

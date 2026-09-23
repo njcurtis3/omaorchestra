@@ -18,6 +18,36 @@ def project(cwd):
     return os.path.basename(path) or "/"
 
 
+# Choices offered by the new-task form. Claude Code takes these model aliases
+# (any other name can be typed); bypassPermissions and dontAsk are left out
+# on purpose: approvals stay with the user.
+MODEL_CHOICES = [
+    {"value": "", "label": "Default"},
+    {"value": "fable", "label": "Fable"},
+    {"value": "opus", "label": "Opus"},
+    {"value": "sonnet", "label": "Sonnet"},
+    {"value": "haiku", "label": "Haiku"},
+]
+PERMISSION_CHOICES = [
+    {"value": "", "label": "Default (the agent's own setting)"},
+    {"value": "manual", "label": "Ask for everything"},
+    {"value": "plan", "label": "Plan first"},
+    {"value": "acceptEdits", "label": "Accept edits"},
+    {"value": "auto", "label": "Auto (approve what looks safe)"},
+]
+
+
+def recent_folders(remembered, sessions, exists=os.path.isdir, limit=12):
+    """Launched-in folders first, then the folders of current sessions;
+    unique, existing, at most `limit`."""
+    seen, folders = set(), []
+    for folder in list(remembered) + [s.get("cwd") for s in sessions]:
+        if folder and folder not in seen and exists(folder):
+            seen.add(folder)
+            folders.append(folder)
+    return folders[:limit]
+
+
 def row(session):
     """A session plus the derived fields the dashboard shows."""
     return {
