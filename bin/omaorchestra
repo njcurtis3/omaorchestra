@@ -1,0 +1,3 @@
+#!/bin/bash
+# omarchy:summary=Coordinate AI coding agents
+exec python3 -m omaorchestra "$@"

@@ -1,0 +1,15 @@
+# Copy to ~/.config/omaorchestra/config.toml
+
+[daemon]
+# Directory for the session registry and logs
+state_dir = "~/.local/state/omaorchestra"
+
+[agents]
+# Agents omaorchestra may launch. Each needs an adapter.
+enabled = ["claude"]
+
+[tasks]
+# Maximum agents running at once
+max_parallel = 2
+# Give every task its own git worktree so parallel agents do not collide
+isolate_with_worktrees = true

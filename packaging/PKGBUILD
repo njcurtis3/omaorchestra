@@ -1,0 +1,10 @@
+# Maintainer: Nathan Curtis <nathanjcurtis3@gmail.com>
+pkgname=omaorchestra
+pkgver=0.0.1
+pkgrel=1
+pkgdesc='Agent coordinator and harness interface for Omarchy'
+arch=('any')
+url='https://github.com/njcurtis3/omaorchestra'
+license=('MIT')
+depends=('python')
+# TODO: source=() and package() once there is a tagged release
