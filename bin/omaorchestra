@@ -1,12 +1,19 @@
 #!/bin/bash
 # omarchy:summary=Coordinate AI coding agents
-# Run from a source checkout when there is one next to this script.
-src="$(dirname "$(readlink -f "$0")")/../src"
-[[ -d $src/omaorchestra ]] && export PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}"
+# Run from a source checkout when there is one next to this script, else from
+# the package's library directory (/usr/lib/omaorchestra). Keeping the package
+# out of site-packages means a Python upgrade never needs a rebuild.
+here="$(dirname "$(readlink -f "$0")")"
+for src in "$here/../src" "$here/../lib/omaorchestra"; do
+  if [[ -d $src/omaorchestra ]]; then
+    export PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}"
+    break
+  fi
+done
 # Tell the CLI where it lives, so `hooks install` can point hooks at it.
 export OMAORCHESTRA_BIN="$(readlink -f "$0")"
 # The system Python: pacman installs PySide6 (for `omaorchestra app`) there,
 # and a version manager's python3 earlier on PATH would not see it.
-python=/usr/bin/python3
+python=${OMAORCHESTRA_PYTHON:-/usr/bin/python3}
 [[ -x $python ]] || python=python3
 exec "$python" -m omaorchestra "$@"

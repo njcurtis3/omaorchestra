@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "omaorchestra.sessions",
   "name": "omaorchestra",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "author": "omaorchestra",
   "license": "MIT",
   "description": "Your AI agent sessions in the bar: which are working, which are waiting for you, and which are idle",

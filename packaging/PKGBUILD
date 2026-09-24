@@ -1,10 +1,46 @@
 # Maintainer: Nathan Curtis <nathanjcurtis3@gmail.com>
 pkgname=omaorchestra
-pkgver=0.0.1
+pkgver=0.1.0
 pkgrel=1
-pkgdesc='Agent coordinator and harness interface for Omarchy'
+pkgdesc='Agent coordinator and harness for Omarchy: see, launch and queue AI coding agents'
 arch=('any')
 url='https://github.com/njcurtis3/omaorchestra'
 license=('MIT')
 depends=('python')
-# TODO: source=() and package() once there is a tagged release
+makedepends=('git')
+optdepends=('pyside6: the omaorchestra app'
+            'libsecret: provider API keys and MCP secrets in the keyring'
+            'git: isolated worktrees for queued tasks'
+            'claude-code: the Claude Code agent'
+            'omarchy: bar widget, keybindings and terminal launching')
+source=("git+$url.git#tag=v$pkgver")
+sha256sums=('SKIP')
+
+check() {
+  cd "$pkgname"
+  # Qt tests skip themselves when PySide6 is missing.
+  QT_QPA_PLATFORM=offscreen HOME="$srcdir/home" python -m unittest discover tests
+}
+
+package() {
+  cd "$pkgname"
+  install -d "$pkgdir/usr/lib/$pkgname"
+  cp -r src/omaorchestra "$pkgdir/usr/lib/$pkgname/"
+  find "$pkgdir/usr/lib/$pkgname" -name __pycache__ -prune -exec rm -rf {} +
+  python -m compileall -q -d "/usr/lib/$pkgname" "$pkgdir/usr/lib/$pkgname"
+
+  install -Dm755 bin/omaorchestra "$pkgdir/usr/bin/omaorchestra"
+  install -Dm644 packaging/omaorchestrad.service "$pkgdir/usr/lib/systemd/user/omaorchestrad.service"
+  install -Dm644 packaging/omaorchestra.desktop "$pkgdir/usr/share/applications/omaorchestra.desktop"
+  install -Dm644 packaging/icons/omaorchestra.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/omaorchestra.svg"
+
+  # Copied into ~/.config/omarchy by `omaorchestra setup`.
+  install -d "$pkgdir/usr/share/$pkgname"
+  cp -r plugin "$pkgdir/usr/share/$pkgname/"
+  cp -r packaging/omarchy "$pkgdir/usr/share/$pkgname/"
+  install -Dm644 config.example.toml "$pkgdir/usr/share/$pkgname/config.example.toml"
+
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  cp -r docs/. "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

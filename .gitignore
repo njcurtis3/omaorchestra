@@ -15,3 +15,8 @@ config.toml
 
 # private development notes, never published
 docs/ROADMAP.md
+# makepkg output
+/packaging/src/
+/packaging/pkg/
+/packaging/omaorchestra/
+/packaging/*.pkg.tar.*
