@@ -41,6 +41,24 @@ their MCP servers in one place.
 
 ## Install
 
+### Download the package
+
+Download the `.pkg.tar.zst` file from the
+[latest release](https://github.com/njcurtis3/omaorchestra/releases/latest).
+It is one package for every Omarchy machine, and each release lists its
+SHA-256 checksum. Then:
+
+```bash
+sudo pacman -U ~/Downloads/omaorchestra-*-any.pkg.tar.zst
+sudo pacman -S --needed pyside6    # optional: the desktop app
+omaorchestra setup
+```
+
+To update, install the newer release's file the same way and run
+`omaorchestra setup` again.
+
+### From a checkout
+
 ```bash
 git clone https://github.com/njcurtis3/omaorchestra ~/code/omaorchestra
 sudo pacman -S pyside6         # optional: the desktop app
@@ -51,9 +69,7 @@ A checkout runs in place; there is nothing to build. `setup` links
 `~/.local/bin/omaorchestra` to it and installs the desktop entry. To
 update, `git pull` in the checkout and run `omaorchestra setup` again.
 
-An AUR package is on the way. Until then, [packaging/PKGBUILD](packaging/PKGBUILD)
-builds a pacman package from a release tag:
-`cd packaging && makepkg -si`.
+An AUR package is on the way.
 
 ## Setup
 
@@ -90,7 +106,7 @@ omaorchestra queue add "update the dependencies" --in ~/code/app
 
 ```bash
 omaorchestra teardown          # undo setup: service, hooks, widget, bindings, menu
-sudo pacman -R omaorchestra    # or delete the checkout
+sudo pacman -R omaorchestra    # a package; for a checkout, delete it
 ```
 
 `teardown` keeps your settings, state, task worktrees and keys, and prints

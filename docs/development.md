@@ -76,7 +76,12 @@ sessions, folders, keys or theme appears in them.
    `makepkg -f` in a copy of `packaging/` whose `source` points at
    `git+file://<checkout>#branch=main`.
 3. Tag and push: `git tag -a v<version> -m v<version> && git push origin v<version>`.
-4. `scripts/aur-publish` pushes `PKGBUILD` and `.SRCINFO` to the AUR (it
+4. Build the package from the pushed tag (a copy of `packaging/PKGBUILD`
+   as it is, then `makepkg -f`), and attach the `.pkg.tar.zst` to the
+   GitHub release with its SHA-256 in the notes:
+   `gh release upload v<version> omaorchestra-<version>-1-any.pkg.tar.zst`.
+   The README's download instructions point at the latest release.
+5. `scripts/aur-publish` pushes `PKGBUILD` and `.SRCINFO` to the AUR (it
    needs an AUR account with an SSH key, and refuses until the tag is on
    GitHub).
 
