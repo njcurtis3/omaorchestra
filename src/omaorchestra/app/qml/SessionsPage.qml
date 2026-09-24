@@ -168,7 +168,7 @@ ColumnLayout {
           }
           Label {
             Layout.fillWidth: true
-            text: listRow.modelData.cwd || ""
+            text: listRow.modelData.place || ""
             color: theme.muted
             font.pixelSize: 12
             elide: Text.ElideMiddle
@@ -263,7 +263,7 @@ ColumnLayout {
           }
           Label {
             Layout.fillWidth: true
-            text: cell.modelData.status === "needs-input" && cell.modelData.message ? cell.modelData.message : (cell.modelData.cwd || "")
+            text: cell.modelData.status === "needs-input" && cell.modelData.message ? cell.modelData.message : (cell.modelData.place || "")
             color: cell.modelData.status === "needs-input" && cell.modelData.message ? theme.urgent : theme.muted
             font.pixelSize: 12
             elide: Text.ElideMiddle

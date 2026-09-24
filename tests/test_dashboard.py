@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -103,6 +104,14 @@ class DaemonTranscriptTest(unittest.TestCase):
 
 
 class PresentTest(unittest.TestCase):
+    def test_place_shortens_the_home_directory(self):
+        with unittest.mock.patch.dict(os.environ, {"HOME": "/home/you"}):
+            self.assertEqual(present.place("/home/you/code/app"), "~/code/app")
+            self.assertEqual(present.place("/home/you"), "~")
+            self.assertEqual(present.place("/home/young/x"), "/home/young/x")
+            self.assertEqual(present.place("/srv/app"), "/srv/app")
+            self.assertEqual(present.place(None), "")
+
     SESSIONS = [
         {"id": "i", "status": "idle", "status_since": 50, "cwd": "/w/idle"},
         {"id": "w1", "status": "working", "status_since": 10, "updated": 999, "cwd": "/w/a"},

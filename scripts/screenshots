@@ -1,0 +1,113 @@
+#!/usr/bin/python3
+"""Render the README screenshots: the app, offscreen, against a throwaway
+daemon holding made-up sessions and tasks. Nothing from this machine's own
+sessions, projects or keys appears; only the current Omarchy theme is used.
+
+    scripts/screenshots [output dir]      # default: docs/screenshots
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+SESSIONS = [
+    ("a1", "needs-input", "website", {"message": "Claude needs your permission to use Bash: npm run build",
+                                      "model": "claude-opus-5-5", "branch": "main",
+                                      "title": "Fix the broken image paths"}),
+    ("b2", "working", "api", {"model": "claude-sonnet-5", "branch": "omaorchestra/rate-limits-3f9a1c",
+                              "title": "Add rate limiting to the public endpoints"}),
+    ("c3", "working", "dotfiles", {"model": "claude-haiku-4-5", "title": "Tidy the zsh aliases"}),
+    ("d4", "idle", "blog", {"model": "claude-sonnet-5", "branch": "drafts", "title": "Proofread the September post"}),
+]
+QUEUED = ["Update the dependencies and run the tests", "Write a changelog entry for 0.1.0"]
+PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue.png")]
+
+
+def main():
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "docs" / "screenshots").resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    real_theme = Path.home() / ".local" / "state" / "omarchy" / "current" / "theme"
+
+    with tempfile.TemporaryDirectory(prefix="oo-") as tmp:
+        tmp = Path(tmp)
+        home = tmp / "home"
+        # A made-up home: paths show as ~/code/<project>, and the theme is copied in.
+        for name in ("website", "api", "dotfiles", "blog"):
+            (home / "code" / name).mkdir(parents=True)
+        theme_dir = home / ".local" / "state" / "omarchy" / "current" / "theme"
+        theme_dir.mkdir(parents=True)
+        if (real_theme / "colors.toml").exists():
+            shutil.copy(real_theme / "colors.toml", theme_dir / "colors.toml")
+        (tmp / "config.toml").write_text("[notifications]\nwaiting = false\nfinished_after = 0\n[tasks]\nmax_parallel = 4\n")
+        os.environ.update({
+            "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_STATE_HOME": str(home / ".local" / "state"),
+            "XDG_DATA_HOME": str(home / ".local" / "share"), "OMAORCHESTRA_SOCKET": str(tmp / "o.sock"),
+            "OMAORCHESTRA_STATE_DIR": str(tmp / "state"), "OMAORCHESTRA_CONFIG": str(tmp / "config.toml"),
+        })
+        env = {k: v for k, v in os.environ.items() if k != "JOURNAL_STREAM"}
+        daemon = subprocess.Popen([str(ROOT / "bin" / "omaorchestra"), "daemon"], env=env, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(100):
+                if (tmp / "o.sock").exists():
+                    break
+                time.sleep(0.05)
+            render(home, out)
+        finally:
+            daemon.terminate()
+            daemon.wait(timeout=5)
+
+
+def render(home, out):
+    from PySide6.QtCore import QEventLoop, QTimer, QUrl
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickWindow  # noqa: F401 (registers the types PySide converts)
+    from PySide6.QtQuickControls2 import QQuickStyle
+    from omaorchestra import __version__, client
+    from omaorchestra.app import backend
+
+    def spin(ms):
+        loop = QEventLoop()
+        QTimer.singleShot(ms, loop.quit)
+        loop.exec()
+
+    for sid, status, project, extra in SESSIONS:
+        client.request({"cmd": "update", "session_id": sid, "agent": "claude", "status": status,
+                        "cwd": str(home / "code" / project), **extra})
+    for task in QUEUED:
+        client.request({"cmd": "queue-add", "paused": True, "item": {"task": task, "cwd": str(home / "code" / "api")}})
+
+    app = QGuiApplication(sys.argv[:1])
+    QQuickStyle.setStyle("Basic")
+    sessions = backend.Sessions()
+    objects = {"theme": backend.Theme(), "sessions": sessions, "settings": backend.Settings(),
+               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "providerList": backend.Providers(),
+               "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions),
+               "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": ""}
+    engine = QQmlApplicationEngine()
+    for name, value in objects.items():
+        engine.rootContext().setContextProperty(name, value)
+    engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
+    window = engine.rootObjects()[0]
+    window.setWidth(1100)
+    window.setHeight(720)
+    sessions.start()
+    spin(1500)
+    for page, name in PAGES:
+        window.setProperty("page", page)
+        spin(600)
+        window.grabWindow().save(str(out / name))
+        print(out / name)
+    app.quit()
+
+
+if __name__ == "__main__":
+    main()

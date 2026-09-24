@@ -119,7 +119,7 @@ ColumnLayout {
       detail.s.worktree ? "󰙅 own worktree" : "",
       detail.s.modelName || "",
       sessions.costText(detail.sessionId),
-      detail.s.cwd || ""
+      detail.s.place || detail.s.cwd || ""
     ].filter(Boolean).join("   ·   ")
   }
 

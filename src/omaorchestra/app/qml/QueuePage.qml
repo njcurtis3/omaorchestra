@@ -105,7 +105,7 @@ ColumnLayout {
           Label { Layout.fillWidth: true; text: row.modelData.task; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
           Label {
             Layout.fillWidth: true
-            text: [row.modelData.cwd, row.modelData.model || "", row.modelData.worktree === false ? "no worktree" : ""].filter(Boolean).join("   ·   ")
+            text: [row.modelData.place, row.modelData.model || "", row.modelData.worktree === false ? "no worktree" : ""].filter(Boolean).join("   ·   ")
             color: theme.muted
             font.pixelSize: 12
             elide: Text.ElideMiddle

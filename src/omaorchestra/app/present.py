@@ -18,10 +18,19 @@ def project(cwd):
     return os.path.basename(path) or "/"
 
 
+def place(path):
+    """A folder for display: under the home directory as ~/..."""
+    path = str(path or "")
+    home = os.path.expanduser("~").rstrip("/")
+    if home and (path == home or path.startswith(home + "/")):
+        return "~" + path[len(home):]
+    return path
+
+
 # Permission modes offered by the new-task form; bypassPermissions and
 # dontAsk are left out on purpose: approvals stay with the user.
 PERMISSION_CHOICES = [
-    {"value": "", "label": "Default (the agent's own setting)"},
+    {"value": "", "label": "Agent's default"},
     {"value": "manual", "label": "Ask for everything"},
     {"value": "plan", "label": "Plan first"},
     {"value": "acceptEdits", "label": "Accept edits"},
@@ -33,7 +42,7 @@ def model_choices(catalog_models, default=None):
     """The form's model list: the default first, Claude Code's aliases, then
     Claude model ids (the ones Claude Code accepts), from the catalog and the
     known price list."""
-    choices = [{"value": "", "label": f"Default ({default})" if default else "Default (the agent's own)"}]
+    choices = [{"value": "", "label": f"Default ({default})" if default else "Agent's default"}]
     seen = set()
     for m in catalog_models:
         if m["provider"] == "claude-code":
@@ -63,6 +72,7 @@ def row(session):
     return {
         **session,
         "project": project(session.get("cwd")),
+        "place": place(session.get("cwd")),
         "statusLabel": STATUS_LABEL.get(session.get("status"), str(session.get("status") or "")),
         "modelName": model_name(session.get("model")) + (f" via {session['provider']}" if session.get("provider") else ""),
         "since": session.get("status_since") or session.get("updated") or session.get("started") or 0,

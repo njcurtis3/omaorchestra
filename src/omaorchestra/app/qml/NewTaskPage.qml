@@ -62,6 +62,8 @@ ColumnLayout {
   component FieldLabel: Label { color: theme.muted }
   // A ComboBox in theme colours (the Basic style's own is grey), popup included.
   component ThemedComboBox: ComboBox {
+    // Wide enough for the longest choice, so none is cut off.
+    implicitContentWidthPolicy: ComboBox.WidestTextWhenCompleted
     palette.button: theme.surface
     palette.buttonText: theme.foreground
     palette.base: theme.surface
@@ -188,7 +190,6 @@ ColumnLayout {
       ThemedComboBox {
         id: permissionBox
         objectName: "task-permissions"
-        Layout.preferredWidth: 300
         model: sessions.permissionChoices
         textRole: "label"
         valueRole: "value"
@@ -200,7 +201,6 @@ ColumnLayout {
       ThemedComboBox {
         id: agentBox
         objectName: "task-agent"
-        Layout.preferredWidth: 160
         model: [{ value: "claude", label: "Claude Code", routing: true, mcpProfile: true }]
         textRole: "label"
         valueRole: "value"
@@ -213,7 +213,6 @@ ColumnLayout {
         id: mcpBox
         objectName: "task-mcp"
         enabled: page.mcpProfiles
-        Layout.preferredWidth: 220
         model: [{ value: "", label: "The agent's own servers" }]
         textRole: "label"
         valueRole: "value"
@@ -226,7 +225,6 @@ ColumnLayout {
         id: providerBox
         objectName: "task-provider"
         enabled: page.routing
-        Layout.preferredWidth: 280
         model: [{ value: "", label: "Subscription" }]
         textRole: "label"
         valueRole: "value"

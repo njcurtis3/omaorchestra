@@ -353,6 +353,7 @@ class Queue(QObject):
     @Slot("QVariantMap")
     def _update(self, snapshot):
         self._state = dict(snapshot)
+        self._state["tasks"] = [{**t, "place": present.place(t.get("cwd"))} for t in snapshot.get("tasks") or []]
         self.changed.emit()
 
     def _send(self, payload):
@@ -633,7 +634,7 @@ class Sessions(QObject):
                 return [{"value": "", "label": "Default"}]
             models = [m for m in catalog.cached().get(provider_id, {}).get("models", [])
                       if routing.is_claude_model(provider, m["id"])]
-            return [{"value": "", "label": "Default (the agent's own)"}] + [
+            return [{"value": "", "label": "Agent's default"}] + [
                 {"value": m["id"], "label": m["id"]} for m in models]
         default = modeldefaults.for_folder(os.path.expanduser(folder))[0] if self.folderExists(folder) else None
         return present.model_choices(catalog.all_models(), default)
@@ -664,7 +665,7 @@ class Sessions(QObject):
 
     @Slot(result="QVariantList")
     def recentFolders(self):
-        return present.recent_folders(recent.load(), self.by_id.values())
+        return [present.place(f) for f in present.recent_folders(recent.load(), self.by_id.values())]
 
     @Slot(str, result=bool)
     def inGitRepo(self, folder):
