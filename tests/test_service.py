@@ -1,3 +1,5 @@
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,11 +48,17 @@ class UnitTest(unittest.TestCase):
         self.assertIn('ExecStart="/home/u/my dir/omaorchestra" daemon', service.render_unit("/home/u/my dir/omaorchestra"))
         self.assertIn("ExecStart=/usr/bin/omaorchestra daemon", service.render_unit("/usr/bin/omaorchestra"))
 
+    @unittest.skipUnless(shutil.which("systemd-analyze"), "systemd-analyze not available")
     def test_systemd_accepts_the_unit(self):
         with tempfile.TemporaryDirectory() as tmp:
             unit = Path(tmp) / service.UNIT_NAME
             unit.write_text(service.render_unit(ROOT / "bin" / "omaorchestra"))
-            result = subprocess.run(["systemd-analyze", "--user", "verify", str(unit)], capture_output=True, text=True)
+            # --user needs a runtime directory; CI machines have no user session.
+            runtime = Path(tmp) / "runtime"
+            runtime.mkdir(mode=0o700)
+            env = {**os.environ, "XDG_RUNTIME_DIR": str(runtime)}
+            result = subprocess.run(["systemd-analyze", "--user", "verify", str(unit)], capture_output=True,
+                                    text=True, env=env)
             self.assertEqual(result.returncode, 0, result.stderr)
 
 

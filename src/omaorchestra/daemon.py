@@ -626,4 +626,9 @@ def run(verbose=False):
     except AlreadyRunning as e:
         event(logging.ERROR, "already running", error=str(e))
         return ALREADY_RUNNING_EXIT
+    except OSError as e:
+        # Unix socket paths are capped at 107 bytes; a deep XDG_RUNTIME_DIR
+        # or an unwritable one ends up here.
+        event(logging.ERROR, "cannot listen", socket=sock_path, error=e.strerror or str(e))
+        return 1
     return 0

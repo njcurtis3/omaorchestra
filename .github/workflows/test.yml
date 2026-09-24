@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Omarchy is Arch, so test against Arch's Python and PySide6.
+    container: archlinux:latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      LANG: C.UTF-8
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed python pyside6 nodejs git systemd
+      - uses: actions/checkout@v4
+      - name: Python and app tests
+        run: python -m unittest discover -v tests
+      - name: Bar widget tests
+        run: node --test tests/plugin
+      - name: App self-test against a live daemon
+        run: |
+          export XDG_RUNTIME_DIR=$(mktemp -d)
+          bin/omaorchestra daemon &
+          for i in $(seq 50); do bin/omaorchestra ping && break; sleep 0.2; done
+          bin/omaorchestra app --check
+          kill %1
