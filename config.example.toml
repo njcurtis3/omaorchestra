@@ -33,3 +33,7 @@ pause_at_usage = 90
 # Start no queued task that runs through an API provider once today's
 # estimated provider spend reaches this many US dollars; 0 turns it off
 daily_budget = 0
+# When an agent's usage limit holds a queued task, start it on this agent
+# instead (claude, codex or opencode; empty waits); also offered as a
+# hand-off when a running agent reaches its limit
+fallback_agent = ""

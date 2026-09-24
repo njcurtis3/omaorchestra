@@ -584,6 +584,17 @@ class Sessions(QObject):
 
         threading.Thread(target=work, daemon=True).start()
 
+    @Slot(str, str, result=str)
+    def handoff(self, session_id, agent):
+        """Start `agent` on this session's work; returns an error, or ""."""
+        import os
+        try:
+            response = client.request({"cmd": "handoff", "session_id": session_id, "agent": agent,
+                                       "path": os.environ.get("PATH")}, timeout=30)
+        except client.DaemonUnavailable:
+            return "omaorchestrad is not running"
+        return "" if response.get("ok") else response.get("error") or "the hand-off failed"
+
     @Slot(str, result=str)
     def stop(self, session_id):
         """Stop the agent; returns an error message, or "" on success."""

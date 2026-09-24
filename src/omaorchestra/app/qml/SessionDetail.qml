@@ -67,6 +67,7 @@ ColumnLayout {
       Repeater {
         model: [
           { label: "Focus", tip: "Jump to its terminal", action: "focus" },
+          { label: "Hand off…", tip: "Start another agent on this work, with a brief", action: "handoff" },
           { label: "Stop", tip: "End the agent process", action: "stop" },
           { label: "Dismiss", tip: "Remove from the list (returns if the agent reports again)", action: "dismiss" }
         ]
@@ -81,6 +82,7 @@ ColumnLayout {
             detail.actionError = ""
             if (modelData.action === "focus") sessions.focus(detail.sessionId)
             else if (modelData.action === "stop") stopDialog.open()
+            else if (modelData.action === "handoff") handoffMenu.popup()
             else { sessions.dismiss(detail.sessionId); detail.back() }
           }
           contentItem: Label {
@@ -270,6 +272,24 @@ ColumnLayout {
         Layout.fillHeight: true
         result: detail.changesResult
         loading: detail.changesLoading
+      }
+    }
+  }
+
+  // ---------------------------------------------------------- Hand-off
+  Menu {
+    id: handoffMenu
+    objectName: "handoff-menu"
+    Repeater {
+      model: sessions.agentChoices()
+      delegate: MenuItem {
+        required property var modelData
+        objectName: "handoff-to-" + modelData.value
+        text: "Hand off to " + modelData.label
+        onTriggered: {
+          const error = sessions.handoff(detail.sessionId, modelData.value)
+          detail.actionError = error
+        }
       }
     }
   }

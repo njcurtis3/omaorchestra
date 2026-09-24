@@ -196,6 +196,21 @@ agent's process by it, and when the agent first reports, the placeholder
 session becomes the agent's own. Provider routing and MCP profiles are
 Claude Code only for now.
 
+### Handing work to another agent
+
+```bash
+omaorchestra handoff <id> --agent codex            # or --model, --provider; --queue; --stop
+```
+
+starts another agent (or model) where the work is, in the same folder or
+worktree, with a brief: the original task, where things stand in git, and
+the session's latest prompts, replies and tool calls. The app's session
+details have a **Hand off** button. With `tasks.fallback_agent` set, a
+queued task held by its agent's usage limit starts on the fallback agent
+instead, and when an agent reaches its limit while it is working, a
+notification offers to hand each of its sessions over (nothing happens
+unless you click it).
+
 ## Starting an agent
 
 ```bash

@@ -67,6 +67,8 @@ SCHEMA = {
         "isolate_with_worktrees": (True, _bool),
         "pause_at_usage": (90, _int_between(*_RANGES[("tasks", "pause_at_usage")])),
         "default_model": ("", _model_name),
+        "fallback_agent": ("", lambda v: None if v in ("", *KNOWN_AGENTS) else
+                           f"must be empty or one of {', '.join(KNOWN_AGENTS)}"),
         "daily_budget": (0, _int_between(*_RANGES[("tasks", "daily_budget")])),
     },
 }
@@ -105,6 +107,9 @@ METADATA = {
                                                "(working or waiting for you)."),
             "isolate_with_worktrees": ("Separate worktree per task",
                                        "In a git repository, give each task its own worktree and branch."),
+            "fallback_agent": ("Fallback agent", "When an agent's usage limit holds a queued task, start it on "
+                                                 "this agent instead (claude, codex or opencode; empty: wait). "
+                                                 "Also offered as a hand-off when a running agent hits its limit."),
             "default_model": ("Default model", "Used when a task names no model and its folder has no "
                                                "default of its own; empty uses the agent's default."),
             "daily_budget": ("Daily provider budget (US$)",

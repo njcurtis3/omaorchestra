@@ -68,6 +68,11 @@ class Daemon:
         self.usage_refresh = usage.refresh_in_background
         self.blocked = None  # the usage limit holding the queue, if any
         self._last_refresh = 0
+        # The user's PATH, as the latest hook saw it. Kept in memory only; the
+        # daemon's own (systemd's) PATH usually lacks version-manager folders,
+        # which starting another agent needs.
+        self.user_path = None
+        self.offered = set()  # sessions already offered a hand-off
 
     # ---------------------------------------------------------------- queue
 
@@ -105,19 +110,77 @@ class Daemon:
 
     def next_startable(self):
         """The first pending task nothing holds back, or None and the reason.
+        Returns (item, reason, agent to start it with).
 
         Subscription usage limits hold tasks that run on the subscription;
-        the daily budget holds tasks that run through a provider.
+        the daily budget holds tasks that run through a provider. A task held
+        by its agent's limit starts on tasks.fallback_agent instead, when that
+        one is set, can run the task, and is not at its own limit.
         """
         reason = None
+        fallback = self.settings["tasks"]["fallback_agent"]
         for item in self.queue.tasks:
             if item["state"] != "pending":
                 continue
-            block = self.budget_block() if item.get("provider") else self.usage_block(item.get("agent") or "claude")
+            agent = item.get("agent") or "claude"
+            block = self.budget_block() if item.get("provider") else self.usage_block(agent)
             if block is None:
-                return item, None
+                return item, None, agent
+            if (fallback and fallback != agent and not item.get("provider") and not item.get("mcp_profile")
+                    and self.usage_block(fallback) is None):
+                return item, None, fallback
             reason = reason or block
-        return None, reason
+        return None, reason, None
+
+    def handoff(self, request):
+        """Start another agent on a session's work (see handoff.py)."""
+        from . import handoff as handing
+        sid = request["session_id"]
+        session = self.registry.sessions.get(sid)
+        if session is None:
+            raise ValueError(f"no session {sid}")
+        agent = request.get("agent") or self.settings["tasks"]["fallback_agent"] or "claude"
+        result = launch.run(handing.brief(session), handing.workdir(session), model=request.get("model"),
+                            provider=request.get("provider"), agent=agent, worktree=False,
+                            path=request.get("path") or self.user_path, spawn=self.spawn, request=self.handle)
+        event(logging.INFO, "handed off", id=sid, to=agent, new=result["id"])
+        stopped = False
+        if request.get("stop"):
+            from . import control
+            try:
+                control.stop(session)
+                stopped = True
+            except control.ControlError:
+                pass
+        return {"session_id": result["id"], "agent": agent, "stopped": stopped}
+
+    def offer_handoffs(self):
+        """When an agent reaches its usage limit while it has sessions at
+        work, offer (once per session) to hand each one to the fallback agent."""
+        fallback = self.settings["tasks"]["fallback_agent"]
+        if not fallback or not self.notifier:
+            return
+        for sid, s in list(self.registry.sessions.items()):
+            agent = s.get("agent") or "claude"
+            if (sid in self.offered or agent == fallback or s.get("provider")
+                    or s.get("status") not in ("working", "needs-input")):
+                continue
+            block = self.usage_check(agent, 0.99)
+            if not block:
+                continue
+            self.offered.add(sid)
+            project = (s.get("cwd") or "").rstrip("/").split("/")[-1] or "a session"
+            label = adapters.ADAPTERS[fallback].label if fallback in adapters.ADAPTERS else fallback
+
+            async def accept(sid=sid):
+                try:
+                    self.handoff({"session_id": sid, "agent": fallback})
+                except (ValueError, launch.LaunchError) as e:
+                    event(logging.WARNING, "hand-off failed", id=sid, error=str(e))
+
+            event(logging.INFO, "hand-off offered", id=sid, to=fallback, reason=usage.describe(block))
+            self.notifier.offer(f"{project}: {usage.describe(block)}", f"Hand its work to {label}?",
+                                f"Hand off to {label}", accept)
 
     def usage_block(self, agent="claude"):
         """The subscription limit that should hold `agent`'s tasks now, if
@@ -134,15 +197,22 @@ class Daemon:
     def publish_queue(self):
         self.publish({"event": "queue", "queue": self.queue_snapshot()})
 
-    def start_task(self, item):
+    def start_task(self, item, agent=None):
         """Launch a queued task now; returns the session id, or None if it
-        failed (the task then stays in the queue, marked failed)."""
+        failed (the task then stays in the queue, marked failed). `agent`
+        starts it on another agent (the fallback) than the one it names."""
+        own = item.get("agent") or "claude"
+        agent = agent or own
+        if agent != own:
+            event(logging.INFO, "task falls back", task=item["id"], agent=agent, reason=f"{own} is at its limit")
         try:
             result = launch.run(
-                item["task"], item["cwd"], permission_mode=item.get("permission_mode"), model=item.get("model"),
-                extra=item.get("extra") or (), worktree=item.get("worktree"), agent_bin=item.get("agent_bin"),
-                path=item.get("path"), provider=item.get("provider"), mcp_profile=item.get("mcp_profile"),
-                agent=item.get("agent") or "claude",
+                item["task"], item["cwd"], permission_mode=item.get("permission_mode") if agent == own else None,
+                model=item.get("model") if agent == own else None,
+                extra=(item.get("extra") or ()) if agent == own else (),
+                worktree=item.get("worktree"), agent_bin=item.get("agent_bin") if agent == own else None,
+                path=item.get("path") or self.user_path, provider=item.get("provider"),
+                mcp_profile=item.get("mcp_profile"), agent=agent,
                 spawn=self.spawn, request=self.handle,
             )
         except launch.LaunchError as e:
@@ -163,10 +233,10 @@ class Daemon:
             changed = False
             blocked = self.blocked
             while self.busy() < self.settings["tasks"]["max_parallel"]:
-                item, blocked = self.next_startable()
+                item, blocked, agent = self.next_startable()
                 if item is None:
                     break
-                self.start_task(item)
+                self.start_task(item, agent)
                 changed = True
             if blocked != self.blocked:
                 if blocked:
@@ -411,6 +481,7 @@ class Daemon:
             self.prune()
             return {"ok": True, "sessions": self.registry.list()}
         if cmd == "update":
+            self.user_path = request.pop("path", None) or self.user_path
             self.adopt_launch(request)
             before = self.registry.sessions.get(request["session_id"])
             before = dict(before) if before else None
@@ -436,6 +507,11 @@ class Daemon:
             try:
                 return self.handle_queue(cmd, request)
             except taskqueue.QueueError as e:
+                return {"ok": False, "error": str(e)}
+        if cmd == "handoff":
+            try:
+                return {"ok": True, **self.handoff(request)}
+            except (ValueError, launch.LaunchError) as e:
                 return {"ok": False, "error": str(e)}
         if cmd == "reload":
             error = self.reload()
@@ -473,6 +549,7 @@ async def prune_forever(daemon, interval=PRUNE_INTERVAL):
     while True:
         await asyncio.sleep(interval)
         daemon.prune()
+        daemon.offer_handoffs()
         # A queue waiting on a usage limit gets another look (limits reset).
         if daemon.queue.next_pending():
             daemon.dispatch()

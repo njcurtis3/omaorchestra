@@ -50,8 +50,13 @@ class _Stdio:
         self.proc, self.deadline, self.buffer = proc, deadline, b""
 
     def send(self, message):
-        self.proc.stdin.write(json.dumps(message).encode() + b"\n")
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write(json.dumps(message).encode() + b"\n")
+            self.proc.stdin.flush()
+        except BrokenPipeError:
+            # It exited before we could even write: the same failure as
+            # exiting before it answers, whichever came first.
+            raise RuntimeError("the server exited") from None
 
     def receive(self, request_id):
         """The response to `request_id`, skipping notifications and logs."""

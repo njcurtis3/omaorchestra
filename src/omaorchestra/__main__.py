@@ -424,6 +424,27 @@ def cmd_mcp_profile(args):
     return 0
 
 
+def cmd_handoff(args):
+    sessions = client.request({"cmd": "list"})["sessions"]
+    session = pick_session(sessions, args.session)
+    if args.queue:
+        from . import handoff as handing
+        item = {"task": handing.brief(session), "cwd": handing.workdir(session), "model": args.model,
+                "provider": args.provider, "worktree": False, "agent": args.agent or "claude", "extra": [],
+                **launch.agent_environment(args.agent or "claude")}
+        response = queue_request({"cmd": "queue-add", "item": item})
+        print(f"queued a hand-off of {session['id'][:8]} as {response['item']['id'][:8]}")
+        return 0
+    response = client.request({"cmd": "handoff", "session_id": session["id"], "agent": args.agent,
+                               "model": args.model, "provider": args.provider, "stop": args.stop,
+                               "path": os.environ.get("PATH")}, timeout=30)
+    if not response.get("ok"):
+        raise launch.LaunchError(response.get("error"))
+    print(f"handed {session['id'][:8]} to {response['agent']} as {response['session_id'][:8]}"
+          + ("; stopped the old one" if response["stopped"] else ""))
+    return 0
+
+
 def cmd_permissions(args):
     from . import permissions
     data = permissions.everything(known_projects())
@@ -566,6 +587,8 @@ def cmd_hook(args):
         if isinstance(event, dict) and not event.get("launch_id"):
             event["launch_id"] = os.environ.get("OMAORCHESTRA_LAUNCH_ID") or None
         request = adapter.request_for(event, adapter.agent_process(event))
+        if request and request["cmd"] == "update":
+            request["path"] = os.environ.get("PATH")  # the daemon needs it to start other agents
         if request:
             client.request(request, timeout=0.5)
     except Exception:
@@ -790,6 +813,14 @@ def main(argv=None):
         p.add_argument("id")
         p.set_defaults(func=cmd_queue_move)
 
+    ho = sub.add_parser("handoff", help="start another agent (or model) on a session's work, with a brief")
+    ho.add_argument("session", help="session id or prefix")
+    ho.add_argument("--agent", choices=list(adapters.ADAPTERS), help="default: tasks.fallback_agent, else claude")
+    ho.add_argument("--model")
+    ho.add_argument("--provider")
+    ho.add_argument("--queue", action="store_true", help="queue it instead of starting it now")
+    ho.add_argument("--stop", action="store_true", help="stop the old session once the new one is started")
+    ho.set_defaults(func=cmd_handoff)
     pm = sub.add_parser("permissions", help="what agents may do without asking, and what they asked")
     pm.add_argument("--json", action="store_true")
     pm.add_argument("--limit", type=int, default=20, help="how many recent requests to show")

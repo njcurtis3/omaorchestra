@@ -128,6 +128,22 @@ class Notifier:
                 await self.focus(sid)
         await proc.wait()
 
+    def offer(self, summary, body, label, on_accept):
+        """A one-off notification with one action; `on_accept` (a coroutine
+        function) runs if the user clicks it."""
+        async def run():
+            try:
+                proc = await self.spawn("notify-send", "--app-name=omaorchestra", "--urgency=normal", "--wait",
+                                        f"--action=accept={label}", summary, body,
+                                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            except FileNotFoundError:
+                return
+            async for line in proc.stdout:
+                if line.strip() == b"accept":
+                    await on_accept()
+            await proc.wait()
+        self._start(run())
+
     async def clear(self, sid):
         shown = self.shown.pop(sid, None)
         if shown is not None:
