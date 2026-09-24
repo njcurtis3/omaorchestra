@@ -53,8 +53,9 @@ def _per_million(value):
         return None
 
 
-def fetch(provider, lookup=keys.lookup):
+def fetch(provider, lookup=None):
     """The provider's models, straight from its API (raises ProviderError)."""
+    lookup = lookup or keys.lookup
     kind = provider["kind"]
     models = []
     if kind == "anthropic":
@@ -101,7 +102,7 @@ def cached():
     return data if isinstance(data, dict) else {}
 
 
-def refresh(provider_ids=None, lookup=keys.lookup):
+def refresh(provider_ids=None, lookup=None):
     """Fetch every provider (or the given ones) and cache the result; a
     provider that fails keeps its last models and records the error."""
     cache = cached()

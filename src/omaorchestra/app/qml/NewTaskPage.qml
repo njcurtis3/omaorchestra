@@ -24,18 +24,18 @@ ColumnLayout {
   }
   function addToQueue() {
     if (!ready) return
-    if (rememberBox.checked) sessions.rememberModel(folder.text, modelBox.value)
+    if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                             page.inRepo && worktreeSwitch.checked, false)
+                             page.inRepo && worktreeSwitch.checked, false, providerBox.currentValue || "")
     if (result.error) { error = result.error; return }
     reset()
     queued()
   }
   function launch() {
     if (!ready) return
-    if (rememberBox.checked) sessions.rememberModel(folder.text, modelBox.value)
+    if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                                   page.inRepo && worktreeSwitch.checked)
+                                   page.inRepo && worktreeSwitch.checked, providerBox.currentValue || "")
     if (result.error) { error = result.error; return }
     const id = result.id
     reset()
@@ -43,6 +43,7 @@ ColumnLayout {
   }
 
   onVisibleChanged: if (visible) {
+    providerBox.model = sessions.providerChoices()
     worktreeSwitch.checked = sessions.worktreeDefault()
     recentList.model = sessions.recentFolders()
     if (!folder.text && recentList.model.length) folder.text = recentList.model[0]
@@ -143,7 +144,9 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Options
-  RowLayout {
+  // A Flow, so the options wrap onto a second line in a narrow window
+  // instead of stretching the page (and pushing the buttons off-screen).
+  Flow {
     Layout.fillWidth: true
     spacing: 24
 
@@ -154,7 +157,7 @@ ColumnLayout {
         objectName: "task-model"
         Layout.preferredWidth: 220
         editable: true
-        model: sessions.modelChoices(folder.text)
+        model: sessions.modelChoices(folder.text, providerBox.currentValue || "")
         textRole: "label"
         valueRole: "value"
         // A chosen entry gives its alias; typed text is passed as the model name.
@@ -166,7 +169,7 @@ ColumnLayout {
       id: rememberBox
       objectName: "task-remember-model"
       Layout.alignment: Qt.AlignBottom
-      enabled: page.folderOk
+      enabled: page.folderOk && !providerBox.currentValue
       text: "Remember for this folder"
       contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6 }
     }
@@ -184,8 +187,15 @@ ColumnLayout {
     }
 
     ColumnLayout {
-      FieldLabel { text: "Agent" }
-      Label { text: "Claude Code"; color: theme.foreground; Layout.topMargin: 8 }
+      FieldLabel { text: "Runs on" }
+      ThemedComboBox {
+        id: providerBox
+        objectName: "task-provider"
+        Layout.preferredWidth: 280
+        model: [{ value: "", label: "Subscription" }]
+        textRole: "label"
+        valueRole: "value"
+      }
     }
   }
 

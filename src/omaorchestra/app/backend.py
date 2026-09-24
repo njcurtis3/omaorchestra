@@ -227,12 +227,18 @@ class Queue(QObject):
             self._update(response["queue"])
         return response
 
-    @Slot(str, str, str, str, bool, bool, result="QVariantMap")
-    def add(self, task, folder, model, permission_mode, worktree, paused):
+    @Slot(str, str, str, str, bool, bool, str, result="QVariantMap")
+    def add(self, task, folder, model, permission_mode, worktree, paused, provider_id):
         import os
+        from .. import routing
+        if provider_id:  # fail now, not when the task's turn comes
+            try:
+                routing.claude_code_env(providers.get(provider_id), model or None)
+            except (providers.ProviderError, routing.RoutingError) as e:
+                return {"error": str(e)}
         item = {"task": task, "cwd": os.path.expanduser(folder), "model": model or None,
                 "permission_mode": permission_mode or None, "worktree": worktree, "extra": [],
-                **launch.agent_environment()}
+                "provider": provider_id or None, **launch.agent_environment()}
         return self._send({"cmd": "queue-add", "item": item, "paused": paused})
 
     @Slot(str, result="QVariantMap")
@@ -461,11 +467,34 @@ class Sessions(QObject):
         threading.Thread(target=settle, daemon=True).start()
         return ""
 
-    @Slot(str, result="QVariantList")
-    def modelChoices(self, folder):
+    @Slot(str, str, result="QVariantList")
+    def modelChoices(self, folder, provider_id):
+        """Models for the form: the subscription's (with the folder's default),
+        or a routed provider's Claude models."""
         import os
+        from .. import routing
+        if provider_id:
+            try:
+                provider = providers.get(provider_id)
+            except providers.ProviderError:
+                return [{"value": "", "label": "Default"}]
+            models = [m for m in catalog.cached().get(provider_id, {}).get("models", [])
+                      if routing.is_claude_model(provider, m["id"])]
+            return [{"value": "", "label": "Default (the agent's own)"}] + [
+                {"value": m["id"], "label": m["id"]} for m in models]
         default = modeldefaults.for_folder(os.path.expanduser(folder))[0] if self.folderExists(folder) else None
         return present.model_choices(catalog.all_models(), default)
+
+    @Slot(result="QVariantList")
+    def providerChoices(self):
+        """Subscription first, then the providers Claude Code can run through."""
+        from .. import routing
+        try:
+            routed = [p for p in providers.load() if routing.routable(p)]
+        except providers.ProviderError:
+            routed = []
+        return [{"value": "", "label": "Subscription"}] + [
+            {"value": p["id"], "label": f"{p['id']} ({p['label']}, billed per token)"} for p in routed]
 
     @Slot(str, str)
     def rememberModel(self, folder, model):
@@ -492,13 +521,14 @@ class Sessions(QObject):
         import os
         return bool(folder) and os.path.isdir(os.path.expanduser(folder))
 
-    @Slot(str, str, str, str, bool, result="QVariantMap")
-    def launch(self, task, folder, model, permission_mode, worktree):
+    @Slot(str, str, str, str, bool, str, result="QVariantMap")
+    def launch(self, task, folder, model, permission_mode, worktree, provider_id):
         """Start an agent on `task`; returns {"id": ...} or {"error": ...}."""
         import os
         try:
             result = launch.run(task, os.path.expanduser(folder), model=model or None,
-                                permission_mode=permission_mode or None, worktree=worktree)
+                                permission_mode=permission_mode or None, worktree=worktree,
+                                provider=provider_id or None)
         except launch.LaunchError as e:
             return {"error": str(e)}
         return {"id": result["id"], "tracked": result["tracked"], "note": result["note"]}

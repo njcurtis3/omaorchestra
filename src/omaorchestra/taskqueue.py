@@ -18,7 +18,7 @@ STATES = ("pending", "paused", "failed")
 # What a queued task records, so the daemon can start it later exactly as the
 # user asked, in the user's environment. Only PATH is kept from that
 # environment: the rest could hold secrets and is not needed.
-FIELDS = ("task", "cwd", "model", "permission_mode", "worktree", "extra", "agent_bin", "path")
+FIELDS = ("task", "cwd", "model", "permission_mode", "worktree", "extra", "agent_bin", "path", "provider")
 
 
 class QueueError(Exception):

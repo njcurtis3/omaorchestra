@@ -341,6 +341,13 @@ The New task form lists Claude Code's aliases and the Claude models it
 accepts, shows the folder's default, and can remember the chosen model for
 the folder. Sessions show their model in the bar panel and the app.
 
+Agents can also run through a provider instead of their subscription:
+`omaorchestra run "..." --provider openrouter --model anthropic/claude-sonnet-5`
+(or **Runs on** in the New task form). Claude Code can run through the
+Anthropic API and OpenRouter, with Claude models only; billing then moves to
+the provider. See [docs/providers.md](docs/providers.md) for what works, what
+it means for billing and terms, and how the key is handled.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).

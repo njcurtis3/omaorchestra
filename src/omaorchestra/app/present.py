@@ -64,7 +64,7 @@ def row(session):
         **session,
         "project": project(session.get("cwd")),
         "statusLabel": STATUS_LABEL.get(session.get("status"), str(session.get("status") or "")),
-        "modelName": model_name(session.get("model")),
+        "modelName": model_name(session.get("model")) + (f" via {session['provider']}" if session.get("provider") else ""),
         "since": session.get("status_since") or session.get("updated") or session.get("started") or 0,
     }
 

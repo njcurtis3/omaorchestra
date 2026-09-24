@@ -100,7 +100,7 @@ class Daemon:
             result = launch.run(
                 item["task"], item["cwd"], permission_mode=item.get("permission_mode"), model=item.get("model"),
                 extra=item.get("extra") or (), worktree=item.get("worktree"), agent_bin=item.get("agent_bin"),
-                path=item.get("path"), spawn=self.spawn, request=self.handle,
+                path=item.get("path"), provider=item.get("provider"), spawn=self.spawn, request=self.handle,
             )
         except launch.LaunchError as e:
             self.queue.fail(item, str(e))
@@ -273,7 +273,8 @@ class Daemon:
         changed (a new status) or are still unknown, so the frequent
         same-status updates cost nothing."""
         # An agent adapter may report these itself; that wins over the transcript.
-        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree") if request.get(k)}
+        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree", "provider")
+                 if request.get(k)}
         path = request.get("transcript_path") or (before or {}).get("transcript_path")
         if not path or (before and before.get("status") == request.get("status") and before.get("model")):
             return given

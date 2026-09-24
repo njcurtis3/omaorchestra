@@ -101,8 +101,9 @@ def _headers(provider, key):
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
-def get_json(provider, route, key=None, lookup=keys.lookup):
+def get_json(provider, route, key=None, lookup=None):
     """GET <base_url><route> as JSON, with the provider's key when it has one."""
+    lookup = lookup or keys.lookup
     if key is None and needs_key(provider):
         key = lookup(provider["id"])
     url = provider["base_url"] + route
@@ -123,9 +124,10 @@ def get_json(provider, route, key=None, lookup=keys.lookup):
         raise ProviderError(f"{url} did not return JSON") from e
 
 
-def test(provider, lookup=keys.lookup):
+def test(provider, lookup=None):
     """Check a provider end to end: reachable, key accepted. Returns a
     one-line result; raises ProviderError on failure."""
+    lookup = lookup or keys.lookup
     if needs_key(provider) and not lookup(provider["id"]):
         raise ProviderError(f"no API key stored for {provider['id']} (`omaorchestra provider key {provider['id']}`)")
     from . import catalog

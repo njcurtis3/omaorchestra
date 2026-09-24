@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import client, config, modeldefaults, recent, worktrees
+from . import client, config, modeldefaults, providers, recent, routing, worktrees
 
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
@@ -54,13 +54,16 @@ def agent_environment():
 
 
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
-        spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None):
+        spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
 
     `worktree=None` follows the `tasks.isolate_with_worktrees` setting; a
-    folder outside a git repository never gets one.
+    folder outside a git repository never gets one. `provider` (an id) runs
+    the agent through that API provider instead of its subscription; its
+    key is read from the keyring now and passed only in the agent's
+    environment.
     """
     if not task.strip():
         raise LaunchError("the task is empty")
@@ -72,7 +75,15 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         raise LaunchError(f"{agent_bin} is not installed")
     if worktree is None:
         worktree = config.load_or_defaults()["tasks"]["isolate_with_worktrees"]
-    if not model:
+    route_env = {}
+    if provider:
+        try:
+            route_env = routing.claude_code_env(providers.get(provider), model)
+        except (providers.ProviderError, routing.RoutingError) as e:
+            raise LaunchError(str(e)) from e
+    elif not model:
+        # Folder and global defaults name subscription models; a routed task
+        # uses the provider's model ids, so defaults do not apply to it.
         model = modeldefaults.for_folder(cwd)[0]
     session_id = str(uuid.uuid4())
     record, note, workdir = None, "", cwd
@@ -89,12 +100,12 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     try:
         request({"cmd": "update", "session_id": session_id, "agent": "claude", "status": "working",
                  "cwd": str(workdir), "title": short(task), "task": task, "launching": True,
-                 "model": model or None,
+                 "model": model or None, "provider": provider or None,
                  "worktree": record["path"] if record else None})
     except client.DaemonUnavailable:
         tracked = False
     command = terminal_command(workdir, claude_command(task, session_id, permission_mode, model, extra, agent_bin))
-    env = {**os.environ, "PATH": path} if path else None
+    env = {**os.environ, **({"PATH": path} if path else {}), **route_env} if (path or route_env) else None
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True, env=env)

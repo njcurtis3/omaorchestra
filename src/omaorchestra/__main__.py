@@ -136,10 +136,10 @@ def cmd_app(args):
 
 def cmd_run(args):
     result = launch.run(args.task, args.dir, permission_mode=args.permission_mode, model=args.model,
-                        extra=args.agent_args, worktree=args.worktree)
+                        extra=args.agent_args, worktree=args.worktree, provider=args.provider)
     record = result["worktree"]
     where = record["workdir"] if record else launch.Path(args.dir).expanduser().resolve()
-    print(f"started {result['id'][:8]} in {where}")
+    print(f"started {result['id'][:8]} in {where}" + (f", through {args.provider}" if args.provider else ""))
     if record:
         print(f"  on branch {record['branch']}, from {record.get('base_branch') or record['base'][:8]}")
     if result["note"]:
@@ -179,8 +179,14 @@ def cmd_queue_list(args):
 
 def cmd_queue_add(args):
     cwd = launch.Path(args.dir).expanduser().resolve()
+    if args.provider:  # fail now, not when the task's turn comes
+        try:
+            launch.routing.claude_code_env(providers.get(args.provider), args.model)
+        except launch.routing.RoutingError as e:
+            raise launch.LaunchError(str(e)) from e
     item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
-            "worktree": args.worktree, "extra": args.agent_args, **launch.agent_environment()}
+            "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
+            **launch.agent_environment()}
     response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
     print(f"queued {response['item']['id'][:8]}")
     print_queue(response["queue"])
@@ -531,6 +537,7 @@ def main(argv=None):
     run_p.add_argument("--worktree", dest="worktree", action="store_true", default=None,
                        help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
     run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
+    run_p.add_argument("--provider", help="run through this API provider instead of the subscription")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
     qp = sub.add_parser("queue", help="tasks waiting for a free agent slot")
@@ -545,6 +552,7 @@ def main(argv=None):
     qa.add_argument("--worktree", dest="worktree", action="store_true", default=None)
     qa.add_argument("--no-worktree", dest="worktree", action="store_false")
     qa.add_argument("--paused", action="store_true", help="add it paused")
+    qa.add_argument("--provider", help="run through this API provider instead of the subscription")
     qa.set_defaults(func=cmd_queue_add, agent_args=[])
     for name, text in (("cancel", "remove a task from the queue"), ("pause", "skip it until resumed"),
                        ("resume", "let it run again (also retries a failed task)"),
