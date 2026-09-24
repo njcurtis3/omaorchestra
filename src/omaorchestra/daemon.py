@@ -140,7 +140,8 @@ class Daemon:
             result = launch.run(
                 item["task"], item["cwd"], permission_mode=item.get("permission_mode"), model=item.get("model"),
                 extra=item.get("extra") or (), worktree=item.get("worktree"), agent_bin=item.get("agent_bin"),
-                path=item.get("path"), provider=item.get("provider"), spawn=self.spawn, request=self.handle,
+                path=item.get("path"), provider=item.get("provider"), mcp_profile=item.get("mcp_profile"),
+                spawn=self.spawn, request=self.handle,
             )
         except launch.LaunchError as e:
             self.queue.fail(item, str(e))
@@ -242,6 +243,7 @@ class Daemon:
     def changed(self, previous, session, reason=None):
         if self.notifier:
             self.notifier.changed(previous, session)
+        self.record_approval(previous, session, reason)
         if session is not None:
             self.publish({"event": "session", "session": session})
         else:
@@ -254,6 +256,23 @@ class Daemon:
             if busy_before != busy_after:
                 self.publish_queue()
                 self.dispatch()
+
+    def record_approval(self, previous, session, reason=None):
+        """Log requests for the user's approval, and how each ended."""
+        from . import permissions
+        before = (previous or {}).get("status")
+        after = (session or {}).get("status")
+        current = session or previous or {}
+        try:
+            if after == "needs-input" and before != "needs-input":
+                permissions.log({"kind": "asked", "session": current["id"], "project": current.get("cwd"),
+                                 "message": current.get("message")})
+            elif before == "needs-input" and after != "needs-input":
+                outcome = "continued" if after == "working" else "stopped waiting" if after == "idle" else \
+                    f"session ended ({reason or 'ended'})"
+                permissions.log({"kind": "answered", "session": current["id"], "outcome": outcome})
+        except OSError as e:
+            event(logging.WARNING, "could not record an approval", error=str(e))
 
     def publish(self, message):
         for queue in list(self.subscribers):

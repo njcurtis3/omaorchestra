@@ -152,6 +152,12 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(self.started(), ["a", "b"])
         self.assertIsNone(self.d.handle({"cmd": "queue-list"})["queue"]["blocked"])
 
+    def test_queued_tasks_keep_their_mcp_profile(self):
+        with mock.patch("omaorchestra.launch.run") as run:
+            run.return_value = {"id": "s1", "tracked": True, "worktree": None, "note": ""}
+            self.queue("a", mcp_profile="none")
+        self.assertEqual(run.call_args.kwargs["mcp_profile"], "none")
+
     def test_queue_survives_a_restart(self):
         self.d.handle({"cmd": "queue-hold"})
         self.queue("later")

@@ -137,7 +137,8 @@ def cmd_app(args):
 
 def cmd_run(args):
     result = launch.run(args.task, args.dir, permission_mode=args.permission_mode, model=args.model,
-                        extra=args.agent_args, worktree=args.worktree, provider=args.provider)
+                        extra=args.agent_args, worktree=args.worktree, provider=args.provider,
+                        mcp_profile=args.mcp_profile)
     record = result["worktree"]
     where = record["workdir"] if record else launch.Path(args.dir).expanduser().resolve()
     print(f"started {result['id'][:8]} in {where}" + (f", through {args.provider}" if args.provider else ""))
@@ -185,9 +186,12 @@ def cmd_queue_add(args):
             launch.routing.claude_code_env(providers.get(args.provider), args.model)
         except launch.routing.RoutingError as e:
             raise launch.LaunchError(str(e)) from e
+    if args.mcp_profile and args.mcp_profile != mcp_registry.NONE_PROFILE \
+            and args.mcp_profile not in mcp_registry.profiles():
+        raise mcp_registry.McpError(f"no profile {args.mcp_profile}")
     item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
             "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
-            **launch.agent_environment()}
+            "mcp_profile": args.mcp_profile, **launch.agent_environment()}
     response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
     print(f"queued {response['item']['id'][:8]}")
     print_queue(response["queue"])
@@ -349,9 +353,10 @@ def cmd_mcp_add(args):
             raise registry.McpError("give the server's command after --, or --url")
         spec = {"transport": "stdio", "command": args.server_command[0], "args": args.server_command[1:],
                 "env": env, "secret_env": args.secret_env}
-    targets = [registry.parse_target(t) for t in (args.agent or ["claude"])]
+    targets = [] if args.no_install else [registry.parse_target(t) for t in (args.agent or ["claude"])]
     registry.add(args.name, spec, targets, secret_values)
-    print(f"added {args.name} to " + ", ".join(registry.target_label(t) for t in targets))
+    print(f"added {args.name} to " + (", ".join(registry.target_label(t) for t in targets) or
+                                      "omaorchestra only (for profiles)"))
     return 0
 
 
@@ -401,6 +406,59 @@ def cmd_mcp_check(args):
             failed += 1
             print(f"FAIL  {e['name']:<20} {where:<14} {r['error']}")
     return 1 if failed else 0
+
+
+def cmd_mcp_profile(args):
+    command = args.profile_command or "list"
+    if command == "set":
+        mcp_registry.set_profile(args.name, args.servers)
+        print(f"profile {args.name}: {', '.join(args.servers) or '(no servers)'}")
+    elif command == "remove":
+        mcp_registry.remove_profile(args.name)
+        print(f"removed profile {args.name}")
+    else:
+        print(f"{mcp_registry.NONE_PROFILE:<16} (built in: no MCP servers)")
+        for name, members in mcp_registry.profiles().items():
+            print(f"{name:<16} {', '.join(members) or '(no servers)'}")
+    return 0
+
+
+def cmd_permissions(args):
+    from . import permissions
+    data = permissions.everything(known_projects())
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print("Claude Code")
+    if not data["claude"]:
+        print("  no settings files with rules")
+    for src in data["claude"]:
+        print(f"  {src['source']}  ({src['path']})")
+        if src["default_mode"]:
+            print(f"    default mode: {src['default_mode']}")
+        for kind in ("allow", "ask", "deny"):
+            plain = [r for r in src["rules"][kind] if not permissions.mcp_server_of(r)]
+            if plain:
+                print(f"    {kind}: {', '.join(plain)}")
+        for server, rules in src["mcp_rules"].items():
+            parts = [f"{k} {', '.join(r)}" for k, r in rules.items() if r]
+            print(f"    MCP {server}: {'; '.join(parts)}")
+        for key, value in src["mcp_lists"].items():
+            print(f"    {key}: {', '.join(map(str, value))}")
+        if not any(src["rules"].values()) and not src["mcp_lists"] and not src["default_mode"]:
+            print("    (no permission rules)")
+    for c in data["codex"]:
+        print(f"Codex: approval policy {c['approval_policy'] or 'default'}, sandbox {c['sandbox_mode'] or 'default'}")
+    for o in data["opencode"]:
+        print(f"opencode: permission {json.dumps(o['permission'])}")
+    print("Recent requests for your approval")
+    if not data["record"]:
+        print("  none recorded yet")
+    for e in data["record"][:args.limit]:
+        when = time.strftime("%m-%d %H:%M", time.localtime(e["at"]))
+        waited = f" after {e['waited']}s" if e["waited"] is not None else ""
+        print(f"  {when}  {launch.Path(e.get('project') or '').name:<18} {e['outcome']}{waited}: {e.get('message') or ''}")
+    return 0
 
 
 def cmd_mcp_serve(args):
@@ -675,6 +733,7 @@ def main(argv=None):
                        help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
     run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     run_p.add_argument("--provider", help="run through this API provider instead of the subscription")
+    run_p.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
     qp = sub.add_parser("queue", help="tasks waiting for a free agent slot")
@@ -690,6 +749,7 @@ def main(argv=None):
     qa.add_argument("--no-worktree", dest="worktree", action="store_false")
     qa.add_argument("--paused", action="store_true", help="add it paused")
     qa.add_argument("--provider", help="run through this API provider instead of the subscription")
+    qa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
     qa.set_defaults(func=cmd_queue_add, agent_args=[])
     for name, text in (("cancel", "remove a task from the queue"), ("pause", "skip it until resumed"),
                        ("resume", "let it run again (also retries a failed task)"),
@@ -708,6 +768,10 @@ def main(argv=None):
         p.add_argument("id")
         p.set_defaults(func=cmd_queue_move)
 
+    pm = sub.add_parser("permissions", help="what agents may do without asking, and what they asked")
+    pm.add_argument("--json", action="store_true")
+    pm.add_argument("--limit", type=int, default=20, help="how many recent requests to show")
+    pm.set_defaults(func=cmd_permissions)
     sp = sub.add_parser("spend", help="provider spend today, subscription limits, and what sessions cost")
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--offline", action="store_true", help="do not ask providers for their balances")
@@ -729,6 +793,7 @@ def main(argv=None):
     ma.add_argument("--header", action="append", default=[], help="'Name: value' for an HTTP server (not secret)")
     ma.add_argument("--secret-header", action="append", default=[], help="header whose value is asked for and kept in the keyring")
     ma.add_argument("--secrets-stdin", action="store_true", help="read secret values from stdin, one per line")
+    ma.add_argument("--no-install", action="store_true", help="keep it for profiles only; install in no agent")
     ma.set_defaults(func=cmd_mcp_add, server_command=[])
     mcp_sub.add_parser("managed", help="servers omaorchestra manages").set_defaults(func=cmd_mcp_managed)
     mc = mcp_sub.add_parser("check", help="start servers, do the MCP handshake, list their tools")
@@ -736,6 +801,17 @@ def main(argv=None):
     mc.add_argument("--agent", choices=["claude", "codex", "opencode"])
     mc.set_defaults(func=cmd_mcp_check)
     mcp_sub.add_parser("serve", help="omaorchestra's own MCP server, over stdio (for agents)").set_defaults(func=cmd_mcp_serve)
+    mpr = mcp_sub.add_parser("profile", help="named sets of managed servers to start tasks with")
+    mpr.set_defaults(func=cmd_mcp_profile, profile_command=None)
+    mpr_sub = mpr.add_subparsers(dest="profile_command")
+    mpr_sub.add_parser("list").set_defaults(func=cmd_mcp_profile)
+    ps = mpr_sub.add_parser("set", help="create or replace a profile")
+    ps.add_argument("name")
+    ps.add_argument("servers", nargs="*")
+    ps.set_defaults(func=cmd_mcp_profile)
+    pr = mpr_sub.add_parser("remove")
+    pr.add_argument("name")
+    pr.set_defaults(func=cmd_mcp_profile)
     for name, text in (("remove", "remove from its agents and forget it, secrets too"),
                        ("enable", "install it in its agents again"), ("disable", "take it out of its agents, keep it here")):
         p = mcp_sub.add_parser(name, help=text)

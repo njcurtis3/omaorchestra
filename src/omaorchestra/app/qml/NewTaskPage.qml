@@ -26,7 +26,8 @@ ColumnLayout {
     if (!ready) return
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                             page.inRepo && worktreeSwitch.checked, false, providerBox.currentValue || "")
+                             page.inRepo && worktreeSwitch.checked, false, providerBox.currentValue || "",
+                             mcpBox.currentValue || "")
     if (result.error) { error = result.error; return }
     reset()
     queued()
@@ -35,7 +36,8 @@ ColumnLayout {
     if (!ready) return
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                                   page.inRepo && worktreeSwitch.checked, providerBox.currentValue || "")
+                                   page.inRepo && worktreeSwitch.checked, providerBox.currentValue || "",
+                                   mcpBox.currentValue || "")
     if (result.error) { error = result.error; return }
     const id = result.id
     reset()
@@ -44,6 +46,7 @@ ColumnLayout {
 
   onVisibleChanged: if (visible) {
     providerBox.model = sessions.providerChoices()
+    mcpBox.model = mcp.profileChoices()
     worktreeSwitch.checked = sessions.worktreeDefault()
     recentList.model = sessions.recentFolders()
     if (!folder.text && recentList.model.length) folder.text = recentList.model[0]
@@ -181,6 +184,18 @@ ColumnLayout {
         objectName: "task-permissions"
         Layout.preferredWidth: 300
         model: sessions.permissionChoices
+        textRole: "label"
+        valueRole: "value"
+      }
+    }
+
+    ColumnLayout {
+      FieldLabel { text: "MCP servers" }
+      ThemedComboBox {
+        id: mcpBox
+        objectName: "task-mcp"
+        Layout.preferredWidth: 220
+        model: [{ value: "", label: "The agent's own servers" }]
         textRole: "label"
         valueRole: "value"
       }

@@ -65,6 +65,8 @@ ApplicationWindow {
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
     { id: "providers", glyph: "󰒍", label: "Providers" },
     { id: "usage", glyph: "󰄨", label: "Usage" },
+    { id: "mcp", glyph: "󰒓", label: "MCP" },
+    { id: "permissions", glyph: "󰌾", label: "Permissions" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
 
@@ -202,6 +204,20 @@ ApplicationWindow {
       // Usage
       UsagePage {
         visible: window.page === "usage"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+      }
+
+      // MCP
+      McpPage {
+        visible: window.page === "mcp"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+      }
+
+      // Permissions
+      PermissionsPage {
+        visible: window.page === "permissions"
         Layout.fillWidth: true
         Layout.fillHeight: true
       }

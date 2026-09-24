@@ -1,6 +1,7 @@
 """Drive the whole app window like a user: offscreen, against a real
 throwaway daemon, with simulated clicks and keys. Any QML warning fails."""
 
+import json
 import os
 import subprocess
 import sys
@@ -59,6 +60,7 @@ class UiFlowTest(unittest.TestCase):
             "OMAORCHESTRA_CONFIG": str(self.config_path), "XDG_STATE_HOME": str(tmp / "xdg-state"),
             "OMAORCHESTRA_WORKTREES": str(tmp / "worktrees"),
             "OMAORCHESTRA_PROVIDERS": str(tmp / "providers.json"),
+            "OMAORCHESTRA_MCP": str(tmp / "mcp.json"), "OMAORCHESTRA_AGENT_HOME": str(tmp / "agent-home"),
         })
         self.env.start()
         env = dict(os.environ)
@@ -72,10 +74,11 @@ class UiFlowTest(unittest.TestCase):
         self.queue = backend.Queue(self.sessions)
         self.providers = backend.Providers()
         self.spend = backend.Spend(self.sessions)
+        self.mcp = backend.Mcp(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers), ("spend", self.spend),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -177,7 +180,7 @@ class UiFlowTest(unittest.TestCase):
         from omaorchestra import launch
         calls = []
 
-        def fake_run(task, cwd, model=None, permission_mode=None, worktree=None, provider=None, **kw):
+        def fake_run(task, cwd, model=None, permission_mode=None, worktree=None, provider=None, mcp_profile=None, **kw):
             calls.append((task, cwd, model, permission_mode, worktree))
             # What a real launch does first: register the session.
             self.add_session("new-1", "working", cwd, title=task, launching=True)
@@ -297,6 +300,33 @@ class UiFlowTest(unittest.TestCase):
         today = lambda: self.find("usage-today")  # noqa: E731
         self.assertTrue(wait_for(lambda: today() is not None and "Provider spend: $0.00" in today().property("text"),
                                  timeout=10), "report not shown")
+        self.assertEqual(self.warnings, [])
+
+    def test_mcp_page_checks_servers_and_saves_a_profile(self):
+        from omaorchestra.mcp import registry
+        home = Path(self.tmp.name) / "agent-home"
+        home.mkdir()
+        (home / ".claude.json").write_text(json.dumps({"mcpServers": {"self": {
+            "command": str(ROOT / "bin" / "omaorchestra"), "args": ["mcp", "serve"]}}}))
+        registry.add("db", {"transport": "stdio", "command": "db-mcp", "args": []}, [], {})
+        self.click("nav-mcp")
+        self.assertTrue(wait_for(lambda: self.shown("mcp-server-claude-self")), "server not listed")
+        self.click("mcp-check")
+        self.assertTrue(wait_for(lambda: self.mcp.servers and self.mcp.servers[0]["health"].get("ok"), timeout=30),
+                        "health check did not pass")
+        self.find("mcp-profile-name").setProperty("text", "dbonly")
+        self.find("mcp-member-db").setProperty("checked", True)
+        spin()
+        self.click("mcp-profile-save")
+        self.assertEqual(registry.profiles(), {"dbonly": ["db"]})
+        self.assertEqual(self.warnings, [])
+
+    def test_permissions_page_shows_recorded_requests(self):
+        from omaorchestra import permissions
+        permissions.log({"kind": "asked", "session": "s1", "project": "/w/app", "message": "Allow Bash?"})
+        permissions.log({"kind": "answered", "session": "s1", "outcome": "continued"})
+        self.click("nav-permissions")
+        self.assertTrue(wait_for(lambda: self.shown("approval-0")), "request not shown")
         self.assertEqual(self.warnings, [])
 
     def test_reconnects_after_the_daemon_restarts(self):

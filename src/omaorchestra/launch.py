@@ -54,7 +54,8 @@ def agent_environment():
 
 
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
-        spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None):
+        spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None,
+        mcp_profile=None):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
@@ -86,6 +87,14 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         # uses the provider's model ids, so defaults do not apply to it.
         model = modeldefaults.for_folder(cwd)[0]
     session_id = str(uuid.uuid4())
+    if mcp_profile:
+        # Exactly the profile's MCP servers, instead of the agent's own.
+        from .mcp import registry as mcp_registry
+        try:
+            config_file = mcp_registry.write_profile_config(mcp_profile, session_id)
+        except mcp_registry.McpError as e:
+            raise LaunchError(str(e)) from e
+        extra = ["--mcp-config", str(config_file), "--strict-mcp-config", *extra]
     record, note, workdir = None, "", cwd
     if worktree:
         if worktrees.repo_root(cwd) is None:

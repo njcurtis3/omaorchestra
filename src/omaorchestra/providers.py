@@ -113,6 +113,7 @@ def get_json(provider, route, key=None, lookup=None):
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as e:
+        e.close()
         if e.code in (401, 403):
             raise ProviderError("the API key was rejected" if key else "this provider needs an API key") from None
         raise ProviderError(f"{url} answered {e.code} {e.reason}") from None

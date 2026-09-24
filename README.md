@@ -390,6 +390,21 @@ your account and do not appear.
 Health checks run a server as an agent would, in an empty temporary folder
 with a minimal environment and a 20-second limit, then stop it.
 
+### Profiles
+
+A profile is a named set of managed servers; a task started with one gets
+exactly those servers instead of the agent's own (for Claude Code, through
+`--mcp-config` and `--strict-mcp-config`, with a config file only you can
+read and no secrets in it). `none` is built in.
+
+```bash
+omaorchestra mcp add db --no-install -- db-mcp        # for profiles only
+omaorchestra mcp profile set data db
+omaorchestra run "check last night's numbers" --mcp-profile data
+```
+
+The New task form has the same choice, and queued tasks keep theirs.
+
 ### omaorchestra as an MCP server
 
 `omaorchestra mcp serve` lets an agent see the other agents and the queue
@@ -397,6 +412,21 @@ with a minimal environment and a 20-second limit, then stop it.
 suggest work with `queue_task`, which always adds the task paused and
 notifies you: an agent can propose work, only you can start it. To offer it
 to Claude Code: `omaorchestra mcp add omaorchestra --agent claude -- omaorchestra mcp serve`.
+
+## Permissions
+
+```bash
+omaorchestra permissions
+```
+
+shows what agents may do without asking, read from their own settings and
+never changed: Claude Code's allow, ask and deny rules and default mode at
+every level (managed, user, each known project), with MCP tool rules grouped
+per server and the MCP server allow and deny lists; Codex's approval policy
+and sandbox; opencode's permission settings. It also shows a record of each
+time an agent waited for your approval, with the prompt and how it ended
+(continued, stopped waiting, or the session ended) and how long you took.
+The app's **MCP** and **Permissions** pages show the same.
 
 ## Configuration
 

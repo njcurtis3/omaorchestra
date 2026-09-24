@@ -42,23 +42,91 @@ def path():
     return Path(base) / "omaorchestra" / "mcp.json"
 
 
-def load():
+def _read():
     try:
         data = json.loads(path().read_text())
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as e:
         raise McpError(f"{path()} is not valid JSON ({e})") from e
-    servers = data.get("servers") if isinstance(data, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
+def _write(data):
+    target = path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(tmp, target)
+
+
+def load():
+    servers = _read().get("servers")
     return servers if isinstance(servers, dict) else {}
 
 
 def _save(servers):
-    target = path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"servers": servers}, indent=2) + "\n")
-    os.replace(tmp, target)
+    _write({**_read(), "servers": servers})
+
+
+# ---------------------------------------------------------------- profiles
+# A profile is a named set of managed servers a task can be started with,
+# instead of whatever servers the agent itself is configured with. "none"
+# (no servers at all) is built in.
+
+NONE_PROFILE = "none"
+
+
+def profiles():
+    found = _read().get("profiles")
+    return found if isinstance(found, dict) else {}
+
+
+def set_profile(name, server_names):
+    if not NAME.fullmatch(name) or name == NONE_PROFILE:
+        raise McpError(f"a profile name is letters, digits, - and _ (and not {NONE_PROFILE})")
+    known = load()
+    unknown = [s for s in server_names if s not in known]
+    if unknown:
+        raise McpError(f"not managed by omaorchestra: {', '.join(unknown)} (add them with `omaorchestra mcp add`)")
+    data = _read()
+    data.setdefault("profiles", {})[name] = list(dict.fromkeys(server_names))
+    _write(data)
+
+
+def remove_profile(name):
+    data = _read()
+    if name not in (data.get("profiles") or {}):
+        raise McpError(f"no profile {name}")
+    del data["profiles"][name]
+    _write(data)
+
+
+def profile_config(name):
+    """{"mcpServers": {...}} for Claude Code's --mcp-config: the profile's
+    servers as Claude entries (no secrets, as everywhere)."""
+    if name == NONE_PROFILE:
+        return {"mcpServers": {}}
+    members = profiles().get(name)
+    if members is None:
+        raise McpError(f"no profile {name} (see `omaorchestra mcp profile list`)")
+    servers = load()
+    return {"mcpServers": {s: agent_entry("claude", s, servers[s]) for s in members if s in servers}}
+
+
+def write_profile_config(name, session_id):
+    """Write the profile's config where only this user can read it, and
+    return its path. Files older than a day are cleared on the way."""
+    folder = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "omaorchestra" / "mcp"
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for old in folder.glob("*.json"):
+        if time.time() - old.stat().st_mtime > 86400:
+            old.unlink(missing_ok=True)
+    target = folder / f"{session_id}.json"
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(profile_config(name), f)
+    return target
 
 
 def get(name):

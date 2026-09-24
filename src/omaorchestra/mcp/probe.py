@@ -165,6 +165,7 @@ def http(url, headers=None, timeout=TIMEOUT):
                 break
         return _result(True, started, **_summarise(init, tools))
     except urllib.error.HTTPError as e:
+        e.close()
         hint = " (needs authentication)" if e.code in (401, 403) else ""
         return _result(False, started, error=f"{url} answered {e.code} {e.reason}{hint}")
     except (urllib.error.URLError, OSError) as e:

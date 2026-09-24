@@ -135,7 +135,7 @@ class Providers(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items, self._error = [], ""
-        self.testDone.connect(lambda *a: None)
+        self.refreshDone.connect(self.reload)
 
     @Slot()
     def reload(self):
@@ -201,6 +201,109 @@ class Providers(QObject):
     error = Property(str, lambda self: self._error, notify=changed)
 
 
+class Mcp(QObject):
+    """MCP servers, their health, managed servers and profiles, and the
+    permissions view, for the MCP and Permissions pages."""
+
+    changed = Signal()
+    checked = Signal()
+    _ready = Signal("QVariantMap")
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self.sessions = sessions
+        self._data = {"servers": [], "managed": {}, "profiles": {}, "permissions": {}, "error": ""}
+        self._checking = False
+        self._ready.connect(self._set)
+        self.checked.connect(self.reload)  # show the new results as soon as a check ends
+
+    def _projects(self):
+        return sorted(set(recent.load()) | {s.get("cwd") for s in self.sessions.by_id.values() if s.get("cwd")})
+
+    @Slot()
+    def reload(self):
+        from .. import permissions
+        from ..mcp import health, inventory, registry
+        error = ""
+        try:
+            managed, profile_map = registry.load(), registry.profiles()
+        except registry.McpError as e:
+            managed, profile_map, error = {}, {}, str(e)
+        results = health.results()
+        servers = []
+        for s in inventory.everything(self._projects()):
+            r = results.get(inventory.key(s))
+            servers.append({**s, "key": inventory.key(s), "health": r or {},
+                            "healthText": "" if not r else (f"{len(r['tools'])} tools" if r["ok"] else r["error"])})
+        self._set({"servers": servers, "managed": managed, "profiles": profile_map,
+                   "permissions": permissions.everything(self._projects()), "error": error})
+
+    @Slot("QVariantMap")
+    def _set(self, data):
+        self._data, self._checking = dict(data), False
+        self.changed.emit()
+
+    @Slot()
+    def checkAll(self):
+        from ..mcp import health, inventory
+        self._checking = True
+        self.changed.emit()
+        entries = inventory.everything(self._projects())
+
+        def work():
+            health.check_all(entries)
+            self.checked.emit()
+        threading.Thread(target=work, daemon=True).start()
+
+    def _act(self, action):
+        from ..mcp import registry
+        try:
+            action()
+        except (registry.McpError, keys.KeyError_) as e:
+            return str(e)
+        finally:
+            self.reload()
+        return ""
+
+    @Slot(str, bool, result=str)
+    def setEnabled(self, name, enabled):
+        from ..mcp import registry
+        return self._act(lambda: registry.set_enabled(name, enabled))
+
+    @Slot(str, result=str)
+    def removeServer(self, name):
+        from ..mcp import registry
+        return self._act(lambda: registry.remove(name))
+
+    @Slot(str, "QVariantList", result=str)
+    def setProfile(self, name, members):
+        from ..mcp import registry
+        return self._act(lambda: registry.set_profile(name, [str(m) for m in members]))
+
+    @Slot(str, result=str)
+    def removeProfile(self, name):
+        from ..mcp import registry
+        return self._act(lambda: registry.remove_profile(name))
+
+    @Slot(result="QVariantList")
+    def profileChoices(self):
+        from ..mcp import registry
+        try:
+            names = list(registry.profiles())
+        except registry.McpError:
+            names = []
+        return ([{"value": "", "label": "The agent's own servers"}] +
+                [{"value": n, "label": n} for n in names] +
+                [{"value": registry.NONE_PROFILE, "label": "None"}])
+
+    servers = Property("QVariantList", lambda self: self._data["servers"], notify=changed)
+    managed = Property("QVariantMap", lambda self: self._data["managed"], notify=changed)
+    profiles = Property("QVariantMap", lambda self: self._data["profiles"], notify=changed)
+    permissions = Property("QVariantMap", lambda self: self._data["permissions"], notify=changed)
+    error = Property(str, lambda self: self._data["error"], notify=changed)
+    checking = Property(bool, lambda self: self._checking, notify=changed)
+
+
 class Spend(QObject):
     """The spending report (spend.report), refreshed on a background thread
     since it reads transcripts and may ask providers for balances."""
@@ -263,8 +366,8 @@ class Queue(QObject):
             self._update(response["queue"])
         return response
 
-    @Slot(str, str, str, str, bool, bool, str, result="QVariantMap")
-    def add(self, task, folder, model, permission_mode, worktree, paused, provider_id):
+    @Slot(str, str, str, str, bool, bool, str, str, result="QVariantMap")
+    def add(self, task, folder, model, permission_mode, worktree, paused, provider_id, mcp_profile):
         import os
         from .. import routing
         if provider_id:  # fail now, not when the task's turn comes
@@ -274,7 +377,8 @@ class Queue(QObject):
                 return {"error": str(e)}
         item = {"task": task, "cwd": os.path.expanduser(folder), "model": model or None,
                 "permission_mode": permission_mode or None, "worktree": worktree, "extra": [],
-                "provider": provider_id or None, **launch.agent_environment()}
+                "provider": provider_id or None, "mcp_profile": mcp_profile or None,
+                **launch.agent_environment()}
         return self._send({"cmd": "queue-add", "item": item, "paused": paused})
 
     @Slot(str, result="QVariantMap")
@@ -557,14 +661,14 @@ class Sessions(QObject):
         import os
         return bool(folder) and os.path.isdir(os.path.expanduser(folder))
 
-    @Slot(str, str, str, str, bool, str, result="QVariantMap")
-    def launch(self, task, folder, model, permission_mode, worktree, provider_id):
+    @Slot(str, str, str, str, bool, str, str, result="QVariantMap")
+    def launch(self, task, folder, model, permission_mode, worktree, provider_id, mcp_profile):
         """Start an agent on `task`; returns {"id": ...} or {"error": ...}."""
         import os
         try:
             result = launch.run(task, os.path.expanduser(folder), model=model or None,
                                 permission_mode=permission_mode or None, worktree=worktree,
-                                provider=provider_id or None)
+                                provider=provider_id or None, mcp_profile=mcp_profile or None)
         except launch.LaunchError as e:
             return {"error": str(e)}
         return {"id": result["id"], "tracked": result["tracked"], "note": result["note"]}

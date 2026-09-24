@@ -29,7 +29,10 @@ class FakeCli:
         return subprocess.CompletedProcess(argv, code, stdout="", stderr="refused" if code else "")
 
 
-class McpTest(unittest.TestCase):
+class McpBase(unittest.TestCase):
+    """A fake home with agent config folders, a registry file, and an
+    in-memory keyring."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name) / "home"
@@ -55,6 +58,12 @@ class McpTest(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def stdio_spec(self):
+        return {"transport": "stdio", "command": "db-mcp", "args": ["--ro"], "env": {"DB_HOST": "localhost"},
+                "secret_env": ["DB_PASS"]}
+
+
+class McpTest(McpBase):
     # ---------------------------------------------------------------- 6.1
 
     def test_inventory_reads_every_source_without_values(self):
@@ -81,10 +90,6 @@ class McpTest(unittest.TestCase):
         self.assertNotIn("SECRET", json.dumps(servers), "no secret values in the inventory")
 
     # ---------------------------------------------------------------- 6.2
-
-    def stdio_spec(self):
-        return {"transport": "stdio", "command": "db-mcp", "args": ["--ro"], "env": {"DB_HOST": "localhost"},
-                "secret_env": ["DB_PASS"]}
 
     def test_add_stdio_everywhere_with_secrets_in_the_keyring(self):
         cli = FakeCli()
@@ -164,6 +169,44 @@ class McpTest(unittest.TestCase):
         self.assertEqual(registry.get("db")["args"], ["--ro"])
         self.assertIn("secrets in keyring: DB_PASS", out.getvalue())
         self.assertNotIn("s3cret", out.getvalue())
+
+
+class ProfileTest(McpBase):
+    def test_profiles_and_launching_with_one(self):
+        from omaorchestra import launch
+        registry.add("db", self.stdio_spec(), [], {"DB_PASS": "hunter2"}, run=FakeCli())
+        registry.add("gh", {"transport": "http", "url": "https://gh/mcp", "secret_headers": ["Authorization"]},
+                     [], {"Authorization": "Bearer t"}, run=FakeCli())
+        registry.set_profile("work", ["db", "gh", "db"])
+        self.assertEqual(registry.profiles(), {"work": ["db", "gh"]})
+        for name, members in (("none", []), ("bad name", []), ("x", ["unknown"])):
+            with self.assertRaises(registry.McpError):
+                registry.set_profile(name, members)
+        config = registry.profile_config("work")
+        self.assertEqual(set(config["mcpServers"]), {"db", "gh"})
+        self.assertIn("headersHelper", config["mcpServers"]["gh"])
+        self.assertNotIn("hunter2", json.dumps(config))
+        self.assertEqual(registry.profile_config("none"), {"mcpServers": {}})
+
+        runtime = Path(self.tmp.name) / "runtime"
+        runtime.mkdir()
+        spawned = []
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime), "OMAORCHESTRA_CLAUDE": "true",
+                                          "OMAORCHESTRA_CONFIG": os.path.join(self.tmp.name, "none.toml"),
+                                          "OMAORCHESTRA_SOCKET": os.path.join(self.tmp.name, "none.sock")}):
+            result = launch.run("x", self.tmp.name, worktree=False, mcp_profile="work",
+                                spawn=lambda cmd, **kw: spawned.append(cmd), request=lambda p: None)
+            with self.assertRaises(launch.LaunchError):
+                launch.run("x", self.tmp.name, worktree=False, mcp_profile="missing",
+                           spawn=lambda cmd, **kw: None, request=lambda p: None)
+        cmd = spawned[0]
+        config_file = Path(cmd[cmd.index("--mcp-config") + 1])
+        self.assertIn("--strict-mcp-config", cmd)
+        self.assertEqual(config_file.name, result["id"] + ".json")
+        self.assertEqual(oct(config_file.stat().st_mode & 0o777), "0o600")
+        self.assertEqual(set(json.loads(config_file.read_text())["mcpServers"]), {"db", "gh"})
+        registry.remove_profile("work")
+        self.assertEqual(registry.profiles(), {})
 
 
 if __name__ == "__main__":
