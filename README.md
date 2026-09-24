@@ -41,23 +41,19 @@ their MCP servers in one place.
 
 ## Install
 
-From the AUR:
-
-```bash
-yay -S omaorchestra            # or: omarchy pkg aur add omaorchestra
-sudo pacman -S pyside6         # optional: the desktop app
-omaorchestra setup
-```
-
-From a checkout:
-
 ```bash
 git clone https://github.com/njcurtis3/omaorchestra ~/code/omaorchestra
+sudo pacman -S pyside6         # optional: the desktop app
 ~/code/omaorchestra/bin/omaorchestra setup
 ```
 
 A checkout runs in place; there is nothing to build. `setup` links
-`~/.local/bin/omaorchestra` to it and installs the desktop entry.
+`~/.local/bin/omaorchestra` to it and installs the desktop entry. To
+update, `git pull` in the checkout and run `omaorchestra setup` again.
+
+An AUR package is on the way. Until then, [packaging/PKGBUILD](packaging/PKGBUILD)
+builds a pacman package from a release tag:
+`cd packaging && makepkg -si`.
 
 ## Setup
 
