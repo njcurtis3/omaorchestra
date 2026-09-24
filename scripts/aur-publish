@@ -1,0 +1,30 @@
+#!/bin/bash
+# Publish packaging/PKGBUILD to the AUR as the omaorchestra package.
+#
+# Needs an AUR account with an SSH key (https://aur.archlinux.org/account),
+# and the v$pkgver tag pushed to GitHub first: the PKGBUILD builds from it.
+set -euo pipefail
+
+root="$(readlink -f "$(dirname "$(readlink -f "$0")")/..")"
+cd "$root/packaging"
+makepkg --printsrcinfo > .SRCINFO
+pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+
+if ! git ls-remote --exit-code --tags https://github.com/njcurtis3/omaorchestra "v$pkgver" >/dev/null; then
+  echo "tag v$pkgver is not on GitHub yet; push it first: git push origin v$pkgver" >&2
+  exit 1
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+git clone -q ssh://aur@aur.archlinux.org/omaorchestra.git "$work/aur"
+cp PKGBUILD .SRCINFO "$work/aur/"
+cd "$work/aur"
+git add PKGBUILD .SRCINFO
+if git diff --cached --quiet; then
+  echo "the AUR already has this PKGBUILD"
+  exit 0
+fi
+git commit -qm "Update to $pkgver"
+git push -q origin HEAD:master
+echo "published omaorchestra $pkgver to the AUR"

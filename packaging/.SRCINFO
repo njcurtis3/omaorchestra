@@ -1,0 +1,18 @@
+pkgbase = omaorchestra
+	pkgdesc = Agent coordinator and harness for Omarchy: see, launch and queue AI coding agents
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/njcurtis3/omaorchestra
+	arch = any
+	license = MIT
+	makedepends = git
+	depends = python
+	optdepends = pyside6: the omaorchestra app
+	optdepends = libsecret: provider API keys and MCP secrets in the keyring
+	optdepends = git: isolated worktrees for queued tasks
+	optdepends = claude-code: the Claude Code agent
+	optdepends = omarchy: bar widget, keybindings and terminal launching
+	source = git+https://github.com/njcurtis3/omaorchestra.git#tag=v0.1.0
+	sha256sums = SKIP
+
+pkgname = omaorchestra
