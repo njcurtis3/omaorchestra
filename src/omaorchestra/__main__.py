@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import (__version__, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
                modeldefaults, procs, providers, service, windows, worktrees)
+from .mcp import registry as mcp_registry
 
 
 def cmd_daemon(args):
@@ -288,6 +289,135 @@ def cmd_spend(args):
     from . import spend
     r = spend.report(include_balances=not args.offline)
     print(json.dumps(r, indent=2) if args.json else spend.format_report(r))
+    return 0
+
+
+def known_projects():
+    """Folders worth checking for a .mcp.json: sessions' and recent ones."""
+    from . import recent
+    folders = set(recent.load())
+    try:
+        folders |= {s.get("cwd") for s in client.request({"cmd": "list"})["sessions"] if s.get("cwd")}
+    except client.DaemonUnavailable:
+        pass
+    return sorted(folders)
+
+
+def cmd_mcp_list(args):
+    from .mcp import inventory
+    servers = inventory.everything(known_projects())
+    if args.json:
+        print(json.dumps(servers, indent=2))
+        return 0
+    if not servers:
+        print("no MCP servers configured for Claude Code, Codex or opencode")
+        return 0
+    for s in servers:
+        where = s["scope"] + (f" ({s['project']})" if s["project"] else "")
+        what = s["url"] or " ".join([s["command"] or "?", *s["args"]])
+        flags = [f for f, on in (("disabled", not s["enabled"]), ("omaorchestra", s["managed"])) if on]
+        print(f"{s['agent']:<9} {s['name']:<20} {s['transport']:<6} {where:<30} {what}"
+              + (f"  [{', '.join(flags)}]" if flags else ""))
+        secrets = s["env_keys"] + s["header_keys"]
+        if secrets:
+            print(f"          uses: {', '.join(secrets)} (values not shown)")
+    return 0
+
+
+def cmd_mcp_add(args):
+    import getpass
+    from .mcp import registry
+    env, headers, secret_values = {}, {}, {}
+    for pair in args.env:
+        key, sep, value = pair.partition("=")
+        if not sep:
+            raise registry.McpError(f"--env takes KEY=VALUE, not {pair}")
+        env[key] = value
+    for pair in args.header:
+        key, sep, value = pair.partition(":")
+        if not sep:
+            raise registry.McpError(f"--header takes 'Name: value', not {pair}")
+        headers[key.strip()] = value.strip()
+    for key in args.secret_env + args.secret_header:
+        secret_values[key] = sys.stdin.readline().strip() if args.secrets_stdin else \
+            getpass.getpass(f"{key} for {args.name} (not shown; goes to the keyring): ")
+    if args.url:
+        spec = {"transport": args.transport or "http", "url": args.url, "headers": headers,
+                "secret_headers": args.secret_header}
+    else:
+        if not args.server_command:
+            raise registry.McpError("give the server's command after --, or --url")
+        spec = {"transport": "stdio", "command": args.server_command[0], "args": args.server_command[1:],
+                "env": env, "secret_env": args.secret_env}
+    targets = [registry.parse_target(t) for t in (args.agent or ["claude"])]
+    registry.add(args.name, spec, targets, secret_values)
+    print(f"added {args.name} to " + ", ".join(registry.target_label(t) for t in targets))
+    return 0
+
+
+def cmd_mcp_managed(args):
+    from .mcp import registry
+    servers = registry.load()
+    if not servers:
+        print("omaorchestra manages no MCP servers (add one with `omaorchestra mcp add`)")
+    for name, spec in servers.items():
+        what = spec.get("url") or " ".join([spec["command"], *spec.get("args", [])])
+        state = "enabled" if spec.get("enabled") else "disabled"
+        secret = spec.get("secret_env", []) + spec.get("secret_headers", [])
+        print(f"{name:<20} {spec['transport']:<6} {state:<9} {what}")
+        print(f"                     in: {', '.join(registry.target_label(t) for t in spec['targets'])}"
+              + (f"; secrets in keyring: {', '.join(secret)}" if secret else ""))
+    return 0
+
+
+def cmd_mcp_change(args):
+    from .mcp import registry
+    if args.mcp_command == "remove":
+        registry.remove(args.name)
+        print(f"removed {args.name} from its agents, and its secrets from the keyring")
+    else:
+        registry.set_enabled(args.name, args.mcp_command == "enable")
+        print(f"{args.mcp_command}d {args.name}")
+    return 0
+
+
+def cmd_mcp_check(args):
+    from .mcp import health, inventory
+    entries = [e for e in inventory.everything(known_projects())
+               if (not args.name or e["name"] == args.name) and (not args.agent or e["agent"] == args.agent)]
+    if not entries:
+        print("no matching MCP servers")
+        return 1
+    results = health.check_all(entries)
+    failed = 0
+    for e in entries:
+        r = results[inventory.key(e)]
+        where = f"{e['agent']}:{e['scope']}"
+        if r["ok"]:
+            tools = ", ".join(t["name"] for t in r["tools"][:8]) + (" …" if len(r["tools"]) > 8 else "")
+            print(f"ok    {e['name']:<20} {where:<14} {r['server'] or ''} {r['version'] or ''}  "
+                  f"{len(r['tools'])} tools ({r['seconds']}s): {tools}")
+        else:
+            failed += 1
+            print(f"FAIL  {e['name']:<20} {where:<14} {r['error']}")
+    return 1 if failed else 0
+
+
+def cmd_mcp_serve(args):
+    from .mcp import serve
+    serve.serve()
+    return 0
+
+
+def cmd_mcp_exec(args):
+    from .mcp import registry
+    registry.exec_server(args.name)  # does not return
+    return 1
+
+
+def cmd_mcp_headers(args):
+    from .mcp import registry
+    print(registry.headers_json(args.name))
     return 0
 
 
@@ -582,6 +712,40 @@ def main(argv=None):
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--offline", action="store_true", help="do not ask providers for their balances")
     sp.set_defaults(func=cmd_spend)
+    mcp_p = sub.add_parser("mcp", help="MCP servers across Claude Code, Codex and opencode")
+    mcp_sub = mcp_p.add_subparsers(dest="mcp_command", required=True)
+    ml = mcp_sub.add_parser("list", help="every configured MCP server, per agent and scope")
+    ml.add_argument("--json", action="store_true")
+    ml.set_defaults(func=cmd_mcp_list)
+    ma = mcp_sub.add_parser("add", help="add a server to agents, its secrets to the keyring "
+                                        "(stdio: the command after --; HTTP: --url)")
+    ma.add_argument("name")
+    ma.add_argument("--agent", action="append",
+                    help="claude[:user|:local:/project], codex, opencode (repeatable; default claude)")
+    ma.add_argument("--url", help="an HTTP server's URL")
+    ma.add_argument("--transport", choices=["http", "sse"], help="for --url (default http)")
+    ma.add_argument("--env", action="append", default=[], help="KEY=VALUE for a stdio server (not secret)")
+    ma.add_argument("--secret-env", action="append", default=[], help="KEY whose value is asked for and kept in the keyring")
+    ma.add_argument("--header", action="append", default=[], help="'Name: value' for an HTTP server (not secret)")
+    ma.add_argument("--secret-header", action="append", default=[], help="header whose value is asked for and kept in the keyring")
+    ma.add_argument("--secrets-stdin", action="store_true", help="read secret values from stdin, one per line")
+    ma.set_defaults(func=cmd_mcp_add, server_command=[])
+    mcp_sub.add_parser("managed", help="servers omaorchestra manages").set_defaults(func=cmd_mcp_managed)
+    mc = mcp_sub.add_parser("check", help="start servers, do the MCP handshake, list their tools")
+    mc.add_argument("name", nargs="?", help="only this server")
+    mc.add_argument("--agent", choices=["claude", "codex", "opencode"])
+    mc.set_defaults(func=cmd_mcp_check)
+    mcp_sub.add_parser("serve", help="omaorchestra's own MCP server, over stdio (for agents)").set_defaults(func=cmd_mcp_serve)
+    for name, text in (("remove", "remove from its agents and forget it, secrets too"),
+                       ("enable", "install it in its agents again"), ("disable", "take it out of its agents, keep it here")):
+        p = mcp_sub.add_parser(name, help=text)
+        p.add_argument("name")
+        p.set_defaults(func=cmd_mcp_change)
+    for name, func, text in (("exec", cmd_mcp_exec, "start a managed stdio server with its secrets (agents run this)"),
+                             ("headers", cmd_mcp_headers, "print a managed HTTP server's headers (Claude's headersHelper)")):
+        p = mcp_sub.add_parser(name, help=text)
+        p.add_argument("name")
+        p.set_defaults(func=func)
     pp = sub.add_parser("provider", help="model providers (API keys live in the system keyring)")
     p_sub = pp.add_subparsers(dest="provider_command", required=True)
     p_sub.add_parser("list", help="configured providers").set_defaults(func=cmd_provider_list)
@@ -673,20 +837,31 @@ def main(argv=None):
     # otherwise mix them up with run's own options.
     argv = list(sys.argv[1:] if argv is None else argv)
     agent_args = []
+    if argv[:2] == ["mcp", "add"] and "--" in argv:
+        split = argv.index("--")
+        argv, server_command = argv[:split], argv[split + 1:]
+        args = parser.parse_args(argv)
+        args.server_command = server_command
+        return run_command(args)
     if (argv[:1] == ["run"] or argv[:2] == ["queue", "add"]) and "--" in argv:
         split = argv.index("--")
         argv, agent_args = argv[:split], argv[split + 1:]
     args = parser.parse_args(argv)
     if agent_args:
         args.agent_args = agent_args
+    return run_command(args, parser)
+
+
+def run_command(args, parser=None):
     if not getattr(args, "func", None):
-        parser.print_help()
+        if parser:
+            parser.print_help()
         return 0
     try:
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
-            keys.KeyError_) as e:
+            keys.KeyError_, mcp_registry.McpError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

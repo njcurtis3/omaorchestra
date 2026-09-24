@@ -363,6 +363,41 @@ reports them (OpenRouter's key usage, in credits); Anthropic's own usage and
 cost reports need an Admin API key and are not read. The app's **Usage**
 page shows the same, and a session's details show its cost.
 
+## MCP servers
+
+One view of the MCP servers configured for Claude Code (user, local and
+project scopes), Codex and opencode, and one place to manage them:
+
+```bash
+omaorchestra mcp list                   # every server, per agent and scope (values never shown)
+omaorchestra mcp check                  # start each, do the MCP handshake, list its tools
+omaorchestra mcp add db --agent claude --agent codex --secret-env DB_PASS -- db-mcp --read-only
+omaorchestra mcp add gh --agent claude --url https://example.com/mcp --secret-header Authorization
+omaorchestra mcp managed | disable <name> | enable <name> | remove <name>
+```
+
+Secrets go to the system keyring, never into an agent's config: a stdio
+server is installed as `omaorchestra mcp exec <name>`, which adds its secrets
+and starts the real server, and an HTTP server's secret headers reach Claude
+Code through a `headersHelper` (Codex and opencode have no equivalent, so
+they only get HTTP servers without secret headers). Claude Code and Codex
+are changed through their own `mcp` commands, opencode by editing
+`opencode.json`; each agent's config is backed up first. Claude Code's
+project scope (`.mcp.json`, a file teams share) is listed but never written.
+The inventory reads local configuration only; claude.ai connectors live in
+your account and do not appear.
+
+Health checks run a server as an agent would, in an empty temporary folder
+with a minimal environment and a 20-second limit, then stop it.
+
+### omaorchestra as an MCP server
+
+`omaorchestra mcp serve` lets an agent see the other agents and the queue
+(`list_sessions`, `get_session` with recent activity, `list_queue`) and
+suggest work with `queue_task`, which always adds the task paused and
+notifies you: an agent can propose work, only you can start it. To offer it
+to Claude Code: `omaorchestra mcp add omaorchestra --agent claude -- omaorchestra mcp serve`.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).
