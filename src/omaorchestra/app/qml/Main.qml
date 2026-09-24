@@ -63,6 +63,7 @@ ApplicationWindow {
     { id: "new", glyph: "󰐕", label: "New task" },
     { id: "queue", glyph: "󰒲", label: "Queue" },
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
+    { id: "providers", glyph: "󰒍", label: "Providers" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
 
@@ -186,6 +187,13 @@ ApplicationWindow {
       // Worktrees
       WorktreesPage {
         visible: window.page === "worktrees"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+      }
+
+      // Providers
+      ProvidersPage {
+        visible: window.page === "providers"
         Layout.fillWidth: true
         Layout.fillHeight: true
       }

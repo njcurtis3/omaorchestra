@@ -7,8 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import (__version__, claude_settings, client, config, control, daemon, hooks, launch, procs, service,
-               windows, worktrees)
+from . import (__version__, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch, procs,
+               providers, service, windows, worktrees)
 
 
 def cmd_daemon(args):
@@ -212,6 +212,69 @@ def cmd_queue_move(args):
     if position is None:
         position = args.position - 1  # people count from 1
     print_queue(queue_request({"cmd": "queue-move", "id": match[0], "position": position})["queue"])
+    return 0
+
+
+def cmd_provider_list(args):
+    items = providers.load()
+    if not items:
+        print("no providers; add one with `omaorchestra provider add <kind>` "
+              f"({', '.join(providers.KINDS)})")
+        return 0
+    for p in items:
+        key = "no key needed" if not providers.needs_key(p) else ("key stored" if keys.lookup(p["id"]) else "no key yet")
+        print(f"{p['id']:<14} {p['label']:<16} {p['base_url']:<34} {key}")
+    return 0
+
+
+def cmd_provider_add(args):
+    item = providers.add(args.kind, args.id, args.base_url)
+    print(f"added {item['id']} ({item['base_url']})")
+    if providers.needs_key(item):
+        print(f"next: omaorchestra provider key {item['id']}")
+    return 0
+
+
+def cmd_provider_key(args):
+    provider = providers.get(args.id)
+    if args.stdin:
+        key = sys.stdin.read()
+    else:
+        import getpass
+        key = getpass.getpass(f"API key for {provider['label']} (not shown): ")
+    keys.store(provider["id"], key)
+    print(f"stored the key for {provider['id']} in the system keyring")
+    return 0
+
+
+def cmd_provider_remove(args):
+    providers.remove(args.id)
+    print(f"removed {args.id} and its key")
+    return 0
+
+
+def cmd_provider_test(args):
+    print(providers.test(providers.get(args.id)))
+    return 0
+
+
+def cmd_models(args):
+    if args.refresh:
+        cache = catalog.refresh([args.provider] if args.provider else None)
+        for pid, entry in cache.items():
+            if entry.get("error") and (not args.provider or pid == args.provider):
+                print(f"{pid}: {entry['error']}", file=sys.stderr)
+    models = [m for m in catalog.all_models() if not args.provider or m["provider"] == args.provider]
+    if args.json:
+        print(json.dumps(models, indent=2))
+        return 0
+    for m in models:
+        price = (f"${m['input_price']:g}/${m['output_price']:g} per MTok"
+                 if m["input_price"] is not None and m["output_price"] is not None else "")
+        context = f"{m['context'] // 1000}K ctx" if m.get("context") else ""
+        print(f"{m['provider']:<12} {m['id']:<44} {context:<10} {price}")
+    if not any(m["provider"] != "claude-code" for m in models) and not args.refresh:
+        print("(only Claude Code's aliases; add providers and run `omaorchestra models --refresh`)")
     return 0
 
 
@@ -486,6 +549,29 @@ def main(argv=None):
         p.add_argument("id")
         p.set_defaults(func=cmd_queue_move)
 
+    pp = sub.add_parser("provider", help="model providers (API keys live in the system keyring)")
+    p_sub = pp.add_subparsers(dest="provider_command", required=True)
+    p_sub.add_parser("list", help="configured providers").set_defaults(func=cmd_provider_list)
+    pa = p_sub.add_parser("add", help="add a provider: " + ", ".join(providers.KINDS))
+    pa.add_argument("kind", choices=list(providers.KINDS))
+    pa.add_argument("--id", help="a name for it (default: the kind)")
+    pa.add_argument("--base-url", help="a different endpoint (a proxy, a self-hosted Ollama, ...)")
+    pa.set_defaults(func=cmd_provider_add)
+    pk = p_sub.add_parser("key", help="store its API key in the system keyring")
+    pk.add_argument("id")
+    pk.add_argument("--stdin", action="store_true", help="read the key from standard input")
+    pk.set_defaults(func=cmd_provider_key)
+    for name, func, text in (("remove", cmd_provider_remove, "forget it and its key"),
+                             ("test", cmd_provider_test, "check it answers and accepts the key")):
+        p = p_sub.add_parser(name, help=text)
+        p.add_argument("id")
+        p.set_defaults(func=func)
+    mp = sub.add_parser("models", help="models from Claude Code and your providers")
+    mp.add_argument("--provider", help="only this provider")
+    mp.add_argument("--refresh", action="store_true", help="fetch the lists again")
+    mp.add_argument("--json", action="store_true")
+    mp.set_defaults(func=cmd_models)
+
     wt = sub.add_parser("worktree", help="task worktrees: list, review, merge, remove")
     wt_sub = wt.add_subparsers(dest="worktree_command", required=True)
     wt_sub.add_parser("list", help="every task worktree and how it stands").set_defaults(func=cmd_worktree_list)
@@ -560,7 +646,8 @@ def main(argv=None):
     try:
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
-            control.ControlError, launch.LaunchError, worktrees.WorktreeError) as e:
+            control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
+            keys.KeyError_) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

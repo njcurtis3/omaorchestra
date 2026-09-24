@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import changes, client, config, control, launch, recent, transcript, windows, worktrees
+from .. import catalog, changes, client, config, control, keys, launch, providers, recent, transcript, windows, worktrees
 from . import present
 from . import theme as theme_file
 
@@ -122,6 +122,82 @@ class Settings(QObject):
     sections = Property("QVariantList", lambda self: self._sections, notify=changed)
     error = Property(str, lambda self: self._error, notify=changed)
     path = Property(str, lambda self: str(config.path()), notify=changed)
+
+
+class Providers(QObject):
+    """Model providers and their model lists, for the Providers page."""
+
+    changed = Signal()
+    testDone = Signal(str, bool, str)  # provider id, ok, message
+    refreshDone = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._items, self._error = [], ""
+        self.testDone.connect(lambda *a: None)
+
+    @Slot()
+    def reload(self):
+        try:
+            items = providers.load()
+            self._error = ""
+        except providers.ProviderError as e:
+            items, self._error = [], str(e)
+        cache = catalog.cached()
+        self._items = [{**p, "needsKey": providers.needs_key(p),
+                        "keyStored": bool(keys.lookup(p["id"])) if providers.needs_key(p) else False,
+                        "modelCount": len(cache.get(p["id"], {}).get("models", [])),
+                        "fetched": cache.get(p["id"], {}).get("fetched") or 0,
+                        "lastError": cache.get(p["id"], {}).get("error") or ""} for p in items]
+        self.changed.emit()
+
+    @Slot(str, str, str, result="QVariantMap")
+    def add(self, kind, provider_id, base_url):
+        try:
+            item = providers.add(kind, provider_id or None, base_url or None)
+        except providers.ProviderError as e:
+            return {"error": str(e)}
+        self.reload()
+        return {"id": item["id"]}
+
+    @Slot(str, str, result=str)
+    def setKey(self, provider_id, key):
+        try:
+            keys.store(provider_id, key)
+        except keys.KeyError_ as e:
+            return str(e)
+        self.reload()
+        return ""
+
+    @Slot(str, result=str)
+    def remove(self, provider_id):
+        try:
+            providers.remove(provider_id)
+        except providers.ProviderError as e:
+            return str(e)
+        self.reload()
+        return ""
+
+    @Slot(str)
+    def test(self, provider_id):
+        def work():
+            try:
+                self.testDone.emit(provider_id, True, providers.test(providers.get(provider_id)))
+            except (providers.ProviderError, keys.KeyError_) as e:
+                self.testDone.emit(provider_id, False, str(e))
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def refreshModels(self):
+        def work():
+            catalog.refresh()
+            self.refreshDone.emit()
+        threading.Thread(target=work, daemon=True).start()
+
+    kinds = Property("QVariantList", lambda self: [{"value": k, "label": v["label"], "url": v["base_url"]}
+                                                   for k, v in providers.KINDS.items()], constant=True)
+    items = Property("QVariantList", lambda self: self._items, notify=changed)
+    error = Property(str, lambda self: self._error, notify=changed)
 
 
 class Queue(QObject):

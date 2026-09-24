@@ -305,6 +305,29 @@ classic one.
 `omaorchestra focus --notify` reports a failure (no sessions, no window) as a
 notification, since a keybinding has no terminal to print to.
 
+## Providers and models
+
+Beyond your Claude subscription, omaorchestra knows about API providers:
+Anthropic's API, OpenAI, OpenRouter and a local Ollama (any of them at a
+different endpoint too, such as a proxy).
+
+```bash
+omaorchestra provider add openrouter
+omaorchestra provider key openrouter    # asks for the key; it goes to the system keyring
+omaorchestra provider test openrouter
+omaorchestra models --refresh           # every provider's models, with context and prices
+```
+
+API keys are stored in the system keyring (Secret Service, via `secret-tool`)
+and nowhere else: not in config files, logs, the queue, or this repository.
+The provider list itself (ids, kinds, endpoints) is in
+`~/.config/omaorchestra/providers.json`. omaorchestra never sends prompts to
+a provider; it lists models, checks keys and reads usage, with plain HTTP.
+Model lists are cached in the state directory; prices are per million
+tokens, from the provider (OpenRouter) or Anthropic's published prices
+(Anthropic's models API reports context sizes but not prices). The app's
+**Providers** page does the same.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).

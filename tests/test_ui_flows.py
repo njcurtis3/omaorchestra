@@ -58,6 +58,7 @@ class UiFlowTest(unittest.TestCase):
             "OMAORCHESTRA_SOCKET": str(tmp / "o.sock"), "OMAORCHESTRA_STATE_DIR": str(tmp / "state"),
             "OMAORCHESTRA_CONFIG": str(self.config_path), "XDG_STATE_HOME": str(tmp / "xdg-state"),
             "OMAORCHESTRA_WORKTREES": str(tmp / "worktrees"),
+            "OMAORCHESTRA_PROVIDERS": str(tmp / "providers.json"),
         })
         self.env.start()
         env = dict(os.environ)
@@ -69,10 +70,11 @@ class UiFlowTest(unittest.TestCase):
         self.theme, self.sessions, self.settings = backend.Theme(), backend.Sessions(), backend.Settings()
         self.worktrees = backend.Worktrees()
         self.queue = backend.Queue(self.sessions)
+        self.providers = backend.Providers()
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -263,6 +265,22 @@ class UiFlowTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: self.queue.tasks and self.queue.tasks[0]["state"] == "pending"), "not resumed")
         self.click("queued-cancel-0")
         self.assertTrue(wait_for(lambda: not self.queue.tasks and not self.shown("queued-0")), "not cancelled")
+        self.assertEqual(self.warnings, [])
+
+    def test_providers_page_add_and_test(self):
+        self.click("nav-providers")
+        kinds = self.find("provider-kind")
+        self.assertTrue(wait_for(lambda: kinds is not None and kinds.isVisible()), "providers page not shown")
+        kinds.setProperty("currentIndex", [k["value"] for k in self.providers.kinds].index("ollama"))
+        self.find("provider-id").setProperty("text", "local")
+        self.find("provider-url").setProperty("text", "http://127.0.0.1:9")  # nothing listens there
+        spin()
+        self.click("provider-add")
+        self.assertTrue(wait_for(lambda: self.shown("provider-local")), "provider not listed")
+        self.click("provider-test-local")
+        result = lambda: self.find("provider-result-local")  # noqa: E731
+        self.assertTrue(wait_for(lambda: result() is not None and "cannot reach" in result().property("text"), timeout=20),
+                        "test result not shown")
         self.assertEqual(self.warnings, [])
 
     def test_reconnects_after_the_daemon_restarts(self):
