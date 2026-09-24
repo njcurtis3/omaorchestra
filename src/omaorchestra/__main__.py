@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               modeldefaults, procs, providers, service, windows, worktrees)
+               modeldefaults, procs, providers, service, setup, windows, worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -711,6 +711,22 @@ def cmd_service_status(args):
     return 0 if active == "active" else 1
 
 
+def cmd_setup(args):
+    for line in setup.setup(own_binary(), only=args.only or (), skip=args.skip or (), dry_run=args.dry_run):
+        print(line)
+    if not args.dry_run:
+        print("done: `omaorchestra app` opens the app, and `omaorchestra teardown` undoes this")
+    return 0
+
+
+def cmd_teardown(args):
+    for line in setup.teardown(only=args.only or (), skip=args.skip or (), dry_run=args.dry_run) or ["nothing to do"]:
+        print(line)
+    for line in setup.leftovers():
+        print(line)
+    return 0
+
+
 def cmd_hooks_install(args):
     adapter = adapters.get(args.agent)
     command = hook_command(args)
@@ -964,6 +980,16 @@ def main(argv=None):
     service_sub.add_parser("uninstall", help="stop and disable the service").set_defaults(func=cmd_service_uninstall)
     service_sub.add_parser("status", help="show whether the service is running").set_defaults(func=cmd_service_status)
 
+    for name, helper, func in (("setup", "wire omaorchestra into this desktop: service, hooks, bar widget, "
+                                         "keybindings, menu", cmd_setup),
+                               ("teardown", "undo setup (keeps settings, state, worktrees and keys)", cmd_teardown)):
+        step_p = sub.add_parser(name, help=helper)
+        step_p.add_argument("--only", action="append", choices=setup.STEPS, metavar="STEP",
+                            help=f"only this step (repeatable): {', '.join(setup.STEPS)}")
+        step_p.add_argument("--skip", action="append", choices=setup.STEPS, metavar="STEP", help="skip this step (repeatable)")
+        step_p.add_argument("--dry-run", action="store_true", help="show what would be done")
+        step_p.set_defaults(func=func)
+
     # `run ... -- <agent args>`: split them off first, since argparse would
     # otherwise mix them up with run's own options.
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -992,7 +1018,7 @@ def run_command(args, parser=None):
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
-            keys.KeyError_, mcp_registry.McpError) as e:
+            keys.KeyError_, mcp_registry.McpError, setup.SetupError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 
