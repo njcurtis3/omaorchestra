@@ -1,9 +1,10 @@
 #!/usr/bin/python3
 """Render the README screenshots: the app, offscreen, against a throwaway
 daemon holding made-up sessions and tasks. Nothing from this machine's own
-sessions, projects or keys appears; only the current Omarchy theme is used.
+sessions, projects, keys or theme appears: the app draws in its built-in
+neutral dark palette, or in a stock Omarchy theme with --theme.
 
-    scripts/screenshots [output dir]      # default: docs/screenshots
+    scripts/screenshots [--theme <omarchy theme>] [output dir]   # default: docs/screenshots
 """
 
 import os
@@ -32,20 +33,30 @@ PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue
 
 
 def main():
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "docs" / "screenshots").resolve()
+    import argparse
+    parser = argparse.ArgumentParser(description="Render the README screenshots.")
+    parser.add_argument("--theme", help="a stock Omarchy theme (e.g. tokyo-night); default: the app's own palette")
+    parser.add_argument("out", nargs="?", default=str(ROOT / "docs" / "screenshots"))
+    args = parser.parse_args()
+    out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    real_theme = Path.home() / ".local" / "state" / "omarchy" / "current" / "theme"
+    colors = None
+    if args.theme:
+        omarchy = Path(os.environ.get("OMARCHY_PATH") or "/usr/share/omarchy")
+        colors = omarchy / "themes" / args.theme / "colors.toml"
+        if not colors.exists():
+            parser.error(f"no Omarchy theme {args.theme} ({colors})")
 
     with tempfile.TemporaryDirectory(prefix="oo-") as tmp:
         tmp = Path(tmp)
         home = tmp / "home"
-        # A made-up home: paths show as ~/code/<project>, and the theme is copied in.
+        # A made-up home: paths show as ~/code/<project>, and no theme unless asked.
         for name in ("website", "api", "dotfiles", "blog"):
             (home / "code" / name).mkdir(parents=True)
-        theme_dir = home / ".local" / "state" / "omarchy" / "current" / "theme"
-        theme_dir.mkdir(parents=True)
-        if (real_theme / "colors.toml").exists():
-            shutil.copy(real_theme / "colors.toml", theme_dir / "colors.toml")
+        if colors:
+            theme_dir = home / ".local" / "state" / "omarchy" / "current" / "theme"
+            theme_dir.mkdir(parents=True)
+            shutil.copy(colors, theme_dir / "colors.toml")
         (tmp / "config.toml").write_text("[notifications]\nwaiting = false\nfinished_after = 0\n[tasks]\nmax_parallel = 4\n")
         os.environ.update({
             "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_STATE_HOME": str(home / ".local" / "state"),

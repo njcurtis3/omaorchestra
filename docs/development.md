@@ -62,8 +62,9 @@ env -i PATH=/usr/bin:/bin HOME=$(mktemp -d) LANG=C.UTF-8 /usr/bin/python3 -m uni
 
 `scripts/screenshots` renders the README's screenshots into
 `docs/screenshots/`: the app, offscreen, against a throwaway daemon holding
-made-up sessions, in the current Omarchy theme. Nothing from your own
-sessions, folders or keys appears in them.
+made-up sessions, in the app's built-in neutral dark palette
+(`--theme <name>` uses a stock Omarchy theme instead). Nothing from your own
+sessions, folders, keys or theme appears in them.
 
 ## Releasing
 
