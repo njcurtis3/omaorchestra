@@ -10,7 +10,7 @@ verbose = false
 
 [agents]
 # Agents whose hook events are tracked
-enabled = ["claude"]
+enabled = ["claude", "codex", "opencode"]
 
 [notifications]
 # Notify when an agent starts waiting for you (closed again once it stops)

@@ -12,7 +12,6 @@ import shutil
 import time
 from pathlib import Path
 
-from .hooks import CLAUDE_EVENTS
 
 HOOK_TIMEOUT = 5
 
@@ -26,23 +25,24 @@ def default_path():
     return Path(base) / "settings.json"
 
 
-def hook_command(binary):
-    return f"{shlex.quote(str(binary))} hook claude"
+def hook_command(binary, agent="claude"):
+    return f"{shlex.quote(str(binary))} hook {agent}"
 
 
 def is_ours(hook):
-    """True for a hook entry that runs omaorchestra's Claude hook, from any path."""
+    """True for a hook entry that runs omaorchestra's hook (for any agent), from any path."""
     if not isinstance(hook, dict):
         return False
     try:
         argv = shlex.split(str(hook.get("command", "")))
     except ValueError:
         return False
-    # Exactly the form install() writes: <path to omaorchestra> hook claude
+    # Exactly the form install() writes: <path to omaorchestra> hook <agent>
     return (
         len(argv) == 3
         and os.path.basename(argv[0]) == "omaorchestra"
-        and argv[1:] == ["hook", "claude"]
+        and argv[1] == "hook"
+        and argv[2] in ("claude", "codex", "opencode")
     )
 
 
@@ -73,13 +73,17 @@ def remove(settings):
     return result
 
 
-def install(settings, command):
-    """Settings with omaorchestra's hooks for every event, replacing old copies."""
+def install(settings, command, events=None):
+    """Settings with omaorchestra's hooks for every event, replacing old copies.
+    The same shape serves Claude Code's settings.json and Codex's hooks.json."""
+    if events is None:
+        from .adapters import Claude  # here, not at the top: adapters import this module
+        events = Claude.events
     result = remove(settings)
     hooks = result.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise SettingsError('"hooks" in settings.json is not an object')
-    for event in CLAUDE_EVENTS:
+    for event in events:
         hooks.setdefault(event, []).append(
             {"hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT}]}
         )
@@ -98,6 +102,16 @@ def installed_events(settings):
                 if is_ours(hook):
                     found[event] = hook["command"]
     return found
+
+
+def change(path, transform):
+    """Apply `transform` to a hooks settings file; returns the backup path,
+    "unchanged", or None when there was no file before."""
+    before = load(path)
+    after = transform(before)
+    if after == before:
+        return "unchanged"
+    return save(path, after)
 
 
 def load(path):

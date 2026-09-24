@@ -178,6 +178,24 @@ notification server, so Omarchy's do-not-disturb silences them like any other
 app. Turn either off, or change the two-minute threshold, under
 `[notifications]` in the config.
 
+## Agents
+
+Claude Code, Codex and opencode each have an adapter: how to start it, how
+it reports its state, and how that reporting is installed.
+
+| | Reports through | Install | Notes |
+|---|---|---|---|
+| Claude Code | hooks in `~/.claude/settings.json` | `omaorchestra hooks install` | everything: routing, MCP profiles, costs from its transcript |
+| Codex | hooks in `~/.codex/hooks.json` | `omaorchestra hooks install --agent codex` | Codex runs them only once you trust them (`/hooks` in Codex) |
+| opencode | a plugin, `~/.config/opencode/plugins/omaorchestra.js` | `omaorchestra hooks install --agent opencode` | |
+
+`omaorchestra run --agent codex|opencode` (or **Agent** in New task) starts
+the others. They cannot be told a session id up front, so a launch carries
+`OMAORCHESTRA_LAUNCH_ID` in the agent's environment: the daemon finds the
+agent's process by it, and when the agent first reports, the placeholder
+session becomes the agent's own. Provider routing and MCP profiles are
+Claude Code only for now.
+
 ## Starting an agent
 
 ```bash

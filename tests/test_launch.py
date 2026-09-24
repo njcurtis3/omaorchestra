@@ -16,11 +16,12 @@ from omaorchestra.registry import Registry
 
 class CommandTest(unittest.TestCase):
     def test_claude_command(self):
+        from omaorchestra.adapters import Claude
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("OMAORCHESTRA_CLAUDE", None)
-            self.assertEqual(launch.claude_command("fix it", "S"), ["claude", "--session-id", "S", "--", "fix it"])
+            self.assertEqual(Claude().command("fix it", "S", "/w"), ["claude", "--session-id", "S", "--", "fix it"])
             self.assertEqual(
-                launch.claude_command("-x looks like a flag", "S", permission_mode="auto", model="haiku", extra=["--verbose"]),
+                Claude().command("-x looks like a flag", "S", "/w", permission_mode="auto", model="haiku", extra=["--verbose"]),
                 ["claude", "--session-id", "S", "--permission-mode", "auto", "--model", "haiku", "--verbose",
                  "--", "-x looks like a flag"])
 

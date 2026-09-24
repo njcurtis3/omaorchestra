@@ -1,13 +1,14 @@
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from . import (__version__, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
+from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
                modeldefaults, procs, providers, service, windows, worktrees)
 from .mcp import registry as mcp_registry
 
@@ -138,7 +139,7 @@ def cmd_app(args):
 def cmd_run(args):
     result = launch.run(args.task, args.dir, permission_mode=args.permission_mode, model=args.model,
                         extra=args.agent_args, worktree=args.worktree, provider=args.provider,
-                        mcp_profile=args.mcp_profile)
+                        mcp_profile=args.mcp_profile, agent=args.agent)
     record = result["worktree"]
     where = record["workdir"] if record else launch.Path(args.dir).expanduser().resolve()
     print(f"started {result['id'][:8]} in {where}" + (f", through {args.provider}" if args.provider else ""))
@@ -191,7 +192,7 @@ def cmd_queue_add(args):
         raise mcp_registry.McpError(f"no profile {args.mcp_profile}")
     item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
             "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
-            "mcp_profile": args.mcp_profile, **launch.agent_environment()}
+            "mcp_profile": args.mcp_profile, "agent": args.agent, **launch.agent_environment(args.agent)}
     response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
     print(f"queued {response['item']['id'][:8]}")
     print_queue(response["queue"])
@@ -557,7 +558,14 @@ def cmd_hook(args):
     try:
         if args.agent not in config.load_or_defaults()["agents"]["enabled"]:
             return 0
-        request = hooks.request_for(json.load(sys.stdin), procs.agent_process())
+        adapter = adapters.get(args.agent)
+        event = json.load(sys.stdin)
+        # A task omaorchestra launched carries its placeholder id in the
+        # environment, which hooks inherit: it ties the agent's own session
+        # id to that placeholder.
+        if isinstance(event, dict) and not event.get("launch_id"):
+            event["launch_id"] = os.environ.get("OMAORCHESTRA_LAUNCH_ID") or None
+        request = adapter.request_for(event, adapter.agent_process(event))
         if request:
             client.request(request, timeout=0.5)
     except Exception:
@@ -580,7 +588,7 @@ def hook_command(args):
     binary = own_binary()
     if not binary:
         raise claude_settings.SettingsError("cannot find the omaorchestra binary; pass --command")
-    return claude_settings.hook_command(binary)
+    return claude_settings.hook_command(binary, getattr(args, "agent", "claude") or "claude")
 
 
 def cmd_config_path(args):
@@ -629,12 +637,16 @@ def cmd_config_check(args):
 
 
 def cmd_hooks_snippet(args):
-    print(json.dumps(claude_settings.install({}, hook_command(args)), indent=2))
+    adapter = adapters.get(args.agent)
+    if adapter.name == "opencode":
+        print(adapters.PLUGIN.replace("__COMMAND__", json.dumps(shlex.split(hook_command(args)))))
+    else:
+        print(json.dumps(claude_settings.install({}, hook_command(args), adapter.events), indent=2))
     return 0
 
 
 def change_settings(args, change):
-    path = Path(args.settings) if args.settings else claude_settings.default_path()
+    path = Path(args.settings) if args.settings else adapters.get(args.agent)._path(None)
     before = claude_settings.load(path)
     after = change(before)
     if after == before:
@@ -677,27 +689,35 @@ def cmd_service_status(args):
 
 
 def cmd_hooks_install(args):
+    adapter = adapters.get(args.agent)
     command = hook_command(args)
-    return change_settings(args, lambda s: claude_settings.install(s, command))
+    if adapter.name == "opencode":
+        if args.dry_run:
+            return cmd_hooks_snippet(args)
+        written = adapter.install_hooks(command, args.settings)
+        print(f"wrote {written}" if written else "already up to date")
+        return 0
+    result = change_settings(args, lambda s: claude_settings.install(s, command, adapter.events))
+    if adapter.name == "codex" and not args.dry_run:
+        print("Codex runs these hooks only once you trust them: start codex and use /hooks.")
+    return result
 
 
 def cmd_hooks_uninstall(args):
+    adapter = adapters.get(args.agent)
+    if adapter.name == "opencode":
+        removed = adapter.uninstall_hooks(args.settings)
+        print(f"removed {removed}" if removed else "not installed")
+        return 0
     return change_settings(args, claude_settings.remove)
 
 
 def cmd_hooks_status(args):
-    path = Path(args.settings) if args.settings else claude_settings.default_path()
-    found = claude_settings.installed_events(claude_settings.load(path))
-    missing = [e for e in hooks.CLAUDE_EVENTS if e not in found]
-    if not found:
-        print(f"not installed in {path}")
-        return 1
-    commands = sorted(set(found.values()))
-    print(f"installed in {path}")
-    print("command: " + ", ".join(commands))
-    if missing:
-        print("missing events: " + ", ".join(missing))
-    return 1 if missing else 0
+    adapter = adapters.get(args.agent)
+    installed, detail = adapter.hooks_status(args.settings)
+    path = args.settings or adapter._path(None)
+    print(("installed in " if installed else "not installed in ") + str(path) + (f" ({detail})" if detail else ""))
+    return 0 if installed else 1
 
 
 def main(argv=None):
@@ -734,6 +754,7 @@ def main(argv=None):
     run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     run_p.add_argument("--provider", help="run through this API provider instead of the subscription")
     run_p.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
+    run_p.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="which agent (default claude)")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
     qp = sub.add_parser("queue", help="tasks waiting for a free agent slot")
@@ -750,6 +771,7 @@ def main(argv=None):
     qa.add_argument("--paused", action="store_true", help="add it paused")
     qa.add_argument("--provider", help="run through this API provider instead of the subscription")
     qa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
+    qa.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="which agent (default claude)")
     qa.set_defaults(func=cmd_queue_add, agent_args=[])
     for name, text in (("cancel", "remove a task from the queue"), ("pause", "skip it until resumed"),
                        ("resume", "let it run again (also retries a failed task)"),
@@ -870,10 +892,10 @@ def main(argv=None):
     dismiss_p.add_argument("session", help="session id or prefix")
     dismiss_p.set_defaults(func=cmd_dismiss)
     hook = sub.add_parser("hook", help="receive an agent hook event on stdin")
-    hook.add_argument("agent", choices=["claude"])
+    hook.add_argument("agent", choices=list(adapters.ADAPTERS))
     hook.set_defaults(func=cmd_hook)
 
-    hooks_cmd = sub.add_parser("hooks", help="manage omaorchestra's Claude Code hooks")
+    hooks_cmd = sub.add_parser("hooks", help="manage the hooks agents report to omaorchestra with")
     hooks_sub = hooks_cmd.add_subparsers(dest="hooks_command", required=True)
     for name, func, text in (
         ("install", cmd_hooks_install, "add the hooks to Claude Code's settings.json"),
@@ -883,6 +905,8 @@ def main(argv=None):
     ):
         p = hooks_sub.add_parser(name, help=text)
         p.set_defaults(func=func)
+        p.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS),
+                       help="which agent (default claude)")
         if name != "snippet":
             p.add_argument("--settings", help="settings.json to edit (default: ~/.claude/settings.json)")
         if name in ("install", "uninstall"):

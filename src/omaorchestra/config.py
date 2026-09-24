@@ -13,7 +13,7 @@ import shutil
 import tomllib
 from pathlib import Path
 
-KNOWN_AGENTS = ("claude",)
+KNOWN_AGENTS = ("claude", "codex", "opencode")
 
 
 class ConfigError(Exception):
@@ -56,7 +56,7 @@ SCHEMA = {
         "verbose": (False, _bool),
     },
     "agents": {
-        "enabled": (["claude"], _agents),
+        "enabled": (["claude", "codex", "opencode"], _agents),
     },
     "notifications": {
         "waiting": (True, _bool),

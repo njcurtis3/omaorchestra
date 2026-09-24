@@ -180,7 +180,8 @@ class UiFlowTest(unittest.TestCase):
         from omaorchestra import launch
         calls = []
 
-        def fake_run(task, cwd, model=None, permission_mode=None, worktree=None, provider=None, mcp_profile=None, **kw):
+        def fake_run(task, cwd, model=None, permission_mode=None, worktree=None, provider=None, mcp_profile=None,
+                     agent="claude", **kw):
             calls.append((task, cwd, model, permission_mode, worktree))
             # What a real launch does first: register the session.
             self.add_session("new-1", "working", cwd, title=task, launching=True)

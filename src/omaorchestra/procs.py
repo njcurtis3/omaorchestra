@@ -73,6 +73,43 @@ def find_session_process(session_id, proc=PROC):
     return None
 
 
+def _environ(pid, proc=PROC):
+    try:
+        with open(f"{proc}/{pid}/environ", "rb") as f:
+            return f.read().split(b"\0")
+    except OSError:
+        return []
+
+
+def find_env_process(variable, value, names=(), proc=PROC):
+    """(pid, start_time) of the agent launched with `variable=value` in its
+    environment, or None.
+
+    Its terminal has the variable too (it launched the agent), and so do the
+    agent's own children. Prefer a process named like the agent; otherwise
+    take a child of the topmost match (the terminal).
+    """
+    wanted = f"{variable}={value}".encode()
+    try:
+        pids = [int(p) for p in os.listdir(proc) if p.isdigit()]
+    except OSError:
+        return None
+    matches = {pid for pid in pids if wanted in _environ(pid, proc)}
+    if not matches:
+        return None
+    parents = {pid: (parent(pid, proc) or ("", 0)) for pid in matches}
+    named = [pid for pid in matches if parents[pid][0] in names]
+    if named:
+        top = [pid for pid in named if parents[pid][1] not in named]
+        pid = min(top or named)
+    else:
+        roots = [pid for pid in matches if parents[pid][1] not in matches]
+        children = sorted(pid for pid in matches if parents[pid][1] in roots)
+        pid = children[0] if children else min(roots)
+    started = start_time(pid, proc)
+    return (pid, started) if started is not None else None
+
+
 def agent_process(env=None, start=None, names=("claude",), proc=PROC):
     """(pid, start_time) of the agent running this hook, or None.
 

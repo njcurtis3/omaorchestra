@@ -7,8 +7,8 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import (catalog, changes, client, config, control, keys, launch, modeldefaults, providers, recent, transcript,
-               windows, worktrees)
+from .. import (adapters, catalog, changes, client, config, control, keys, launch, modeldefaults, providers, recent,
+               transcript, windows, worktrees)
 from . import present
 from . import theme as theme_file
 
@@ -366,8 +366,8 @@ class Queue(QObject):
             self._update(response["queue"])
         return response
 
-    @Slot(str, str, str, str, bool, bool, str, str, result="QVariantMap")
-    def add(self, task, folder, model, permission_mode, worktree, paused, provider_id, mcp_profile):
+    @Slot(str, str, str, str, bool, bool, str, str, str, result="QVariantMap")
+    def add(self, task, folder, model, permission_mode, worktree, paused, provider_id, mcp_profile, agent):
         import os
         from .. import routing
         if provider_id:  # fail now, not when the task's turn comes
@@ -377,8 +377,8 @@ class Queue(QObject):
                 return {"error": str(e)}
         item = {"task": task, "cwd": os.path.expanduser(folder), "model": model or None,
                 "permission_mode": permission_mode or None, "worktree": worktree, "extra": [],
-                "provider": provider_id or None, "mcp_profile": mcp_profile or None,
-                **launch.agent_environment()}
+                "provider": provider_id or None, "mcp_profile": mcp_profile or None, "agent": agent or "claude",
+                **launch.agent_environment(agent or "claude")}
         return self._send({"cmd": "queue-add", "item": item, "paused": paused})
 
     @Slot(str, result="QVariantMap")
@@ -607,12 +607,14 @@ class Sessions(QObject):
         threading.Thread(target=settle, daemon=True).start()
         return ""
 
-    @Slot(str, str, result="QVariantList")
-    def modelChoices(self, folder, provider_id):
+    @Slot(str, str, str, result="QVariantList")
+    def modelChoices(self, folder, provider_id, agent):
         """Models for the form: the subscription's (with the folder's default),
-        or a routed provider's Claude models."""
+        or a routed provider's Claude models. Other agents take a typed name."""
         import os
         from .. import routing
+        if agent and agent != "claude":
+            return [{"value": "", "label": f"Default ({adapters.get(agent).label}'s own)"}]
         if provider_id:
             try:
                 provider = providers.get(provider_id)
@@ -624,6 +626,13 @@ class Sessions(QObject):
                 {"value": m["id"], "label": m["id"]} for m in models]
         default = modeldefaults.for_folder(os.path.expanduser(folder))[0] if self.folderExists(folder) else None
         return present.model_choices(catalog.all_models(), default)
+
+    @Slot(result="QVariantList")
+    def agentChoices(self):
+        """Agents that are installed, Claude Code first, with what each supports."""
+        import shutil
+        return [{"value": a.name, "label": a.label, "routing": a.supports_routing, "mcpProfile": a.supports_mcp_profile}
+                for a in adapters.ADAPTERS.values() if a.name == "claude" or shutil.which(a.binary())]
 
     @Slot(result="QVariantList")
     def providerChoices(self):
@@ -661,14 +670,14 @@ class Sessions(QObject):
         import os
         return bool(folder) and os.path.isdir(os.path.expanduser(folder))
 
-    @Slot(str, str, str, str, bool, str, str, result="QVariantMap")
-    def launch(self, task, folder, model, permission_mode, worktree, provider_id, mcp_profile):
+    @Slot(str, str, str, str, bool, str, str, str, result="QVariantMap")
+    def launch(self, task, folder, model, permission_mode, worktree, provider_id, mcp_profile, agent):
         """Start an agent on `task`; returns {"id": ...} or {"error": ...}."""
         import os
         try:
             result = launch.run(task, os.path.expanduser(folder), model=model or None,
                                 permission_mode=permission_mode or None, worktree=worktree,
-                                provider=provider_id or None, mcp_profile=mcp_profile or None)
+                                provider=provider_id or None, mcp_profile=mcp_profile or None, agent=agent or "claude")
         except launch.LaunchError as e:
             return {"error": str(e)}
         return {"id": result["id"], "tracked": result["tracked"], "note": result["note"]}

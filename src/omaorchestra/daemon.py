@@ -8,7 +8,7 @@ import time
 
 import subprocess
 
-from . import __version__, config, costs, launch, notify, paths, procs, taskqueue, transcript, usage, windows
+from . import __version__, adapters, config, costs, launch, notify, paths, procs, taskqueue, transcript, usage, windows
 from .log import event
 from .registry import Registry
 
@@ -39,7 +39,7 @@ PRUNE_INTERVAL = 30
 # hooks until that is answered).
 LAUNCH_CHECK_INTERVAL = 2
 LAUNCH_QUIET_SECONDS = 10
-NOT_STARTED_MESSAGE = "Not started yet: its window may be asking whether to trust this folder."
+NOT_STARTED_MESSAGE = adapters.Claude.silent_message
 
 # Events a subscriber may fall behind by before it is disconnected (it can
 # reconnect and get a fresh snapshot).
@@ -113,21 +113,22 @@ class Daemon:
         for item in self.queue.tasks:
             if item["state"] != "pending":
                 continue
-            block = self.budget_block() if item.get("provider") else self.usage_block()
+            block = self.budget_block() if item.get("provider") else self.usage_block(item.get("agent") or "claude")
             if block is None:
                 return item, None
             reason = reason or block
         return None, reason
 
-    def usage_block(self):
-        """The subscription limit that should hold the queue now, if any.
-        Also asks Omarchy to refresh an old record (at most every 5 minutes)."""
+    def usage_block(self, agent="claude"):
+        """The subscription limit that should hold `agent`'s tasks now, if
+        any. Also asks Omarchy to refresh an old record (at most every 5
+        minutes)."""
         threshold = self.settings["tasks"]["pause_at_usage"] / 100
-        block = self.usage_check("claude", threshold)
-        rec_age = usage.age(usage.record("claude"))
+        block = self.usage_check(agent, threshold)
+        rec_age = usage.age(usage.record(agent))
         if (rec_age is None or rec_age > usage.REFRESH_AFTER) and time.time() - self._last_refresh > 300:
             self._last_refresh = time.time()
-            self.usage_refresh("claude")
+            self.usage_refresh(agent)
         return block
 
     def publish_queue(self):
@@ -141,6 +142,7 @@ class Daemon:
                 item["task"], item["cwd"], permission_mode=item.get("permission_mode"), model=item.get("model"),
                 extra=item.get("extra") or (), worktree=item.get("worktree"), agent_bin=item.get("agent_bin"),
                 path=item.get("path"), provider=item.get("provider"), mcp_profile=item.get("mcp_profile"),
+                agent=item.get("agent") or "claude",
                 spawn=self.spawn, request=self.handle,
             )
         except launch.LaunchError as e:
@@ -335,7 +337,36 @@ class Daemon:
             return given
         return {**transcript.info(path), **given}
 
-    def claim_launches(self, now=None, find=procs.find_session_process):
+    def adopt_launch(self, request):
+        """An agent that cannot be told its session id reports its own, with
+        the launch id omaorchestra gave it: move the placeholder session to
+        the agent's id, keeping what the launch recorded (task, worktree...)."""
+        launch_id, session_id = request.get("launch_id"), request.get("session_id")
+        if not launch_id or launch_id == session_id:
+            return
+        placeholder = self.registry.sessions.get(launch_id)
+        if not placeholder or not placeholder.get("launching") or session_id in self.registry.sessions:
+            return
+        self.registry.sessions.pop(launch_id)
+        self.registry.sessions[session_id] = {**placeholder, "id": session_id}
+        self.registry.save()
+        event(logging.INFO, "session adopted", launch=launch_id, id=session_id)
+        self.changed(placeholder, None, reason="adopted")
+
+    def find_launched(self, sid, session):
+        adapter = adapters.ADAPTERS.get(session.get("agent"), adapters.ADAPTERS["claude"])
+        if adapter.supports_session_id:
+            found = procs.find_session_process(sid)
+            if found:
+                return found
+        return procs.find_env_process(launch.LAUNCH_VARIABLE, sid, adapter.process_names)
+
+    @staticmethod
+    def quiet_seconds(session):
+        adapter = adapters.ADAPTERS.get(session.get("agent"))
+        return adapter.quiet_seconds if adapter else LAUNCH_QUIET_SECONDS
+
+    def claim_launches(self, now=None, find=None):
         """Find the processes of launched agents that have not reported yet,
         and flag the ones that stay silent as waiting for the user."""
         now = time.time() if now is None else now
@@ -343,15 +374,16 @@ class Daemon:
             if not s.get("launching"):
                 continue
             if "pid" not in s:
-                found = find(sid)
+                found = find(sid) if find else self.find_launched(sid, s)
                 if found:
                     self.registry.attach_process(sid, *found)
                     event(logging.INFO, "agent found", id=sid, pid=found[0])
                     self.changed(dict(s), dict(self.registry.sessions[sid]))
-            elif now - s.get("started", now) > LAUNCH_QUIET_SECONDS and s["status"] != "needs-input":
+            elif now - s.get("started", now) > self.quiet_seconds(s) and s["status"] != "needs-input":
                 before = dict(s)
-                session = self.registry.update(sid, s["agent"], "needs-input", message=NOT_STARTED_MESSAGE)
-                event(logging.INFO, "session changed", id=sid, status="needs-input", message=NOT_STARTED_MESSAGE)
+                message = adapters.ADAPTERS.get(s.get("agent"), adapters.ADAPTERS["claude"]).silent_message
+                session = self.registry.update(sid, s["agent"], "needs-input", message=message)
+                event(logging.INFO, "session changed", id=sid, status="needs-input", message=message)
                 self.changed(before, dict(session))
 
     def start_launch_watch(self, interval=LAUNCH_CHECK_INTERVAL):
@@ -379,6 +411,7 @@ class Daemon:
             self.prune()
             return {"ok": True, "sessions": self.registry.list()}
         if cmd == "update":
+            self.adopt_launch(request)
             before = self.registry.sessions.get(request["session_id"])
             before = dict(before) if before else None
             previous = before["status"] if before else None

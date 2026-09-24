@@ -12,7 +12,9 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import client, config, modeldefaults, providers, recent, routing, worktrees
+from . import adapters, client, config, modeldefaults, providers, recent, routing, worktrees
+
+LAUNCH_VARIABLE = "OMAORCHESTRA_LAUNCH_ID"
 
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
@@ -20,20 +22,6 @@ APP_ID = "org.omarchy.agent"
 
 class LaunchError(Exception):
     pass
-
-
-def claude_bin():
-    # OMAORCHESTRA_CLAUDE lets tests launch a stand-in agent.
-    return os.environ.get("OMAORCHESTRA_CLAUDE") or "claude"
-
-
-def claude_command(task, session_id, permission_mode=None, model=None, extra=(), agent_bin=None):
-    command = [agent_bin or claude_bin(), "--session-id", session_id]
-    if permission_mode:
-        command += ["--permission-mode", permission_mode]
-    if model:
-        command += ["--model", model]
-    return command + list(extra) + ["--", task]
 
 
 def terminal_command(cwd, command):
@@ -46,16 +34,16 @@ def short(task, limit=80):
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def agent_environment():
+def agent_environment(agent="claude"):
     """What a queued task needs to launch later as if launched now: the
     agent's full path and PATH (the daemon's own PATH, from systemd, usually
     lacks version-manager folders)."""
-    return {"agent_bin": shutil.which(claude_bin()), "path": os.environ.get("PATH")}
+    return {"agent_bin": shutil.which(adapters.get(agent).binary()), "path": os.environ.get("PATH")}
 
 
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None,
-        mcp_profile=None):
+        mcp_profile=None, agent="claude"):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
@@ -66,12 +54,20 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     key is read from the keyring now and passed only in the agent's
     environment.
     """
+    try:
+        adapter = adapters.get(agent)
+    except KeyError as e:
+        raise LaunchError(str(e.args[0])) from e
+    if provider and not adapter.supports_routing:
+        raise LaunchError(f"{adapter.label} cannot run through a provider from omaorchestra (yet)")
+    if mcp_profile and not adapter.supports_mcp_profile:
+        raise LaunchError(f"{adapter.label} cannot be started with an MCP profile (yet)")
     if not task.strip():
         raise LaunchError("the task is empty")
     cwd = Path(cwd).expanduser().resolve()
     if not cwd.is_dir():
         raise LaunchError(f"{cwd} is not a directory")
-    agent_bin = agent_bin or claude_bin()
+    agent_bin = agent_bin or adapter.binary()
     if not shutil.which(agent_bin, path=path):
         raise LaunchError(f"{agent_bin} is not installed")
     if worktree is None:
@@ -82,9 +78,9 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
             route_env = routing.claude_code_env(providers.get(provider), model)
         except (providers.ProviderError, routing.RoutingError) as e:
             raise LaunchError(str(e)) from e
-    elif not model:
-        # Folder and global defaults name subscription models; a routed task
-        # uses the provider's model ids, so defaults do not apply to it.
+    elif not model and adapter.name == "claude":
+        # Folder and global defaults name Claude subscription models; a routed
+        # task uses the provider's model ids, and other agents their own.
         model = modeldefaults.for_folder(cwd)[0]
     session_id = str(uuid.uuid4())
     if mcp_profile:
@@ -107,14 +103,17 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
             workdir = Path(record["workdir"])
     tracked = True
     try:
-        request({"cmd": "update", "session_id": session_id, "agent": "claude", "status": "working",
+        request({"cmd": "update", "session_id": session_id, "agent": adapter.name, "status": "working",
                  "cwd": str(workdir), "title": short(task), "task": task, "launching": True,
                  "model": model or None, "provider": provider or None,
                  "worktree": record["path"] if record else None})
     except client.DaemonUnavailable:
         tracked = False
-    command = terminal_command(workdir, claude_command(task, session_id, permission_mode, model, extra, agent_bin))
-    env = {**os.environ, **({"PATH": path} if path else {}), **route_env} if (path or route_env) else None
+    command = terminal_command(workdir, adapter.command(task, session_id, workdir, model, permission_mode, extra,
+                                                        agent_bin))
+    # The launch id travels in the agent's environment: its hooks inherit it
+    # and report it, which ties the agent's own session id to this placeholder.
+    env = {**os.environ, **({"PATH": path} if path else {}), **route_env, LAUNCH_VARIABLE: session_id}
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True, env=env)

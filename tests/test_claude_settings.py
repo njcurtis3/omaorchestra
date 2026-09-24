@@ -22,7 +22,8 @@ class IsOursTest(unittest.TestCase):
     def test_matches_only_the_form_install_writes(self):
         self.assertTrue(cs.is_ours({"command": OURS}))
         self.assertTrue(cs.is_ours({"command": cs.hook_command("/home/u/my dir/bin/omaorchestra")}))
-        for other in ("echo omaorchestra hook claude", "/bin/omaorchestra hook codex",
+        self.assertTrue(cs.is_ours({"command": "/bin/omaorchestra hook codex"}), "Codex's hooks are ours too")
+        for other in ("echo omaorchestra hook claude", "/bin/omaorchestra hook vscode",
                       "other-tool hook claude", "notify-send done", "'unbalanced"):
             self.assertFalse(cs.is_ours({"command": other}), other)
         self.assertFalse(cs.is_ours("not a dict"))

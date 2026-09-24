@@ -26,8 +26,8 @@ ColumnLayout {
     if (!ready) return
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                             page.inRepo && worktreeSwitch.checked, false, providerBox.currentValue || "",
-                             mcpBox.currentValue || "")
+                             page.inRepo && worktreeSwitch.checked, false, page.routing ? providerBox.currentValue || "" : "",
+                             page.mcpProfiles ? mcpBox.currentValue || "" : "", agentBox.currentValue || "claude")
     if (result.error) { error = result.error; return }
     reset()
     queued()
@@ -36,15 +36,21 @@ ColumnLayout {
     if (!ready) return
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
-                                   page.inRepo && worktreeSwitch.checked, providerBox.currentValue || "",
-                                   mcpBox.currentValue || "")
+                                   page.inRepo && worktreeSwitch.checked, page.routing ? providerBox.currentValue || "" : "",
+                                   page.mcpProfiles ? mcpBox.currentValue || "" : "", agentBox.currentValue || "claude")
     if (result.error) { error = result.error; return }
     const id = result.id
     reset()
     launched(id)
   }
 
+  // What the chosen agent supports.
+  readonly property var agentInfo: agentBox.currentIndex >= 0 && agentBox.model.length ? agentBox.model[agentBox.currentIndex] : null
+  readonly property bool routing: !agentInfo || agentInfo.routing
+  readonly property bool mcpProfiles: !agentInfo || agentInfo.mcpProfile
+
   onVisibleChanged: if (visible) {
+    agentBox.model = sessions.agentChoices()
     providerBox.model = sessions.providerChoices()
     mcpBox.model = mcp.profileChoices()
     worktreeSwitch.checked = sessions.worktreeDefault()
@@ -160,7 +166,7 @@ ColumnLayout {
         objectName: "task-model"
         Layout.preferredWidth: 220
         editable: true
-        model: sessions.modelChoices(folder.text, providerBox.currentValue || "")
+        model: sessions.modelChoices(folder.text, providerBox.currentValue || "", agentBox.currentValue || "claude")
         textRole: "label"
         valueRole: "value"
         // A chosen entry gives its alias; typed text is passed as the model name.
@@ -172,7 +178,7 @@ ColumnLayout {
       id: rememberBox
       objectName: "task-remember-model"
       Layout.alignment: Qt.AlignBottom
-      enabled: page.folderOk && !providerBox.currentValue
+      enabled: page.folderOk && !providerBox.currentValue && (agentBox.currentValue || "claude") === "claude"
       text: "Remember for this folder"
       contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6 }
     }
@@ -190,10 +196,23 @@ ColumnLayout {
     }
 
     ColumnLayout {
+      FieldLabel { text: "Agent" }
+      ThemedComboBox {
+        id: agentBox
+        objectName: "task-agent"
+        Layout.preferredWidth: 160
+        model: [{ value: "claude", label: "Claude Code", routing: true, mcpProfile: true }]
+        textRole: "label"
+        valueRole: "value"
+      }
+    }
+
+    ColumnLayout {
       FieldLabel { text: "MCP servers" }
       ThemedComboBox {
         id: mcpBox
         objectName: "task-mcp"
+        enabled: page.mcpProfiles
         Layout.preferredWidth: 220
         model: [{ value: "", label: "The agent's own servers" }]
         textRole: "label"
@@ -206,6 +225,7 @@ ColumnLayout {
       ThemedComboBox {
         id: providerBox
         objectName: "task-provider"
+        enabled: page.routing
         Layout.preferredWidth: 280
         model: [{ value: "", label: "Subscription" }]
         textRole: "label"

@@ -42,7 +42,7 @@ class LoadTest(unittest.TestCase):
     def test_partial_file_merges_over_defaults(self):
         c = self.load("[daemon]\nprune_interval = 10\n")
         self.assertEqual(c["daemon"]["prune_interval"], 10)
-        self.assertEqual(c["agents"]["enabled"], ["claude"])
+        self.assertEqual(c["agents"]["enabled"], ["claude", "codex", "opencode"])
 
     def test_empty_agent_list_is_allowed(self):
         self.assertEqual(self.load("[agents]\nenabled = []\n")["agents"]["enabled"], [])
