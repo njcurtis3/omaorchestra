@@ -71,10 +71,11 @@ class UiFlowTest(unittest.TestCase):
         self.worktrees = backend.Worktrees()
         self.queue = backend.Queue(self.sessions)
         self.providers = backend.Providers()
+        self.spend = backend.Spend(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers), ("spend", self.spend),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -288,6 +289,14 @@ class UiFlowTest(unittest.TestCase):
         result = lambda: self.find("provider-result-local")  # noqa: E731
         self.assertTrue(wait_for(lambda: result() is not None and "cannot reach" in result().property("text"), timeout=20),
                         "test result not shown")
+        self.assertEqual(self.warnings, [])
+
+    def test_usage_page_shows_the_report(self):
+        self.add_session("u1", "idle", "/tmp/usage-demo")
+        self.click("nav-usage")
+        today = lambda: self.find("usage-today")  # noqa: E731
+        self.assertTrue(wait_for(lambda: today() is not None and "Provider spend: $0.00" in today().property("text"),
+                                 timeout=10), "report not shown")
         self.assertEqual(self.warnings, [])
 
     def test_reconnects_after_the_daemon_restarts(self):

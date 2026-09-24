@@ -124,6 +124,16 @@ def get_json(provider, route, key=None, lookup=None):
         raise ProviderError(f"{url} did not return JSON") from e
 
 
+def balance(provider, lookup=None):
+    """What the provider reports about spend on this key, or None when it
+    reports nothing (only OpenRouter does, in credits, via GET /key)."""
+    if provider["kind"] != "openrouter":
+        return None
+    data = get_json(provider, "/key", lookup=lookup).get("data") or {}
+    return {k: data.get(k) for k in ("usage", "usage_daily", "usage_weekly", "usage_monthly", "limit",
+                                     "limit_remaining") if k in data}
+
+
 def test(provider, lookup=None):
     """Check a provider end to end: reachable, key accepted. Returns a
     one-line result; raises ProviderError on failure."""

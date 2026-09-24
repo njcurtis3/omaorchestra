@@ -46,7 +46,8 @@ def _agents(value):
 
 
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
-           ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100)}
+           ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
+           ("tasks", "daily_budget"): (0, 100000)}
 
 # section -> key -> (default, validator)
 SCHEMA = {
@@ -66,6 +67,7 @@ SCHEMA = {
         "isolate_with_worktrees": (True, _bool),
         "pause_at_usage": (90, _int_between(*_RANGES[("tasks", "pause_at_usage")])),
         "default_model": ("", _model_name),
+        "daily_budget": (0, _int_between(*_RANGES[("tasks", "daily_budget")])),
     },
 }
 
@@ -105,6 +107,9 @@ METADATA = {
                                        "In a git repository, give each task its own worktree and branch."),
             "default_model": ("Default model", "Used when a task names no model and its folder has no "
                                                "default of its own; empty uses the agent's default."),
+            "daily_budget": ("Daily provider budget (US$)",
+                             "Start no queued task that runs through an API provider once today's estimated "
+                             "provider spend reaches this; 0 turns it off."),
             "pause_at_usage": ("Hold the queue at usage (%)",
                                "Start no queued task while any of the agent's subscription limits is at or "
                                "above this (from Omarchy's usage records); 0 turns it off."),

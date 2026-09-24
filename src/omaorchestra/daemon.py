@@ -8,7 +8,7 @@ import time
 
 import subprocess
 
-from . import __version__, config, launch, notify, paths, procs, taskqueue, transcript, usage, windows
+from . import __version__, config, costs, launch, notify, paths, procs, taskqueue, transcript, usage, windows
 from .log import event
 from .registry import Registry
 
@@ -76,8 +76,48 @@ class Daemon:
         return sum(1 for s in self.registry.sessions.values() if s.get("status") in ("working", "needs-input"))
 
     def queue_snapshot(self):
-        blocked = dict(self.blocked, text=usage.describe(self.blocked)) if self.blocked else None
+        blocked = None
+        if self.blocked:
+            text = self.blocked.get("text") or usage.describe(self.blocked)
+            blocked = dict(self.blocked, text=text)
         return self.queue.snapshot(self.busy(), self.settings["tasks"]["max_parallel"], blocked)
+
+    def record_spend(self, session):
+        """Add a routed session's new spend to today's ledger (on each status
+        change, so the ledger follows the work as it happens)."""
+        try:
+            now = costs.session_cost(session)["usd"]
+        except OSError:
+            return
+        delta = now - session.get("cost", 0.0)
+        if delta > 0:
+            costs.record(session["provider"], delta)
+            session["cost"] = now
+            self.registry.save()
+
+    def budget_block(self):
+        budget = self.settings["tasks"]["daily_budget"]
+        spent = costs.spent_today()
+        if budget and spent >= budget:
+            return {"kind": "budget", "spent": spent, "budget": budget,
+                    "text": f"today's provider spend is ${spent:.2f}, at the ${budget} daily budget"}
+        return None
+
+    def next_startable(self):
+        """The first pending task nothing holds back, or None and the reason.
+
+        Subscription usage limits hold tasks that run on the subscription;
+        the daily budget holds tasks that run through a provider.
+        """
+        reason = None
+        for item in self.queue.tasks:
+            if item["state"] != "pending":
+                continue
+            block = self.budget_block() if item.get("provider") else self.usage_block()
+            if block is None:
+                return item, None
+            reason = reason or block
+        return None, reason
 
     def usage_block(self):
         """The subscription limit that should hold the queue now, if any.
@@ -120,18 +160,14 @@ class Daemon:
             changed = False
             blocked = self.blocked
             while self.busy() < self.settings["tasks"]["max_parallel"]:
-                item = self.queue.next_pending()
+                item, blocked = self.next_startable()
                 if item is None:
-                    blocked = None
-                    break
-                blocked = self.usage_block()
-                if blocked:
                     break
                 self.start_task(item)
                 changed = True
             if blocked != self.blocked:
                 if blocked:
-                    event(logging.INFO, "queue waiting", reason=usage.describe(blocked))
+                    event(logging.INFO, "queue waiting", reason=blocked.get("text") or usage.describe(blocked))
                 elif self.blocked:
                     event(logging.INFO, "queue resumed", reason="usage limit no longer reached")
                 self.blocked = blocked
@@ -334,6 +370,8 @@ class Daemon:
                 transcript_path=request.get("transcript_path"),
                 **self.transcript_facts(before, request),
             )
+            if session.get("provider") and previous != session["status"] and session.get("transcript_path"):
+                self.record_spend(session)
             if previous is None:
                 event(logging.INFO, "session started", id=session["id"], agent=session["agent"],
                       status=session["status"], pid=session.get("pid"), cwd=session.get("cwd"))

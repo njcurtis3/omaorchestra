@@ -30,3 +30,6 @@ isolate_with_worktrees = true
 # (as Omarchy's usage records report them) is at or above this percentage;
 # 0 turns it off
 pause_at_usage = 90
+# Start no queued task that runs through an API provider once today's
+# estimated provider spend reaches this many US dollars; 0 turns it off
+daily_budget = 0

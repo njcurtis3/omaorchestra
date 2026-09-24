@@ -201,6 +201,42 @@ class Providers(QObject):
     error = Property(str, lambda self: self._error, notify=changed)
 
 
+class Spend(QObject):
+    """The spending report (spend.report), refreshed on a background thread
+    since it reads transcripts and may ask providers for balances."""
+
+    changed = Signal()
+    _ready = Signal("QVariantMap")
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self.sessions = sessions
+        self._report = {}
+        self._loading = False
+        self._ready.connect(self._set)
+
+    @Slot("QVariantMap")
+    def _set(self, report):
+        self._report, self._loading = dict(report), False
+        self.changed.emit()
+
+    @Slot()
+    def refresh(self):
+        from .. import spend
+        self._loading = True
+        self.changed.emit()
+        rows = list(self.sessions.by_id.values())
+        threading.Thread(target=lambda: self._ready.emit(spend.report(rows)), daemon=True).start()
+
+    @Slot(str, result=str)
+    def resetText(self, iso):
+        from .. import spend
+        return spend.reset_text(iso)
+
+    report = Property("QVariantMap", lambda self: self._report, notify=changed)
+    loading = Property(bool, lambda self: self._loading, notify=changed)
+
+
 class Queue(QObject):
     """The daemon's task queue, kept current from the session subscription."""
 
@@ -532,6 +568,18 @@ class Sessions(QObject):
         except launch.LaunchError as e:
             return {"error": str(e)}
         return {"id": result["id"], "tracked": result["tracked"], "note": result["note"]}
+
+    @Slot(str, result=str)
+    def costText(self, session_id):
+        """ "$1.23 spent via openrouter" or "~$4.56 API-equivalent", or ""."""
+        from .. import costs
+        session = self.by_id.get(session_id)
+        if not session or not session.get("transcript_path"):
+            return ""
+        c = costs.session_cost(session)
+        if c["real"]:
+            return f"${c['usd']:.2f} spent via {session['provider']}"
+        return f"~${c['usd']:.2f} API-equivalent" if c["usd"] else ""
 
     @Slot(float, result=str)
     def clock(self, timestamp):

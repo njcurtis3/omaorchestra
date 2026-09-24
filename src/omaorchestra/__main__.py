@@ -284,6 +284,13 @@ def cmd_models(args):
     return 0
 
 
+def cmd_spend(args):
+    from . import spend
+    r = spend.report(include_balances=not args.offline)
+    print(json.dumps(r, indent=2) if args.json else spend.format_report(r))
+    return 0
+
+
 def cmd_models_default(args):
     where = launch.Path(args.dir).expanduser().resolve() if args.dir else None
     if args.clear or args.model:
@@ -571,6 +578,10 @@ def main(argv=None):
         p.add_argument("id")
         p.set_defaults(func=cmd_queue_move)
 
+    sp = sub.add_parser("spend", help="provider spend today, subscription limits, and what sessions cost")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--offline", action="store_true", help="do not ask providers for their balances")
+    sp.set_defaults(func=cmd_spend)
     pp = sub.add_parser("provider", help="model providers (API keys live in the system keyring)")
     p_sub = pp.add_subparsers(dest="provider_command", required=True)
     p_sub.add_parser("list", help="configured providers").set_defaults(func=cmd_provider_list)

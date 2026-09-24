@@ -1,0 +1,112 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+// Spend and limits: provider spend today against the budget, the
+// subscription's limits (from Omarchy), what each session costs, and
+// provider balances. `spend` and `theme` come from Python.
+ScrollView {
+  id: page
+  clip: true
+  contentWidth: availableWidth
+
+  onVisibleChanged: if (visible) spend.refresh()
+  readonly property var r: spend.report
+
+  component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 8 }
+  component Line: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+
+  ColumnLayout {
+    width: page.availableWidth
+    spacing: 6
+
+    RowLayout {
+      Layout.fillWidth: true
+      Label {
+        Layout.fillWidth: true
+        color: theme.muted
+        wrapMode: Text.Wrap
+        text: "Spend through API providers is real; a subscription session's cost is what the same work would cost on the API."
+      }
+      IconButton { glyph: spend.loading ? "󰔟" : "󰑐"; tip: "Refresh"; onActivated: spend.refresh() }
+    }
+
+    Section { text: "Today" + (page.r.day ? " (" + page.r.day + ")" : "") }
+    Line {
+      objectName: "usage-today"
+      color: page.r.budget && page.r.spent >= page.r.budget ? theme.urgent : theme.foreground
+      text: page.r.spent === undefined ? "…"
+        : "Provider spend: $" + page.r.spent.toFixed(2)
+          + (page.r.budget ? " of the $" + page.r.budget + " daily budget" : " (no daily budget; set one in Settings)")
+    }
+    Repeater {
+      model: page.r.byProvider ? Object.keys(page.r.byProvider) : []
+      delegate: Line { required property string modelData; text: "   " + modelData + ": $" + page.r.byProvider[modelData].toFixed(2) }
+    }
+
+    Section { text: "Subscription" }
+    Line { visible: !page.r.limits || page.r.limits.length === 0; text: "No usage record from Omarchy's agents widget." }
+    Repeater {
+      model: page.r.limits || []
+      delegate: RowLayout {
+        required property var modelData
+        Layout.fillWidth: true
+        spacing: 12
+        Label { Layout.preferredWidth: 220; text: modelData.label; color: theme.foreground }
+        Rectangle {
+          Layout.preferredWidth: 220
+          height: 8
+          radius: 4
+          color: theme.selection
+          Rectangle {
+            width: parent.width * Math.min(1, modelData.percent)
+            height: parent.height
+            radius: 4
+            color: modelData.percent >= 0.9 ? theme.urgent : theme.accent
+          }
+        }
+        Label {
+          text: Math.round(modelData.percent * 100) + "%" + (modelData.resetsAt ? ", resets " + spend.resetText(modelData.resetsAt) : "")
+          color: modelData.percent >= 0.9 ? theme.urgent : theme.muted
+        }
+      }
+    }
+
+    Section { text: "Sessions" }
+    Line { visible: !page.r.sessions || page.r.sessions.length === 0; text: "No sessions." }
+    Repeater {
+      model: page.r.sessions || []
+      delegate: RowLayout {
+        required property var modelData
+        Layout.fillWidth: true
+        spacing: 12
+        Label { Layout.preferredWidth: 200; text: modelData.project; color: theme.foreground; elide: Text.ElideRight }
+        Label { Layout.preferredWidth: 110; text: modelData.model; color: theme.muted }
+        Label {
+          Layout.preferredWidth: 90
+          horizontalAlignment: Text.AlignRight
+          text: "$" + modelData.usd.toFixed(2)
+          color: modelData.real ? theme.foreground : theme.muted
+        }
+        Label {
+          Layout.fillWidth: true
+          color: theme.muted
+          text: (modelData.real ? "spent via " + modelData.provider : "API-equivalent")
+            + (modelData.unpriced.length ? "  (no price for " + modelData.unpriced.join(", ") + ")" : "")
+        }
+      }
+    }
+
+    Section { visible: !!(page.r.balances && page.r.balances.length); text: "Provider balances" }
+    Repeater {
+      model: page.r.balances || []
+      delegate: Line {
+        required property var modelData
+        color: modelData.error ? theme.urgent : theme.muted
+        text: modelData.provider + ": " + (modelData.error ? modelData.error
+          : (modelData.usage_daily || 0).toFixed(2) + " credits used today, " + (modelData.usage || 0).toFixed(2) + " in all"
+            + (modelData.limit ? ", " + modelData.limit_remaining.toFixed(2) + " of " + modelData.limit.toFixed(2) + " left" : ""))
+      }
+    }
+  }
+}

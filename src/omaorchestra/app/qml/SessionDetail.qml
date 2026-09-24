@@ -116,6 +116,7 @@ ColumnLayout {
       detail.s.branch ? " " + detail.s.branch : "",
       detail.s.worktree ? "󰙅 own worktree" : "",
       detail.s.modelName || "",
+      sessions.costText(detail.sessionId),
       detail.s.cwd || ""
     ].filter(Boolean).join("   ·   ")
   }

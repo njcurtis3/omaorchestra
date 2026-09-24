@@ -348,6 +348,21 @@ Anthropic API and OpenRouter, with Claude models only; billing then moves to
 the provider. See [docs/providers.md](docs/providers.md) for what works, what
 it means for billing and terms, and how the key is handled.
 
+```bash
+omaorchestra spend          # today's provider spend, subscription limits, what sessions cost
+```
+
+A session's cost is its transcript's token usage times the model's price.
+For a session run through a provider that is real spend, kept in a daily
+ledger; for a subscription session it is only the API-equivalent, since
+subscriptions are not billed per token. With `tasks.daily_budget` set,
+queued tasks that run through a provider wait once today's provider spend
+reaches it (subscription tasks keep going, and subscription limits hold only
+subscription tasks). Provider balances come from the provider where it
+reports them (OpenRouter's key usage, in credits); Anthropic's own usage and
+cost reports need an Admin API key and are not read. The app's **Usage**
+page shows the same, and a session's details show its cost.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).

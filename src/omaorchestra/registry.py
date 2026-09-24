@@ -19,7 +19,7 @@ class Registry:
                 self.sessions = {}
 
     # Optional facts a session may carry; None leaves the stored value alone.
-    EXTRA = ("transcript_path", "model", "branch", "title", "task", "launching", "worktree", "provider")
+    EXTRA = ("transcript_path", "model", "branch", "title", "task", "launching", "worktree", "provider", "cost")
     # A session registered by `omaorchestra run` that no agent has claimed
     # (reported a process for) by then is dropped: the launch failed.
     LAUNCH_TIMEOUT = 60
