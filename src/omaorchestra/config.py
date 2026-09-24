@@ -6,6 +6,7 @@ fallback: a typo should not quietly do nothing.
 """
 
 import copy
+import json
 import os
 import re
 import shutil
@@ -29,6 +30,11 @@ def _int_between(low, high):
 def _bool(value):
     if not isinstance(value, bool):
         return "must be true or false"
+
+
+def _model_name(value):
+    if not isinstance(value, str) or any(c.isspace() for c in value):
+        return "must be a model name without spaces (or empty for the agent's default)"
 
 
 def _agents(value):
@@ -59,6 +65,7 @@ SCHEMA = {
         "max_parallel": (2, _int_between(*_RANGES[("tasks", "max_parallel")])),
         "isolate_with_worktrees": (True, _bool),
         "pause_at_usage": (90, _int_between(*_RANGES[("tasks", "pause_at_usage")])),
+        "default_model": ("", _model_name),
     },
 }
 
@@ -96,6 +103,8 @@ METADATA = {
                                                "(working or waiting for you)."),
             "isolate_with_worktrees": ("Separate worktree per task",
                                        "In a git repository, give each task its own worktree and branch."),
+            "default_model": ("Default model", "Used when a task names no model and its folder has no "
+                                               "default of its own; empty uses the agent's default."),
             "pause_at_usage": ("Hold the queue at usage (%)",
                                "Start no queued task while any of the agent's subscription limits is at or "
                                "above this (from Omarchy's usage records); 0 turns it off."),
@@ -116,6 +125,8 @@ def describe(config):
                 kind = "bool"
             elif isinstance(default, int):
                 kind = "int"
+            elif isinstance(default, str):
+                kind = "text"
             else:
                 kind = "agents"
             field = {"section": section, "key": key, "label": label, "help": help_text, "kind": kind,
@@ -145,12 +156,16 @@ def parse_value(section, key, text):
             return int(text)
         except ValueError:
             raise ConfigError(f"{section}.{key} must be a whole number") from None
+    if isinstance(default, str):
+        return text.strip()
     return [part.strip() for part in text.split(",") if part.strip()]
 
 
 def toml_value(value):
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value)
     if isinstance(value, list):
         return "[" + ", ".join(f'"{v}"' for v in value) + "]"
     return str(value)
@@ -293,12 +308,6 @@ def to_toml(config):
     for section, values in config.items():
         lines.append(f"[{section}]")
         for key, value in values.items():
-            if isinstance(value, bool):
-                text = "true" if value else "false"
-            elif isinstance(value, list):
-                text = "[" + ", ".join(f'"{v}"' for v in value) + "]"
-            else:
-                text = str(value)
-            lines.append(f"{key} = {text}")
+            lines.append(f"{key} = {toml_value(value)}")
         lines.append("")
     return "\n".join(lines)

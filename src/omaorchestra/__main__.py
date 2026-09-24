@@ -7,8 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import (__version__, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch, procs,
-               providers, service, windows, worktrees)
+from . import (__version__, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
+               modeldefaults, procs, providers, service, windows, worktrees)
 
 
 def cmd_daemon(args):
@@ -275,6 +275,20 @@ def cmd_models(args):
         print(f"{m['provider']:<12} {m['id']:<44} {context:<10} {price}")
     if not any(m["provider"] != "claude-code" for m in models) and not args.refresh:
         print("(only Claude Code's aliases; add providers and run `omaorchestra models --refresh`)")
+    return 0
+
+
+def cmd_models_default(args):
+    where = launch.Path(args.dir).expanduser().resolve() if args.dir else None
+    if args.clear or args.model:
+        if where:
+            modeldefaults.set_for(where, "" if args.clear else args.model)
+        else:
+            config.save({"tasks": {"default_model": "" if args.clear else args.model}})
+            reload_daemon(quiet_if_down=True)
+    model, source = modeldefaults.for_folder(where or launch.Path.cwd())
+    label = {"folder": "this folder's default", "global": "the global default"}.get(source, "the agent's own default")
+    print(f"{model or '(none)'}  ({label})")
     return 0
 
 
@@ -571,6 +585,12 @@ def main(argv=None):
     mp.add_argument("--refresh", action="store_true", help="fetch the lists again")
     mp.add_argument("--json", action="store_true")
     mp.set_defaults(func=cmd_models)
+    m_sub = mp.add_subparsers(dest="models_command")
+    md = m_sub.add_parser("default", help="show or set the model tasks use when they name none")
+    md.add_argument("model", nargs="?", help="a model or alias (omit to show the current default)")
+    md.add_argument("--for", dest="dir", help="set it for this folder (and the folders inside it)")
+    md.add_argument("--clear", action="store_true", help="remove the default")
+    md.set_defaults(func=cmd_models_default)
 
     wt = sub.add_parser("worktree", help="task worktrees: list, review, merge, remove")
     wt_sub = wt.add_subparsers(dest="worktree_command", required=True)

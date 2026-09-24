@@ -195,10 +195,17 @@ class UiFlowTest(unittest.TestCase):
             folder.setProperty("text", self.tmp.name)
             spin()
             self.assertTrue(self.find("task-launch").property("enabled"))
+            model_box = self.find("task-model")
+            values = [c["value"] for c in model_box.property("model")]
+            model_box.setProperty("currentIndex", values.index("opus"))
+            self.find("task-remember-model").setProperty("checked", True)
+            spin()
             self.click("task-launch")
             self.assertTrue(wait_for(lambda: self.shown("detail")), "did not open the new session")
         # Not a git repository, so no worktree even though it is on by default.
-        self.assertEqual(calls, [("fix it", self.tmp.name, None, None, False)])
+        self.assertEqual(calls, [("fix it", self.tmp.name, "opus", None, False)])
+        from omaorchestra import modeldefaults
+        self.assertEqual(modeldefaults.for_folder(self.tmp.name), ("opus", "folder"), "not remembered")
         self.assertEqual(self.page().property("selectedId"), "new-1")
         self.assertEqual(self.find("task-prompt").property("text"), "", "form not cleared after launching")
         self.assertEqual(self.warnings, [])

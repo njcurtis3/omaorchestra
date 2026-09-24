@@ -22,6 +22,17 @@ function ago(seconds) {
   return Math.floor(s / 86400) + "d ago"
 }
 
+// "claude-opus-5-5" -> "Opus 5.5"; mirrors transcript.model_name in Python.
+function modelName(model) {
+  if (!model) return ""
+  var name = String(model).replace(/^claude-/, "").replace(/-\d{8}$/, "")
+  var parts = name.split("-")
+  var words = parts.filter(function(p) { return !/^\d+$/.test(p) })
+  var version = parts.filter(function(p) { return /^\d+$/.test(p) }).join(".")
+  if (!words.length) return String(model)
+  return words.map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1) }).join(" ") + (version ? " " + version : "")
+}
+
 function statusLabel(status) {
   if (status === "needs-input") return "waiting for you"
   if (status === "working") return "working"

@@ -18,16 +18,8 @@ def project(cwd):
     return os.path.basename(path) or "/"
 
 
-# Choices offered by the new-task form. Claude Code takes these model aliases
-# (any other name can be typed); bypassPermissions and dontAsk are left out
-# on purpose: approvals stay with the user.
-MODEL_CHOICES = [
-    {"value": "", "label": "Default"},
-    {"value": "fable", "label": "Fable"},
-    {"value": "opus", "label": "Opus"},
-    {"value": "sonnet", "label": "Sonnet"},
-    {"value": "haiku", "label": "Haiku"},
-]
+# Permission modes offered by the new-task form; bypassPermissions and
+# dontAsk are left out on purpose: approvals stay with the user.
 PERMISSION_CHOICES = [
     {"value": "", "label": "Default (the agent's own setting)"},
     {"value": "manual", "label": "Ask for everything"},
@@ -35,6 +27,24 @@ PERMISSION_CHOICES = [
     {"value": "acceptEdits", "label": "Accept edits"},
     {"value": "auto", "label": "Auto (approve what looks safe)"},
 ]
+
+
+def model_choices(catalog_models, default=None):
+    """The form's model list: the default first, Claude Code's aliases, then
+    Claude model ids (the ones Claude Code accepts), from the catalog and the
+    known price list."""
+    choices = [{"value": "", "label": f"Default ({default})" if default else "Default (the agent's own)"}]
+    seen = set()
+    for m in catalog_models:
+        if m["provider"] == "claude-code":
+            choices.append({"value": m["id"], "label": m["name"]})
+            seen.add(m["id"])
+    from ..catalog import ANTHROPIC_PRICES
+    claude_ids = {m["id"] for m in catalog_models if m["id"].startswith("claude-")} | set(ANTHROPIC_PRICES)
+    for model_id in sorted(claude_ids):
+        if model_id not in seen:
+            choices.append({"value": model_id, "label": model_id})
+    return choices
 
 
 def recent_folders(remembered, sessions, exists=os.path.isdir, limit=12):

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs"
 // Format.js is a QML ".pragma library"; strip the pragma and load it as a script.
 const src = readFileSync(new URL("../../plugin/omaorchestra.sessions/Format.js", import.meta.url), "utf8")
 const F = new Function(src.replace(/^\.pragma library\s*$/m, "") +
-  "\nreturn { projectName, ago, statusLabel, sessionList, sorted, counts, barLabel, tooltip }")()
+  "\nreturn { projectName, ago, modelName, statusLabel, sessionList, sorted, counts, barLabel, tooltip }")()
 
 test("projectName uses the last path component", () => {
   assert.equal(F.projectName("/home/u/Work/proj"), "proj")
@@ -46,4 +46,12 @@ test("bar label and tooltip reflect counts", () => {
   assert.equal(F.barLabel("G", F.counts([{ status: "idle" }])), "G")
   assert.equal(F.tooltip(c), "omaorchestra: 1 waiting · 2 working · 1 idle")
   assert.equal(F.tooltip(F.counts([])), "omaorchestra: no agent sessions")
+})
+
+test("modelName matches the Python formatting", () => {
+  assert.equal(F.modelName("claude-opus-5-5"), "Opus 5.5")
+  assert.equal(F.modelName("claude-haiku-4-5-20251001"), "Haiku 4.5")
+  assert.equal(F.modelName("claude-sonnet-5"), "Sonnet 5")
+  assert.equal(F.modelName(""), "")
+  assert.equal(F.modelName("gpt-5"), "Gpt 5")
 })

@@ -328,6 +328,19 @@ tokens, from the provider (OpenRouter) or Anthropic's published prices
 (Anthropic's models API reports context sizes but not prices). The app's
 **Providers** page does the same.
 
+When a task names no model, it uses its folder's default (or that of a
+folder above it), then `tasks.default_model`, then the agent's own:
+
+```bash
+omaorchestra models default opus --for ~/code/app   # this project
+omaorchestra models default sonnet                  # everywhere else
+omaorchestra models default                         # what applies here
+```
+
+The New task form lists Claude Code's aliases and the Claude models it
+accepts, shows the folder's default, and can remember the chosen model for
+the folder. Sessions show their model in the bar panel and the app.
+
 ## Configuration
 
 Settings live in `~/.config/omaorchestra/config.toml` (or `$OMAORCHESTRA_CONFIG`).

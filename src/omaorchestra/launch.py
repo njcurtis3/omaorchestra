@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import client, config, recent, worktrees
+from . import client, config, modeldefaults, recent, worktrees
 
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
@@ -72,6 +72,8 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         raise LaunchError(f"{agent_bin} is not installed")
     if worktree is None:
         worktree = config.load_or_defaults()["tasks"]["isolate_with_worktrees"]
+    if not model:
+        model = modeldefaults.for_folder(cwd)[0]
     session_id = str(uuid.uuid4())
     record, note, workdir = None, "", cwd
     if worktree:
@@ -87,6 +89,7 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     try:
         request({"cmd": "update", "session_id": session_id, "agent": "claude", "status": "working",
                  "cwd": str(workdir), "title": short(task), "task": task, "launching": True,
+                 "model": model or None,
                  "worktree": record["path"] if record else None})
     except client.DaemonUnavailable:
         tracked = False

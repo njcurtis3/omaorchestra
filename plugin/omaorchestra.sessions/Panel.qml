@@ -180,7 +180,9 @@ Panel {
                 anchors.right: actions.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
-                text: String(row.modelData.agent || "agent") + " · " + Format.ago(root.now - Number(row.modelData.updated))
+                text: String(row.modelData.agent || "agent")
+                  + (row.modelData.model ? " · " + Format.modelName(row.modelData.model) : "")
+                  + " · " + Format.ago(root.now - Number(row.modelData.updated))
                   + " · " + String(row.modelData.cwd || "")
                 elide: Text.ElideMiddle
                 color: Color.muted

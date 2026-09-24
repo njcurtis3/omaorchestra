@@ -18,11 +18,13 @@ ColumnLayout {
 
   function reset() {
     prompt.text = ""
+    rememberBox.checked = false
     error = ""
     prompt.forceActiveFocus()
   }
   function addToQueue() {
     if (!ready) return
+    if (rememberBox.checked) sessions.rememberModel(folder.text, modelBox.value)
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
                              page.inRepo && worktreeSwitch.checked, false)
     if (result.error) { error = result.error; return }
@@ -31,6 +33,7 @@ ColumnLayout {
   }
   function launch() {
     if (!ready) return
+    if (rememberBox.checked) sessions.rememberModel(folder.text, modelBox.value)
     const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
                                    page.inRepo && worktreeSwitch.checked)
     if (result.error) { error = result.error; return }
@@ -151,12 +154,21 @@ ColumnLayout {
         objectName: "task-model"
         Layout.preferredWidth: 220
         editable: true
-        model: sessions.modelChoices
+        model: sessions.modelChoices(folder.text)
         textRole: "label"
         valueRole: "value"
         // A chosen entry gives its alias; typed text is passed as the model name.
         readonly property string value: currentIndex >= 0 && editText === currentText ? currentValue : editText.trim()
       }
+    }
+
+    CheckBox {
+      id: rememberBox
+      objectName: "task-remember-model"
+      Layout.alignment: Qt.AlignBottom
+      enabled: page.folderOk
+      text: "Remember for this folder"
+      contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6 }
     }
 
     ColumnLayout {

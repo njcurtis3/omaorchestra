@@ -173,6 +173,17 @@ ColumnLayout {
                   palette.buttonText: theme.foreground
                 }
 
+                TextField {
+                  visible: fieldRow.modelData.kind === "text"
+                  Layout.preferredWidth: 220
+                  text: fieldRow.modelData.kind === "text" ? fieldRow.current : ""
+                  placeholderText: "(none)"
+                  placeholderTextColor: theme.muted
+                  color: theme.foreground
+                  background: Rectangle { radius: 4; color: theme.background; border.color: theme.selection }
+                  onTextEdited: page.setValue(fieldRow.modelData, text.trim())
+                }
+
                 Row {
                   visible: fieldRow.modelData.kind === "agents"
                   spacing: 12

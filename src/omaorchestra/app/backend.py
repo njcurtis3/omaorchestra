@@ -7,7 +7,8 @@ import time
 from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import catalog, changes, client, config, control, keys, launch, providers, recent, transcript, windows, worktrees
+from .. import (catalog, changes, client, config, control, keys, launch, modeldefaults, providers, recent, transcript,
+               windows, worktrees)
 from . import present
 from . import theme as theme_file
 
@@ -460,7 +461,16 @@ class Sessions(QObject):
         threading.Thread(target=settle, daemon=True).start()
         return ""
 
-    modelChoices = Property("QVariantList", lambda self: present.MODEL_CHOICES, constant=True)
+    @Slot(str, result="QVariantList")
+    def modelChoices(self, folder):
+        import os
+        default = modeldefaults.for_folder(os.path.expanduser(folder))[0] if self.folderExists(folder) else None
+        return present.model_choices(catalog.all_models(), default)
+
+    @Slot(str, str)
+    def rememberModel(self, folder, model):
+        import os
+        modeldefaults.set_for(os.path.expanduser(folder), model)
     permissionChoices = Property("QVariantList", lambda self: present.PERMISSION_CHOICES, constant=True)
 
     @Slot(result="QVariantList")
