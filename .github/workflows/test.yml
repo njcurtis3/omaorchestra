@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: pacman -Syu --noconfirm --needed python pyside6 nodejs git systemd
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Python and app tests
         run: python -m unittest discover -v tests
       - name: Bar widget tests
