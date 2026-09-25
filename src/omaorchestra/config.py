@@ -67,7 +67,8 @@ OPTIONS = {("agents", "enabled"): KNOWN_AGENTS, ("remote", "events"): REMOTE_EVE
 
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
            ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
-           ("tasks", "daily_budget"): (0, 100000), ("remote", "away_after"): (1, 240)}
+           ("tasks", "daily_budget"): (0, 100000), ("remote", "away_after"): (1, 240),
+           ("remote", "answer_wait"): (30, 3600)}
 
 # section -> key -> (default, validator)
 SCHEMA = {
@@ -98,6 +99,8 @@ SCHEMA = {
                     f"must be one of {', '.join(CONTENT_LEVELS)}"),
         "events": (list(REMOTE_EVENTS), _events),
         "away_after": (10, _int_between(*_RANGES[("remote", "away_after")])),
+        "answer_prompts": (True, _bool),
+        "answer_wait": (600, _int_between(*_RANGES[("remote", "answer_wait")])),
     },
 }
 
@@ -164,6 +167,13 @@ METADATA = {
             "away_after": ("Away after (minutes)", "In away mode auto (`omaorchestra away`), you count as away "
                                                    "once the screen is locked or after this long without input; "
                                                    "nothing is pushed while you are at the desk."),
+            "answer_prompts": ("Answer permission prompts remotely",
+                               "While you are away, Claude Code's permission prompts can also be answered from "
+                               "`omaorchestra top` or `omaorchestra approve`/`deny`, one request at a time. The "
+                               "terminal prompt stays up and works as usual."),
+            "answer_wait": ("Remote answer window (seconds)",
+                            "How long a permission prompt stays answerable remotely; after that only the "
+                            "terminal can answer it."),
         },
     },
 }

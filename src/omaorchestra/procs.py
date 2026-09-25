@@ -135,3 +135,25 @@ def agent_process(env=None, start=None, names=("claude",), proc=PROC):
             return pid, start_time(pid, proc)
         pid = ppid
     return None
+
+
+# Set by Claude Code in the environment of everything it runs.
+AGENT_MARKERS = (b"CLAUDECODE=1",)
+
+
+def under_agent(pid, names, proc=PROC):
+    """The name of the agent `pid` runs under (itself or an ancestor named in
+    `names`, or with an agent's marker in its environment), or None."""
+    if any(marker in _environ(pid, proc) for marker in AGENT_MARKERS):
+        return "claude"
+    for _ in range(64):
+        if pid <= 1:
+            return None
+        info = parent(pid, proc)
+        if not info:
+            return None
+        comm, ppid = info
+        if comm in names:
+            return comm.lstrip(".")
+        pid = ppid
+    return None

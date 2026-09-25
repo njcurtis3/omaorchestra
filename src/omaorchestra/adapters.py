@@ -26,6 +26,10 @@ class Adapter:
     supports_session_id = False  # can be told its session id at launch
     supports_mcp_profile = False
     supports_routing = False
+    # Its PermissionRequest hook can answer the prompt (approvals.py), and the
+    # prompt stays up while the hook waits.
+    answers_permissions = False
+    hook_timeouts = {}           # event -> seconds, for hooks that may take longer than the default
     # Shown when a launched agent has started but not reported for this long.
     silent_message = "Not started yet: check its window."
     quiet_seconds = 30  # opencode took about 17 s to report on its first start
@@ -84,11 +88,15 @@ class Claude(Adapter):
         # permission prompt has been answered.
         "PostToolUse": "working",
         "Notification": "needs-input",
+        # Fires as the permission prompt appears (Notification comes a few
+        # seconds later), with what the tool is about to do.
+        "PermissionRequest": "needs-input",
         "Stop": "idle",
         "SessionEnd": None,
     }
-    needs_input_events = ("Notification",)
+    needs_input_events = ("Notification", "PermissionRequest")
     supports_session_id = supports_mcp_profile = supports_routing = True
+    answers_permissions = True
     silent_message = "Not started yet: its window may be asking whether to trust this folder."
     quiet_seconds = 10
 
@@ -100,6 +108,17 @@ class Claude(Adapter):
             command += ["--model", model]
         return command + list(extra) + ["--", task]
 
+    @property
+    def hook_timeouts(self):
+        from .approvals import HOOK_TIMEOUT
+        return {"PermissionRequest": HOOK_TIMEOUT}
+
+    def message(self, event):
+        if event.get("hook_event_name") == "PermissionRequest":
+            from .approvals import describe
+            return "Allow " + describe(event.get("tool_name"), event.get("tool_input"), event.get("mcp_server")) + "?"
+        return event.get("message")
+
     def request_for(self, event, agent_process=None):
         request = super().request_for(event, agent_process)
         if request and request["cmd"] == "update":
@@ -110,7 +129,8 @@ class Claude(Adapter):
         return Path(target) if target else claude_settings.default_path()
 
     def install_hooks(self, command, target=None):
-        return claude_settings.change(self._path(target), lambda s: claude_settings.install(s, command, self.events))
+        return claude_settings.change(self._path(target), lambda s: claude_settings.install(
+            s, command, self.events, self.hook_timeouts))
 
     def uninstall_hooks(self, target=None):
         return claude_settings.change(self._path(target), claude_settings.remove)
@@ -118,7 +138,8 @@ class Claude(Adapter):
     def hooks_status(self, target=None):
         found = claude_settings.installed_events(claude_settings.load(self._path(target)))
         missing = [e for e in self.events if e not in found]
-        return bool(found) and not missing, (f"missing {', '.join(missing)}" if found and missing else "")
+        return bool(found) and not missing, (f"missing {', '.join(missing)} (run `omaorchestra hooks install`)"
+                                             if found and missing else "")
 
 
 # ---------------------------------------------------------------- Codex

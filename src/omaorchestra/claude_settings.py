@@ -73,9 +73,10 @@ def remove(settings):
     return result
 
 
-def install(settings, command, events=None):
+def install(settings, command, events=None, timeouts=None):
     """Settings with omaorchestra's hooks for every event, replacing old copies.
-    The same shape serves Claude Code's settings.json and Codex's hooks.json."""
+    The same shape serves Claude Code's settings.json and Codex's hooks.json.
+    `timeouts` gives some events a longer timeout than HOOK_TIMEOUT."""
     if events is None:
         from .adapters import Claude  # here, not at the top: adapters import this module
         events = Claude.events
@@ -85,7 +86,8 @@ def install(settings, command, events=None):
         raise SettingsError('"hooks" in settings.json is not an object')
     for event in events:
         hooks.setdefault(event, []).append(
-            {"hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT}]}
+            {"hooks": [{"type": "command", "command": command,
+                        "timeout": (timeouts or {}).get(event, HOOK_TIMEOUT)}]}
         )
     return result
 

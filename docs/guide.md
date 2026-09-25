@@ -50,11 +50,13 @@ Each Claude Code session then reports itself:
 |---|---|
 | `SessionStart`, `Stop` | `idle` |
 | `UserPromptSubmit`, `PostToolUse` | `working` |
-| `Notification` | `needs-input` (permission prompt or waiting) |
+| `PermissionRequest`, `Notification` | `needs-input` (permission prompt or waiting) |
 | `SessionEnd` | removed |
 
 The hook command never fails or blocks the agent: if the daemon is down, events
-are dropped.
+are dropped. The one wait is a permission prompt while you are away (see
+[Answering permission prompts remotely](#answering-permission-prompts-remotely)),
+and even then the prompt stays up in the terminal and answers as usual.
 
 Hooks also report the agent's process, so a session whose agent crashes or is
 killed without `SessionEnd` disappears within 30 seconds.
@@ -129,6 +131,8 @@ that can run `top` and nothing else.
 - Two tabs, **Sessions** (waiting ones first, with what they are asking) and
   **Queue**. Tab or ←/→ switches; ↑/↓ (or j/k) picks; Enter shows everything
   about the picked one.
+- On a session asking for permission while you are away: **y** allows that
+  one request (after showing it in full and a yes), **x** refuses it.
 - On sessions: **d** dismisses, **s** stops the agent (after a yes), **h**
   hands its work to another agent.
 - On the queue: **p** pauses or resumes a task (resume also retries a failed
@@ -212,6 +216,44 @@ again right before each push, so locking and walking off loses nothing.
 While push is on, the bar widget shows 󰄜 beside its count when pushes are
 going out, its panel has an auto / on / off switch, and so does the app's
 sidebar. The mode is remembered across restarts.
+
+#### Answering permission prompts remotely
+
+While you are away, a Claude Code permission prompt ("Allow Bash: npm
+test?") can be answered from your phone as well as at the terminal:
+
+```bash
+omaorchestra approvals          # prompts waiting for an answer, with their ids
+omaorchestra approve a1b2c3     # allow that one request
+omaorchestra deny a1b2c3        # refuse it (--message tells the agent why)
+```
+
+or with **y** and **x** in [`omaorchestra top`](#in-a-terminal-and-on-your-phone),
+which is the way from a phone over SSH ([From your phone](remote.md)).
+
+- Only in away mode. At the desk the hook returns at once and nothing
+  changes.
+- The terminal prompt stays up while omaorchestra waits, and whichever
+  answers first wins.
+- One request at a time: an allow is for that request only and never adds a
+  rule, so the next one asks again.
+- A request stays answerable for `remote.answer_wait` seconds (600 by
+  default), or until it is answered at the terminal or the session moves on.
+- Each remote request is recorded with how it ended and where the answer
+  came from (`omaorchestra permissions` shows "allowed from top over SSH
+  from 100.x.y.z").
+- An answer sent from inside an agent (a process under `claude`, `codex` or
+  `opencode`) is refused, so an agent cannot approve its own or another
+  session's requests in passing. It is a guard, not a wall: agents run as
+  you, and one set on it could get around it. Your agents' permission modes
+  remain what limits them.
+
+This needs Claude Code's `PermissionRequest` hook, which `omaorchestra setup`
+(or `omaorchestra hooks install`) adds; `hooks status` says if it is missing.
+In Claude Code's auto mode, only the requests its classifier passes to you
+become prompts, so fewer reach your phone. Codex and opencode report their
+permission prompts but cannot be answered remotely yet. Turn the whole thing
+off with `omaorchestra config set remote.answer_prompts false`.
 
 ## Starting an agent
 

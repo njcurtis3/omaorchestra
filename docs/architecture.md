@@ -14,7 +14,14 @@
 - Status comes from agent hooks (`omaorchestra hook <agent>`), not terminal
   scraping.
 - Parallel tasks are isolated in separate git worktrees; merging is manual.
-- Approval requests are surfaced to the user, never auto-approved.
+- Approval requests are surfaced to the user, never auto-approved. While you
+  are away, a Claude Code permission prompt can also be answered remotely
+  (`approvals.py`): its PermissionRequest hook waits for your answer beside
+  the terminal prompt, which stays up. This is the one hook that waits; one
+  answer covers one request and never adds a rule. The daemon refuses
+  answers whose sender (by the socket's peer credentials) runs under an
+  agent: a guard against agents answering in passing, not a boundary, since
+  agents run as the user.
 - The socket is user-only (0600) and never exposed over the network.
 - Remote means outbound only: phone pushes are HTTPS POSTs to ntfy
   (`remote.py`); omaorchestra opens no port of its own. What a push says is
@@ -36,8 +43,11 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "list"}` | `{"ok": true, "sessions": [...]}` |
 | `{"cmd": "update", "session_id", "agent", "status", "cwd"?, "message"?, "pid"?, "pid_start"?, "transcript_path"?, "model"?, "branch"?}` | `{"ok": true, "session": {...}}` |
 | `{"cmd": "remove", "session_id", "reason"?}` | `{"ok": true, "removed": bool}` |
-| `{"cmd": "subscribe"}` | `{"ok": true, "sessions": [...], "queue": {...}, "away": {...}}`, then a stream (below) |
+| `{"cmd": "subscribe"}` | `{"ok": true, "sessions": [...], "queue": {...}, "away": {...}, "approvals": [...]}`, then a stream (below) |
 | `{"cmd": "away", "mode"?}` | `{"ok": true, "away": {"mode", "away", "reason", "since", "push", "after", "locked", "idle"}}`; `mode` (auto, on, off) sets it |
+| `{"cmd": "approval-ask", "session_id", "tool", "summary", "cwd"}` (the hook) | held open until answered, then `{"ok": true, "decision": {"behavior", "message"} or null, "reason"?}` |
+| `{"cmd": "approvals"}` | `{"ok": true, "approvals": [{"id", "session_id", "tool", "summary", "cwd", "asked"}]}` |
+| `{"cmd": "approval-answer", "id", "behavior": "allow"\|"deny", "message"?, "source"?}` | `{"ok": true, "approval": {...}}` |
 | `{"cmd": "reload"}` | `{"ok": true}`, or the error that kept the old settings |
 | `{"cmd": "queue-list"}` | `{"ok": true, "queue": {"held", "busy", "limit", "blocked", "tasks": [...]}}` |
 | `{"cmd": "queue-add", "item", "paused"?}`, `queue-cancel`, `queue-move` (`id`, `position`), `queue-pause`, `queue-resume`, `queue-hold`, `queue-release` | `{"ok": true, "queue": {...}}` |
@@ -54,6 +64,7 @@ either side closes it:
     {"event": "removed", "id": "...", "reason": "..."}      # session-end, dismissed, process-gone, did-not-start
     {"event": "queue", "queue": {...}}                      # the queue, or the busy count, changed
     {"event": "away", "away": {...}}                        # away mode, or whether you are away, changed
+    {"event": "approvals", "approvals": [...]}              # permission prompts waiting for a remote answer
 
 Every update is streamed, including ones that only move `updated`. The
 snapshot and the subscription are taken together, so nothing is missed in

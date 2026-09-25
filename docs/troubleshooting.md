@@ -25,6 +25,12 @@ omaorchestra setup --dry-run                    # what setup would still change
 - **The daemon is not running.** Hooks never block or fail an agent, so
   events are simply dropped: `systemctl --user start omaorchestrad`.
 
+A permission prompt does not show in `omaorchestra approvals` or `top`:
+remote answers work only in away mode (`omaorchestra away` says whether you
+count as away), only for Claude Code, and only with its `PermissionRequest`
+hook installed (`omaorchestra hooks status`; `omaorchestra hooks install`
+adds it). The daemon logs `approval asked` and how each one ended.
+
 ## The daemon will not start
 
 | Log says | Meaning |

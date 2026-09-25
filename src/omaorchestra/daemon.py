@@ -4,11 +4,12 @@ import logging
 import os
 import signal
 import socket
+import struct
 import time
 
 import subprocess
 
-from . import (__version__, adapters, away, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
+from . import (__version__, adapters, approvals, away, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
                usage, windows)
 from .log import event
 from .registry import Registry
@@ -85,6 +86,7 @@ class Daemon:
         self.is_locked = away.is_locked  # tests replace it
         self.idle_watch = None
         self.lock_watch = None
+        self.approvals = approvals.Pending()  # permission prompts waiting for a remote answer
 
     # ----------------------------------------------------------------- away
 
@@ -138,6 +140,78 @@ class Daemon:
             self.away.update(mode=mode)
             self.sync_away()
         return {"ok": True, "away": self.away.state()}
+
+    # ------------------------------------------------------------- approvals
+
+    def publish_approvals(self):
+        self.publish({"event": "approvals", "approvals": self.approvals.public()})
+
+    async def ask_approval(self, request, reader):
+        """Hold a permission prompt open for a remote answer (approvals.py):
+        only in away mode, and only until you answer, the prompt is answered
+        at the terminal, the agent stops waiting, or answer_wait runs out."""
+        settings = self.settings["remote"]
+        if not settings["answer_prompts"] or not request.get("session_id"):
+            return {"ok": True, "decision": None, "reason": "off"}
+        if not await self.is_away():
+            return {"ok": True, "decision": None, "reason": "at the desk"}
+        item = self.approvals.add(request, asyncio.get_running_loop().create_future())
+        event(logging.INFO, "approval asked", id=item["id"], session=item["session_id"], summary=item["summary"])
+        self.publish_approvals()
+        client_gone = asyncio.ensure_future(reader.read())  # EOF when the agent gives up on the hook
+        try:
+            await asyncio.wait({item["future"], client_gone}, timeout=settings["answer_wait"],
+                               return_when=asyncio.FIRST_COMPLETED)
+            answer = item["future"].result() if item["future"].done() else {}
+            gone = client_gone.done()
+        finally:
+            client_gone.cancel()
+            self.approvals.remove(item["id"])
+            self.publish_approvals()
+        behavior, source = answer.get("behavior"), answer.get("source") or ""
+        if behavior:
+            outcome = "allowed" if behavior == "allow" else "denied"
+        else:
+            outcome = answer.get("reason") or ("the agent stopped waiting" if gone else "no answer in time")
+        event(logging.INFO, "approval " + outcome, id=item["id"], session=item["session_id"], source=source)
+        try:
+            approvals.record(item, outcome, source)
+        except OSError as e:
+            event(logging.WARNING, "could not record an approval", error=str(e))
+        if not behavior:
+            return {"ok": True, "decision": None, "reason": outcome}
+        return {"ok": True, "decision": {"behavior": behavior, "message": answer.get("message")}}
+
+    @staticmethod
+    def peer_pid(writer):
+        """The PID of the process at the other end of a client connection."""
+        sock = writer.get_extra_info("socket")
+        try:
+            creds = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+        except (OSError, AttributeError):
+            return None
+        return struct.unpack("3i", creds)[0]
+
+    def from_agent(self, pid):
+        """The agent a client runs under, if any: an agent must not answer
+        permission prompts, its own or another's."""
+        if not pid:
+            return None
+        names = {n for a in adapters.ADAPTERS.values() for n in a.process_names}
+        return procs.under_agent(pid, names)
+
+    def answer_approval(self, request, peer=None):
+        agent = self.from_agent(peer)
+        if agent:
+            event(logging.WARNING, "approval answer refused", id=request.get("id"), reason=f"sent from inside {agent}")
+            return {"ok": False, "error": f"refused: this answer came from inside an agent ({agent}). Answer from "
+                                          "your own terminal, or from omaorchestra top."}
+        try:
+            item = self.approvals.answer(request.get("id"), request.get("behavior"), request.get("message"),
+                                         request.get("source") or "the command line")
+        except KeyError as e:
+            return {"ok": False, "error": e.args[0]}
+        return {"ok": True, "approval": {k: v for k, v in item.items() if k != "future"}}
 
     # ---------------------------------------------------------------- queue
 
@@ -402,6 +476,10 @@ class Daemon:
         return ""
 
     def changed(self, previous, session, reason=None):
+        # A prompt answered at the terminal (the session moves on) or a
+        # session gone: its remote requests are over.
+        if previous and (session or {}).get("status") != "needs-input":
+            self.approvals.settle_session(previous["id"], "answered at the terminal" if session else "session ended")
         if self.notifier:
             self.notifier.changed(previous, session)
         if self.pusher:
@@ -455,7 +533,7 @@ class Daemon:
         # change can fall between them.
         self.subscribers.add(queue)
         snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot(),
-                    "away": self.away.state()}
+                    "away": self.away.state(), "approvals": self.approvals.public()}
         event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
         client_gone = asyncio.ensure_future(reader.read())  # EOF when the client disconnects
         try:
@@ -609,6 +687,10 @@ class Daemon:
                 return {"ok": False, "error": str(e)}
         if cmd == "away":
             return self.handle_away(request)
+        if cmd == "approvals":
+            return {"ok": True, "approvals": self.approvals.public()}
+        if cmd == "approval-answer":
+            return self.answer_approval(request)
         if cmd == "reload":
             error = self.reload()
             return {"ok": not error, "error": error} if error else {"ok": True}
@@ -630,6 +712,19 @@ class Daemon:
                     if isinstance(request, dict) and request.get("cmd") == "subscribe":
                         event(logging.DEBUG, "request", cmd="subscribe")
                         await self.stream(reader, writer)
+                        return
+                    if isinstance(request, dict) and request.get("cmd") == "approval-answer":
+                        response = self.answer_approval(request, self.peer_pid(writer))
+                        writer.write(json.dumps(response).encode() + b"\n")
+                        await writer.drain()
+                        continue
+                    if isinstance(request, dict) and request.get("cmd") == "approval-ask":
+                        response = await self.ask_approval(request, reader)
+                        try:
+                            writer.write(json.dumps(response).encode() + b"\n")
+                            await writer.drain()
+                        except (ConnectionError, BrokenPipeError):
+                            pass  # the agent stopped waiting for the hook
                         return
                     response = self.handle(request)
                 except (ValueError, KeyError, TypeError) as e:

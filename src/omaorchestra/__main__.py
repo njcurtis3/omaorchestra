@@ -583,9 +583,12 @@ def cmd_stop(args):
 
 
 def cmd_hook(args):
-    # Called by agent hooks: never block or fail the agent, whatever happens.
+    # Called by agent hooks: never fail the agent, whatever happens, and never
+    # block it; the one wait (a permission prompt while you are away) runs
+    # beside the prompt, which stays answerable at the terminal.
     try:
-        if args.agent not in config.load_or_defaults()["agents"]["enabled"]:
+        settings = config.load_or_defaults()
+        if args.agent not in settings["agents"]["enabled"]:
             return 0
         adapter = adapters.get(args.agent)
         event = json.load(sys.stdin)
@@ -599,6 +602,12 @@ def cmd_hook(args):
             request["path"] = os.environ.get("PATH")  # the daemon needs it to start other agents
         if request:
             client.request(request, timeout=0.5)
+        if (adapter.answers_permissions and isinstance(event, dict)
+                and event.get("hook_event_name") == "PermissionRequest"):
+            from . import approvals
+            answer = approvals.ask(event, settings["remote"])
+            if answer:
+                print(json.dumps(answer), flush=True)
     except Exception:
         pass
     return 0
@@ -664,6 +673,50 @@ def cmd_away(args):
             print(f"cannot read {' or '.join(unknown)} yet; see `journalctl --user -u omaorchestrad`")
     if not state["push"]:
         print("push is off, so nothing is sent either way: omaorchestra config set remote.push true")
+    return 0
+
+
+def cmd_approvals(args):
+    try:
+        response = client.request({"cmd": "approvals"})
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    items = response.get("approvals") or []
+    if args.json:
+        print(json.dumps(items, indent=2))
+        return 0
+    if not items:
+        print("no permission prompts waiting for a remote answer")
+        print("(prompts are answerable remotely only while you are away: omaorchestra away)")
+        return 0
+    now = time.time()
+    for item in items:
+        print(f"{item['id']}  {present_project(item['cwd']):<18} {int(now - item['asked'])}s  {item['summary']}")
+    print("\nomaorchestra approve <id> allows that one request; omaorchestra deny <id> refuses it")
+    return 0
+
+
+def present_project(cwd):
+    from .app import present
+    return present.project(cwd)
+
+
+def cmd_answer(args):
+    from . import approvals
+    behavior = "allow" if args.answer == "approve" else "deny"
+    source = " ".join(filter(None, ["the command line", approvals.where_from()]))
+    try:
+        response = client.request({"cmd": "approval-answer", "id": args.id, "behavior": behavior,
+                                   "message": getattr(args, "message", None), "source": source})
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running", file=sys.stderr)
+        return 1
+    if not response.get("ok"):
+        print(f"omaorchestra: {response.get('error')}", file=sys.stderr)
+        return 1
+    item = response["approval"]
+    print(f"{'allowed' if behavior == 'allow' else 'denied'}: {item['summary']} ({present_project(item['cwd'])})")
     return 0
 
 
@@ -821,7 +874,7 @@ def cmd_hooks_snippet(args):
     if adapter.name == "opencode":
         print(adapters.PLUGIN.replace("__COMMAND__", json.dumps(shlex.split(hook_command(args)))))
     else:
-        print(json.dumps(claude_settings.install({}, hook_command(args), adapter.events), indent=2))
+        print(json.dumps(claude_settings.install({}, hook_command(args), adapter.events, adapter.hook_timeouts), indent=2))
     return 0
 
 
@@ -893,7 +946,7 @@ def cmd_hooks_install(args):
         written = adapter.install_hooks(command, args.settings)
         print(f"wrote {written}" if written else "already up to date")
         return 0
-    result = change_settings(args, lambda s: claude_settings.install(s, command, adapter.events))
+    result = change_settings(args, lambda s: claude_settings.install(s, command, adapter.events, adapter.hook_timeouts))
     if adapter.name == "codex" and not args.dry_run:
         print("Codex runs these hooks only once you trust them: start codex and use /hooks.")
     return result
@@ -1145,6 +1198,16 @@ def build_parser():
     rs.add_argument("--add", action="store_true", help="append it to ~/.ssh/authorized_keys (backed up first)")
     rs.add_argument("--comment", help="a name for the key in authorized_keys (default: the key's own comment)")
     rs.set_defaults(func=cmd_remote_ssh_key)
+    ap = sub.add_parser("approvals", help="permission prompts waiting for a remote answer (while you are away)")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.set_defaults(func=cmd_approvals)
+    for name, text in (("approve", "allow one waiting permission prompt (just this request)"),
+                       ("deny", "refuse one waiting permission prompt")):
+        p = sub.add_parser(name, help=text)
+        p.add_argument("id", help="the request's id from `omaorchestra approvals` (or a prefix)")
+        if name == "deny":
+            p.add_argument("--message", help="what to tell the agent (default: that you denied it remotely)")
+        p.set_defaults(func=cmd_answer, answer=name)
     away_p = sub.add_parser("away", help="push only while you are away: show or set the mode")
     away_p.add_argument("mode", nargs="?", choices=["auto", "on", "off"],
                         help="auto: away when locked or idle (default); on: always push; off: never push")

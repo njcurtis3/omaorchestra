@@ -6,8 +6,9 @@ columns are enough, and every action is both a key and a button to tap
 the queue and away mode come live from the daemon's subscription, as in the
 app.
 
-Only what makes sense from afar is here: dismiss, stop (after a yes), hand
-off, and the queue (add, pause, resume, cancel, hold, release). Focusing a
+Only what makes sense from afar is here: answer a permission prompt (in
+away mode, approvals.py), dismiss, stop (after a yes), hand off, and the
+queue (add, pause, resume, cancel, hold, release). Focusing a
 window would happen on a desk nobody is at.
 
 The screen is drawn from plain data (`Top.render` returns text, styles and
@@ -21,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import client, config, control, launch, recent
+from . import approvals, client, config, control, launch, recent
 from .app import present
 
 AWAY_NEXT = {"auto": "on", "on": "off", "off": "auto"}
@@ -98,6 +99,7 @@ class Top:
         self.sessions = {}
         self.queue = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
         self.away = None
+        self.approvals = []  # permission prompts waiting for a remote answer
         self.connected = False
         self.lost = False  # the daemon failed to answer (until then: still connecting)
         self.tab = "sessions"
@@ -117,6 +119,7 @@ class Top:
             self.sessions = {s["id"]: s for s in message["sessions"]}
             self.queue = message.get("queue") or self.queue
             self.away = message.get("away")
+            self.approvals = message.get("approvals") or []
             self.connected = True
             return
         kind = message.get("event")
@@ -128,6 +131,8 @@ class Top:
             self.queue = message["queue"]
         elif kind == "away":
             self.away = message["away"]
+        elif kind == "approvals":
+            self.approvals = message["approvals"]
         elif kind == "lost":
             self.connected, self.lost = False, True
 
@@ -141,6 +146,10 @@ class Top:
             return None
         self.index[self.tab] = min(self.index[self.tab], len(rows) - 1)
         return rows[self.index[self.tab]]
+
+    def pending(self, session):
+        """The oldest request of `session` waiting for a remote answer."""
+        return next((a for a in self.approvals if session and a["session_id"] == session["id"]), None)
 
     def tell(self, text, style=""):
         self.note = (text, style, self.now() + NOTE_SECONDS)
@@ -203,10 +212,20 @@ class Top:
 
     def session_key(self, key):
         session = self.selected()
-        if session is None or key not in ("d", "s", "h"):
+        if session is None or key not in ("d", "s", "h", "y", "x"):
             return
         name = session["project"]
-        if key == "d":
+        request = self.pending(session)
+        if key in ("y", "x"):
+            if not request:
+                return
+            if key == "x":
+                self.answer_prompt(request, "deny")
+                return
+            self.detail = True  # the whole request on screen before saying yes
+            self.ask = {"kind": "confirm", "question": "Allow this, just this once?",
+                        "then": lambda: self.answer_prompt(request, "allow")}
+        elif key == "d":
             if self.send({"cmd": "remove", "session_id": session["id"], "reason": "dismissed"}):
                 self.tell(f"dismissed {name}")
                 self.detail = False
@@ -281,6 +300,13 @@ class Top:
                 pass
             self.tell(f"stopped {name}" if gone else f"asked {name} to stop; it has not exited yet")
         self.background(work)
+
+    def answer_prompt(self, request, behavior):
+        source = " ".join(filter(None, ["top", approvals.where_from()]))
+        if self.send({"cmd": "approval-answer", "id": request["id"], "behavior": behavior, "source": source}):
+            self.tell(("allowed: " if behavior == "allow" else "denied: ") + request["summary"],
+                      "" if behavior == "allow" else "urgent")
+            self.approvals = [a for a in self.approvals if a["id"] != request["id"]]
 
     def handoff(self, session, agent):
         response = self.send({"cmd": "handoff", "session_id": session["id"], "agent": agent,
@@ -406,6 +432,11 @@ class Top:
                          "chosen" if chosen else "bold"),
                         right=(tail, STATUS_STYLE.get(s.get("status"), "")))
             screen.row_hit(("row", i))
+            request = self.pending(s)
+            if request:
+                screen.line(("  ? " + clip(one_line(request["summary"]), width - 4), "urgent"))
+                screen.row_hit(("row", i))
+                continue
             second = s.get("message") if s.get("status") == "needs-input" else None
             second = second or s.get("title") or s.get("task") or " · ".join(
                 x for x in (s.get("agent"), s.get("modelName"), s.get("branch")) if x)
@@ -455,7 +486,12 @@ class Top:
             lines.append((item["project"], "bold"))
             lines.append((f"{status} for {present.duration(self.now() - item['since'])}",
                           STATUS_STYLE.get(item.get("status"), "")))
-            field("", item.get("message") if item.get("status") == "needs-input" else "", "urgent")
+            request = self.pending(item)
+            if request:
+                field("asks", request["summary"], "urgent")
+                field("", "y allows just this request; x refuses it. The terminal can still answer.", "dim")
+            else:
+                field("", item.get("message") if item.get("status") == "needs-input" else "", "urgent")
             field("task", item.get("title") or item.get("task"))
             field("in", item.get("place"))
             field("agent", " · ".join(x for x in (item.get("agent"), item.get("modelName")) if x))
@@ -484,6 +520,8 @@ class Top:
         if self.selected():
             items.append(("⏎ Back" if self.detail else "⏎ More", "enter"))
         if self.tab == "sessions" and self.selected():
+            if self.pending(self.selected()):
+                items += [("y Allow…", "y"), ("x Deny", "x")]
             items += [("d Dismiss", "d"), ("s Stop", "s"), ("h Hand off", "h")]
         if self.tab == "queue":
             task = self.selected()

@@ -128,7 +128,13 @@ def record(limit=50):
             continue
         if e.get("kind") == "asked":
             open_requests[e["session"]] = {**e, "outcome": "waiting", "waited": None}
+        elif e.get("kind") == "remote" and e.get("session") in open_requests \
+                and e.get("outcome") in ("allowed", "denied"):
+            # Answered remotely (approvals.py): say so, and from where.
+            where = f" from {e['source']}" if e.get("source") else ""
+            open_requests[e["session"]]["remote"] = f"{e['outcome']}{where}"
         elif e.get("kind") == "answered" and e.get("session") in open_requests:
             asked = open_requests.pop(e["session"])
-            done.append({**asked, "outcome": e.get("outcome"), "waited": round(e["at"] - asked["at"])})
+            remote = asked.pop("remote", None)
+            done.append({**asked, "outcome": remote or e.get("outcome"), "waited": round(e["at"] - asked["at"])})
     return sorted(done + list(open_requests.values()), key=lambda e: -e["at"])[:limit]

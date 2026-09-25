@@ -34,6 +34,9 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`hook`](#omaorchestra-hook) | receive an agent hook event on stdin |
 | [`hooks`](#omaorchestra-hooks) | manage the hooks agents report to omaorchestra with |
 | [`remote`](#omaorchestra-remote) | push notifications to your phone (ntfy) |
+| [`approvals`](#omaorchestra-approvals) | permission prompts waiting for a remote answer (while you are away) |
+| [`approve`](#omaorchestra-approve) | allow one waiting permission prompt (just this request) |
+| [`deny`](#omaorchestra-deny) | refuse one waiting permission prompt |
 | [`away`](#omaorchestra-away) | push only while you are away: show or set the mode |
 | [`config`](#omaorchestra-config) | inspect the configuration |
 | [`service`](#omaorchestra-service) | run the daemon as a systemd user service |
@@ -819,6 +822,43 @@ omaorchestra remote ssh-key [--add] [--comment COMMENT] [key]
 | `key` | the public key file (default: read it from standard input) |
 | `--add` | append it to ~/.ssh/authorized_keys (backed up first) |
 | `--comment COMMENT` | a name for the key in authorized_keys (default: the key's own comment) |
+
+## `omaorchestra approvals`
+
+Permission prompts waiting for a remote answer (while you are away).
+
+```
+omaorchestra approvals [--json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--json` | machine-readable output |
+
+## `omaorchestra approve`
+
+Allow one waiting permission prompt (just this request).
+
+```
+omaorchestra approve id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | the request's id from `omaorchestra approvals` (or a prefix) |
+
+## `omaorchestra deny`
+
+Refuse one waiting permission prompt.
+
+```
+omaorchestra deny [--message MESSAGE] id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | the request's id from `omaorchestra approvals` (or a prefix) |
+| `--message MESSAGE` | what to tell the agent (default: that you denied it remotely) |
 
 ## `omaorchestra away`
 

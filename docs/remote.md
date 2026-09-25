@@ -5,8 +5,9 @@ omaorchestra has two ways to reach you while you are away from the desk:
 - **Pushes** tell you when an agent needs you or finishes (see
   [On your phone](guide.md#on-your-phone) and [away mode](guide.md#away-mode)).
 - **`omaorchestra top` over SSH** lets you look and act: which agents are
-  waiting and what they ask, dismiss or stop one, hand its work to another
-  agent, and add to, pause or hold the queue.
+  waiting and what they ask, answer a permission prompt (allow or deny that
+  one request), dismiss or stop one, hand its work to another agent, and add
+  to, pause or hold the queue.
 
 This page is about the second: getting a terminal on this machine from a
 phone, safely. omaorchestra opens no port itself and never will; SSH is the
@@ -120,7 +121,8 @@ let you tap rows, tabs and buttons; in others, the keys work the same.
 Typing is only needed for a new task.
 
 Pair it with pushes in [away mode](guide.md#away-mode): the push says an
-agent needs you, `top` shows what it asks.
+agent needs you, `top` shows what it asks, and **y** or **x** answers it
+([how that works](guide.md#answering-permission-prompts-remotely)).
 
 ## If the phone is lost
 
