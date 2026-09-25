@@ -10,8 +10,10 @@ ScrollView {
   clip: true
   contentWidth: availableWidth
 
-  onVisibleChanged: if (visible) spend.refresh()
+  onVisibleChanged: if (visible) { spend.refresh(); sessionHistory.reload() }
   readonly property var r: spend.report
+  property int statsDays: 30
+  readonly property var h: { sessionHistory.rows; return sessionHistory.stats(statsDays) }
 
   component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 8 }
   component Line: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -93,6 +95,67 @@ ScrollView {
           color: theme.muted
           text: (modelData.real ? "spent via " + modelData.provider : "API-equivalent")
             + (modelData.unpriced.length ? "  (no price for " + modelData.unpriced.join(", ") + ")" : "")
+        }
+      }
+    }
+
+    // ---------------------------------------------------------- History
+    RowLayout {
+      Layout.fillWidth: true
+      Layout.topMargin: 8
+      Section { text: "History"; topPadding: 0 }
+      Item { Layout.fillWidth: true }
+      Repeater {
+        model: [{ days: 7, label: "7 days" }, { days: 30, label: "30 days" }, { days: 0, label: "All" }]
+        delegate: Button {
+          required property var modelData
+          objectName: "stats-" + modelData.days
+          readonly property bool selected: page.statsDays === modelData.days
+          text: modelData.label
+          flat: true
+          onClicked: page.statsDays = modelData.days
+          contentItem: Label { text: parent.text; color: parent.selected ? theme.foreground : theme.muted; font.pixelSize: 12 }
+          background: Rectangle {
+            radius: 4
+            color: parent.selected ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
+            border.color: theme.selection
+          }
+        }
+      }
+    }
+    Line {
+      objectName: "stats-summary"
+      text: page.h.sessions === 0 ? "No ended sessions in this time. Each session is recorded when it ends (History page)."
+        : page.h.sessions + " session" + (page.h.sessions === 1 ? "" : "s") + ": "
+          + Object.keys(page.h.outcomes).filter(o => page.h.outcomes[o]).map(o => page.h.outcomes[o] + " " + o).join(", ")
+    }
+    Line {
+      visible: page.h.sessions > 0
+      text: "Waited for you " + page.h.waits.total + " time" + (page.h.waits.total === 1 ? "" : "s")
+        + " (" + page.h.waits.per_session + " per session)"
+        + (page.h.waits.medianText ? "; you answered in " + page.h.waits.medianText + " (median), "
+           + page.h.waits.longestText + " at most" : "")
+    }
+    Repeater {
+      model: page.h.sessions > 0 ? [["By project", page.h.by_project], ["By agent", page.h.by_agent],
+                                    ["By model", page.h.by_model]] : []
+      delegate: ColumnLayout {
+        required property var modelData
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        spacing: 2
+        Label { text: modelData[0]; color: theme.muted; font.pixelSize: 12 }
+        Repeater {
+          model: modelData[1].slice(0, 8)
+          delegate: RowLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: 12
+            Label { Layout.preferredWidth: 200; text: modelData.name; color: theme.foreground; elide: Text.ElideRight }
+            Label { Layout.preferredWidth: 90; text: modelData.sessions + " session" + (modelData.sessions === 1 ? "" : "s"); color: theme.muted }
+            Label { Layout.preferredWidth: 150; text: modelData.workingText + " working"; color: theme.muted }
+            Label { Layout.fillWidth: true; text: modelData.costText; color: theme.muted }
+          }
         }
       }
     }

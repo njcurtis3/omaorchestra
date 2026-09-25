@@ -54,6 +54,7 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "queue-list"}` | `{"ok": true, "queue": {"held", "busy", "limit", "blocked", "tasks": [...]}}` |
 | `{"cmd": "queue-add", "item", "paused"?}`, `queue-cancel`, `queue-move` (`id`, `position`), `queue-pause`, `queue-resume`, `queue-hold`, `queue-release` | `{"ok": true, "queue": {...}}` |
 | `{"cmd": "queue-run", "id"}` | `{"ok": true, "session_id"}` |
+| `{"cmd": "stopping", "session_id"}` | `{"ok": true, "known": bool}`: it is being stopped on purpose (history says "stopped", not "crashed") |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.
 
@@ -75,7 +76,10 @@ reconnect for a fresh snapshot. `omaorchestra watch` (or `watch --json`) is a
 reference client.
 Statuses: `idle`, `working`, `needs-input`. The registry persists to
 `$XDG_STATE_HOME/omaorchestra/sessions.json`, and away mode to `away.json`
-beside it (the bar widget watches both).
+beside it (the bar widget watches both). When a session ends the daemon
+appends a record to `history.jsonl` (`history.py`), off the event loop: what
+it did, its time per status, cost, the commits between its start (the
+folder's HEAD when it first reported) and its end, and its outcome.
 
 A second daemon refuses to start while one is answering on the socket; a stale
 socket file is replaced.

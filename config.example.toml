@@ -63,3 +63,10 @@ away_after = 10
 answer_prompts = true
 # How long (seconds) a prompt stays answerable remotely
 answer_wait = 600
+
+[history]
+# A record of each ended session: `omaorchestra history`. Records older than
+# this many days are deleted; 0 keeps them all
+keep_days = 90
+# false: keep no task titles or prompts in the records (and remove any kept)
+titles = true

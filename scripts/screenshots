@@ -30,7 +30,17 @@ SESSIONS = [
     ("d4", "idle", "blog", {"model": "claude-sonnet-5", "branch": "drafts", "title": "Proofread the September post"}),
 ]
 QUEUED = ["Update the dependencies and run the tests", "Write a changelog entry for 0.1.0"]
-PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue.png"), ("usage", "usage.png"), ("mcp", "mcp.png")]
+PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue.png"), ("history", "history.png"),
+         ("usage", "usage.png"), ("mcp", "mcp.png")]
+# Made-up ended sessions: (hours ago, project, agent, model, outcome, minutes, working minutes, usd, commits, title)
+HISTORY = [
+    (1, "api", "claude", "claude-sonnet-5", "finished", 34, 27, 1.84, 3, "Add request logging to the public endpoints"),
+    (3, "website", "claude", "claude-opus-5-5", "finished", 52, 41, 4.12, 2, "Move the blog to the new layout"),
+    (5, "dotfiles", "codex", "gpt-5.5-codex", "stopped", 9, 6, None, 0, "Try a faster shell prompt"),
+    (26, "api", "claude", "claude-sonnet-5", "crashed", 14, 12, 0.61, 0, "Upgrade the database driver"),
+    (28, "blog", "claude", "claude-haiku-4-5", "finished", 6, 4, 0.08, 1, "Fix typos in the September drafts"),
+    (30, "website", "opencode", None, "never-started", 1, 0, None, 0, "Compress the hero images"),
+]
 # Subscription limits, as Omarchy's usage records hold them.
 LIMITS = [("Session (5-hour)", 0.42, 3), ("Weekly (7-day)", 0.67, 70)]  # label, used, hours until reset
 MCP_SERVERS = {
@@ -66,6 +76,7 @@ def main():
             theme_dir.mkdir(parents=True)
             shutil.copy(colors, theme_dir / "colors.toml")
         seed(home)
+        seed_history(tmp / "state", home)
         (tmp / "config.toml").write_text("[notifications]\nwaiting = false\nfinished_after = 0\n[tasks]\nmax_parallel = 4\n")
         os.environ.update({
             "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_STATE_HOME": str(home / ".local" / "state"),
@@ -100,6 +111,25 @@ def seed(home):
     (home / ".claude.json").write_text(json.dumps({"mcpServers": MCP_SERVERS}))
 
 
+def seed_history(state, home):
+    """Made-up ended sessions for the History page and the Usage stats."""
+    state.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    with open(state / "history.jsonl", "w") as f:
+        for n, (hours, project, agent, model, outcome, minutes, working, usd, commits, title) in enumerate(HISTORY):
+            ended = now - hours * 3600
+            f.write(json.dumps({
+                "v": 1, "id": f"{n:08x}-demo", "agent": agent, "project": project,
+                "cwd": str(home / "code" / project), "model": model, "provider": None,
+                "started": ended - minutes * 60, "ended": ended,
+                "seconds": {"working": working * 60, "needs-input": 60 if working else 0,
+                            "idle": max(0, minutes - working - 1) * 60},
+                "cost": {"usd": usd, "real": False} if usd else None, "branch": "main",
+                "git": {"from": "0" * 40, "to": "1" * 40, "commits": commits} if commits else None,
+                "waits": 1 if working else 0, "reason": "session-end", "outcome": outcome,
+                "transcript": None, "title": title, "task": title}) + "\n")
+
+
 def render(home, out):
     from PySide6.QtCore import QEventLoop, QTimer, QUrl
     from PySide6.QtGui import QGuiApplication
@@ -124,7 +154,7 @@ def render(home, out):
     QQuickStyle.setStyle("Basic")
     sessions = backend.Sessions()
     objects = {"theme": backend.Theme(), "sessions": sessions, "settings": backend.Settings(),
-               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "awayMode": backend.Away(sessions),
+               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "awayMode": backend.Away(sessions), "sessionHistory": backend.History(sessions),
                "providerList": backend.Providers(),
                "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions),
                "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": ""}

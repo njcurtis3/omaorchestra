@@ -1,14 +1,15 @@
 """Qt objects the QML talks to: the theme and the live session list."""
 
+import os
 import subprocess
 import threading
 import time
 
-from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import (adapters, catalog, changes, client, config, control, keys, launch, modeldefaults, providers, recent,
-               transcript, windows, worktrees)
+from .. import (adapters, catalog, changes, client, config, control, history, keys, launch, modeldefaults,
+               providers, recent, transcript, windows, worktrees)
 from . import present
 from . import theme as theme_file
 
@@ -340,6 +341,125 @@ class Spend(QObject):
     loading = Property(bool, lambda self: self._loading, notify=changed)
 
 
+class History(QObject):
+    """Ended sessions (history.jsonl), for the History page and the Usage
+    page's stats. Re-read when the page shows and after a session ends."""
+
+    changed = Signal()
+    changesReady = Signal(str, "QVariantMap")  # record key, history.changes() result
+    _changes = Signal(str, "QVariantMap")
+    OUTCOME_LABEL = {"finished": "Finished", "stopped": "Stopped", "crashed": "Crashed",
+                     "never-started": "Never started", "dismissed": "Dismissed"}
+
+    def __init__(self, sessions=None, parent=None):
+        super().__init__(parent)
+        self._records = []
+        self._outcome = ""
+        self._search = ""
+        self._changes.connect(self.changesReady)
+        if sessions is not None:
+            # A session that ends is written to the history just after; catch it.
+            sessions.ended.connect(lambda: QTimer.singleShot(1500, self.reload))
+        self.reload()
+
+    @staticmethod
+    def key(record):
+        return f"{record['id']}@{record.get('ended') or 0}"
+
+    def _row(self, r):
+        ended = r.get("ended") or 0
+        commits = (r.get("git") or {}).get("commits") or 0
+        cost = r.get("cost")
+        return {**r, "key": self.key(r), "day": time.strftime("%A %-d %B %Y", time.localtime(ended)),
+                "time": time.strftime("%H:%M", time.localtime(ended)),
+                "length": present.duration(history.length(r)), "working": present.duration(history.worked(r)),
+                "outcomeLabel": self.OUTCOME_LABEL.get(r.get("outcome"), r.get("outcome") or ""),
+                "costText": ("" if not cost else ("$" if cost.get("real") else "~$") + f"{cost['usd']:.2f}"),
+                "commitsText": f"{commits} commit" + ("" if commits == 1 else "s") if commits else "",
+                "place": present.place(r.get("cwd")),
+                "modelName": " via ".join(x for x in (history.model_label(r.get("model")), r.get("provider")) if x),
+                "text": r.get("title") or r.get("task") or ""}
+
+    @Slot()
+    def reload(self):
+        self._records = list(reversed(history.load()))  # newest first
+        self.changed.emit()
+
+    @Slot(str, str)
+    def setFilter(self, outcome, search):
+        self._outcome, self._search = outcome, search
+        self.changed.emit()
+
+    def _rows(self):
+        return [self._row(r) for r in self._records
+                if history.matches(r, outcome=self._outcome or None, search=self._search or None)]
+
+    def _counts(self):
+        counts = {"": len(self._records)}
+        for r in self._records:
+            counts[r.get("outcome")] = counts.get(r.get("outcome"), 0) + 1
+        return counts
+
+    @Slot(str, result="QVariantMap")
+    def record(self, key):
+        found = next((r for r in self._records if self.key(r) == key), None)
+        return self._row(found) if found else {}
+
+    @Slot(str, result="QVariantList")
+    def activity(self, key):
+        path = self.record(key).get("transcript")
+        return transcript.activity(path) if path and os.path.exists(path) else []
+
+    @Slot(str, result="QVariantList")
+    def timeSplit(self, key):
+        seconds = self.record(key).get("seconds") or {}
+        return [{"status": present.STATUS_LABEL.get(k, k), "text": present.duration(v)} for k, v in seconds.items()]
+
+    @Slot(str)
+    def requestChanges(self, key):
+        record = self.record(key)
+
+        def work():
+            self._changes.emit(key, history.changes(record) if record else {"error": "that record is gone"})
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result=str)
+    def resume(self, key):
+        """Returns an error message, or ""."""
+        record = self.record(key)
+        if not record:
+            return "that record is gone"
+        try:
+            launch.resume(record)
+        except (launch.LaunchError, KeyError) as e:
+            return str(e)
+        return ""
+
+    @Slot(int, result="QVariantMap")
+    def stats(self, days):
+        """For the Usage page: the last `days` days (0: everything)."""
+        from .. import permissions
+        since = time.time() - days * 86400 if days else None
+        records = [r for r in self._records if history.matches(r, since=since)]
+        answered = [e for e in permissions.record(limit=10_000)
+                    if e.get("waited") is not None and (since is None or e["at"] >= since)]
+        data = history.stats(records, answered)
+        for key in ("by_project", "by_agent", "by_model"):
+            for row in data[key]:
+                row["workingText"] = present.duration(row["working"])
+                row["costText"] = (("~$" if row["estimated"] else "$") + f"{row['usd']:.2f}") if row["usd"] else ""
+                if key == "by_model":
+                    row["name"] = history.model_label(row["name"]) or row["name"]
+        waits = data["waits"]
+        waits["medianText"] = present.duration(waits["median_seconds"]) if waits["median_seconds"] is not None else ""
+        waits["longestText"] = present.duration(waits["longest_seconds"]) if waits["longest_seconds"] is not None else ""
+        return data
+
+    rows = Property("QVariantList", _rows, notify=changed)
+    counts = Property("QVariantMap", _counts, notify=changed)
+    total = Property(int, lambda self: len(self._records), notify=changed)
+
+
 class Away(QObject):
     """Away mode (away.py), kept current from the session subscription."""
 
@@ -517,6 +637,7 @@ class Sessions(QObject):
     changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
     queueUpdated = Signal("QVariantMap")  # taskqueue snapshot, from the same subscription
     awayUpdated = Signal("QVariantMap")  # away mode (away.Away.state()), likewise
+    ended = Signal()  # a session went away (its history record follows)
     _snapshot = Signal(list)
     _event = Signal(dict)
     _lost = Signal()
@@ -569,6 +690,7 @@ class Sessions(QObject):
             self.by_id[message["session"]["id"]] = message["session"]
         elif message.get("event") == "removed":
             self.by_id.pop(message.get("id"), None)
+            self.ended.emit()
         self.changed.emit()
 
     @Slot()
@@ -651,6 +773,7 @@ class Sessions(QObject):
         session = self.by_id.get(session_id)
         if not session:
             return "that session is gone"
+        control.announce(session_id, client.request)
         try:
             control.stop(session)
         except control.ControlError as e:

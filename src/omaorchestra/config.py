@@ -76,7 +76,7 @@ OPTIONS = {("agents", "enabled"): KNOWN_AGENTS, ("remote", "events"): REMOTE_EVE
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
            ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
            ("tasks", "daily_budget"): (0, 100000), ("remote", "away_after"): (1, 240),
-           ("remote", "answer_wait"): (30, 3600)}
+           ("remote", "answer_wait"): (30, 3600), ("history", "keep_days"): (0, 3650)}
 
 # section -> key -> (default, validator)
 SCHEMA = {
@@ -109,6 +109,10 @@ SCHEMA = {
         "away_after": (10, _int_between(*_RANGES[("remote", "away_after")])),
         "answer_prompts": (True, _bool),
         "answer_wait": (600, _int_between(*_RANGES[("remote", "answer_wait")])),
+    },
+    "history": {
+        "keep_days": (90, _int_between(*_RANGES[("history", "keep_days")])),
+        "titles": (True, _bool),
     },
 }
 
@@ -182,6 +186,16 @@ METADATA = {
             "answer_wait": ("Remote answer window (seconds)",
                             "How long a permission prompt stays answerable remotely; after that only the "
                             "terminal can answer it."),
+        },
+    },
+    "history": {
+        "title": "History",
+        "help": "A record of each ended session (`omaorchestra history`): what it did, how long it took, "
+                "what it cost. Transcripts stay with the agent; history only points to them.",
+        "keys": {
+            "keep_days": ("Keep history for (days)", "Older records are deleted; 0 keeps them all."),
+            "titles": ("Keep task text", "Off: records keep no task titles or prompts, and those already "
+                                         "kept are removed."),
         },
     },
 }

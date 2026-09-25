@@ -291,6 +291,7 @@ class Top:
         self.tell(f"stopping {name}…")
 
         def work():
+            control.announce(session["id"], self.request)
             try:
                 self.stop_agent(session)
             except control.ControlError as e:

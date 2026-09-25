@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               modeldefaults, procs, providers, remote, remote_access, service, setup, windows, worktrees)
+               history, modeldefaults, procs, providers, remote, remote_access, service, setup, windows, worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -573,6 +573,7 @@ def cmd_stop(args):
         if input(f"Stop the agent for {label}? It ends that agent process. [y/N] ").strip().lower() not in ("y", "yes"):
             print("left it running")
             return 1
+    control.announce(session["id"], client.request)
     control.stop(session)
     if control.wait_until_gone(session):
         client.request({"cmd": "list"})  # prunes it now rather than at the next check
@@ -678,6 +679,130 @@ def cmd_away(args):
     elif not state["push"]:
         print("push is off: while away, prompts can be answered remotely, but nothing is pushed "
               "(omaorchestra config set remote.push true)")
+    return 0
+
+
+def history_filters(args):
+
+    return {"project": args.project, "agent": args.agent, "search": args.search, "outcome": args.outcome,
+            "since": history.since_seconds(args.since) if args.since else None}
+
+
+def money(cost):
+    if not cost:
+        return ""
+    return ("$" if cost.get("real") else "~$") + f"{cost['usd']:.2f}"
+
+
+def cmd_history(args):
+
+    from .app import present
+    filters = history_filters(args)
+    records = [r for r in history.load() if history.matches(r, **filters)]
+    records.reverse()  # newest first
+    records = records[:args.limit] if args.limit else records
+    if args.json:
+        print(json.dumps(records, indent=2))
+        return 0
+    if not records:
+        print("no sessions in the history" + (" match" if any(filters.values()) else " yet"))
+        return 0
+    for r in records:
+        when = time.strftime("%m-%d %H:%M", time.localtime(r.get("ended") or 0))
+        took = present.duration(history.length(r))
+        work = present.duration(history.worked(r))
+        commits = (r.get("git") or {}).get("commits")
+        parts = [f"{when}  {r['id'][:8]}  {(r.get('project') or '')[:18]:<18} {r.get('agent', ''):<8} "
+                 f"{r.get('outcome', ''):<13} {took:>5} ({work} working)",
+                 money(r.get("cost")), f"{commits} commit{'s' if commits != 1 else ''}" if commits else ""]
+        print("  ".join(p for p in parts if p))
+        text = r.get("title") or r.get("task")
+        if text:
+            print(f"                        {launch.short(text, 90)}")
+    return 0
+
+
+def cmd_history_show(args):
+    from . import transcript
+    from .app import present
+    record = history.find(args.id)
+    if args.json:
+        print(json.dumps(record, indent=2))
+        return 0
+    started = time.strftime("%Y-%m-%d %H:%M", time.localtime(record.get("started") or record.get("ended")))
+    ended = time.strftime("%H:%M", time.localtime(record.get("ended")))
+    print(f"{record['id']}  {record.get('agent')}  {record.get('outcome')} ({record.get('reason')})")
+    for label, value in (("task", record.get("title") or record.get("task")),
+                         ("folder", present.place(record.get("cwd"))),
+                         ("when", f"{started} to {ended}, {present.duration(history.length(record))}"),
+                         ("time", ", ".join(f"{present.duration(v)} {k}" for k, v in (record.get("seconds") or {}).items())),
+                         ("model", " via ".join(x for x in (record.get("model"), record.get("provider")) if x)),
+                         ("branch", record.get("branch")), ("worktree", record.get("worktree")),
+                         ("cost", money(record.get("cost")) + (" (estimated)" if record.get("cost")
+                                                               and not record["cost"].get("real") else "")),
+                         ("waited", f"{record.get('waits')} time(s) for you" if record.get("waits") else ""),
+                         ("resumed", "yes, from an earlier session" if record.get("resumed_from") else "")):
+        if value:
+            print(f"  {label:<9}{value}")
+    span = record.get("git")
+    if span:
+        print(f"  {'commits':<9}{span['commits']} ({span['from'][:8]}..{span['to'][:8]})")
+        log = history.git(record.get("cwd"), "log", "--format=%h %s", f"{span['from']}..{span['to']}") \
+            if history.workdir(record) and span["commits"] else None
+        for line in (log or "").splitlines()[:20]:
+            print(f"             {line}")
+    path = record.get("transcript")
+    if path and Path(path).exists():
+        print("\nlatest activity")
+        for item in transcript.activity(path, limit=args.limit):
+            print(f"  {item['kind']:<7}{launch.short(item['text'], 100)}")
+    elif path:
+        print("\n(the transcript is gone; history only ever pointed to it)")
+    print(f"\nomaorchestra resume {record['id'][:8]} reopens it")
+    return 0
+
+
+def cmd_history_stats(args):
+    from . import permissions
+    from .app import present
+    since = history.since_seconds(args.since) if args.since else None
+    records = [r for r in history.load() if history.matches(r, since=since)]
+    if not records and not args.json:
+        print("no sessions in the history" + (f" since {args.since}" if args.since else " yet"))
+        return 0
+    answered = [e for e in permissions.record(limit=10_000)
+                if e.get("waited") is not None and (since is None or e["at"] >= since)]
+    data = history.stats(records, answered)
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return 0
+    print(f"{data['sessions']} session(s)" + (f" since {args.since}" if args.since else "") + ": "
+          + ", ".join(f"{n} {o}" for o, n in data["outcomes"].items() if n))
+    for title, key in (("By project", "by_project"), ("By agent", "by_agent"), ("By model", "by_model")):
+        if not data[key]:
+            continue
+        print(f"\n{title}")
+        for row in data[key][:10]:
+            cost = ("~$" if row["estimated"] else "$") + f"{row['usd']:.2f}" if row["usd"] else ""
+            print(f"  {row['name'][:28]:<28} {row['sessions']:>3} session(s)  "
+                  f"{present.duration(row['working']):>6} working  {cost}")
+    w = data["waits"]
+    print(f"\nWaited for you {w['total']} time(s), {w['per_session']} per session", end="")
+    if w["median_seconds"] is not None:
+        print(f"; you answered in {present.duration(w['median_seconds'])} (median), "
+              f"{present.duration(w['longest_seconds'])} at most")
+    else:
+        print()
+    return 0
+
+
+def cmd_resume(args):
+
+    record = history.find(args.id)
+    result = launch.resume(record)
+    print(f"resumed {record['id'][:8]} ({record.get('agent')}) in {result['folder']}")
+    if not result["tracked"]:
+        print("(omaorchestrad is not running, so this session is not tracked)")
     return 0
 
 
@@ -1204,6 +1329,30 @@ def build_parser():
     rs.add_argument("--add", action="store_true", help="append it to ~/.ssh/authorized_keys (backed up first)")
     rs.add_argument("--comment", help="a name for the key in authorized_keys (default: the key's own comment)")
     rs.set_defaults(func=cmd_remote_ssh_key)
+    hp = sub.add_parser("history", help="ended sessions: what each did, how long it took, what it cost")
+    hp.set_defaults(func=cmd_history)
+    for p in (hp,):
+        p.add_argument("--project", help="only this project (folder name or part of its path)")
+        p.add_argument("--agent", choices=list(adapters.ADAPTERS), help="only this agent")
+        p.add_argument("--since", help="only sessions that ended since: 7d, 12h, 2w, or a date (2026-09-01)")
+        p.add_argument("--search", help="only sessions whose task, folder, model or branch mention this")
+        p.add_argument("--outcome", choices=["finished", "stopped", "crashed", "never-started", "dismissed"],
+                       help="only sessions that ended this way")
+        p.add_argument("--limit", type=int, default=30, help="how many to show (0: all; default 30)")
+        p.add_argument("--json", action="store_true", help="machine-readable output")
+    h_sub = hp.add_subparsers(dest="history_command")
+    hs = h_sub.add_parser("show", help="one session in full, with its commits and latest activity")
+    hs.add_argument("id", help="session id (or its first characters)")
+    hs.add_argument("--limit", type=int, default=15, help="how much of its activity to show")
+    hs.add_argument("--json", action="store_true", help="machine-readable output")
+    hs.set_defaults(func=cmd_history_show)
+    ht = h_sub.add_parser("stats", help="time and cost per project, agent and model; how often agents waited")
+    ht.add_argument("--since", help="only sessions that ended since: 7d, 12h, 2w, or a date")
+    ht.add_argument("--json", action="store_true", help="machine-readable output")
+    ht.set_defaults(func=cmd_history_stats)
+    rp = sub.add_parser("resume", help="reopen an ended session's conversation in its folder, in a new terminal")
+    rp.add_argument("id", help="session id from `omaorchestra history` (or its first characters)")
+    rp.set_defaults(func=cmd_resume)
     ap = sub.add_parser("approvals", help="permission prompts waiting for a remote answer (while you are away)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.set_defaults(func=cmd_approvals)
@@ -1284,7 +1433,7 @@ def run_command(args, parser=None):
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
             keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
-            remote_access.RemoteAccessError) as e:
+            remote_access.RemoteAccessError, history.HistoryError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

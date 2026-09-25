@@ -9,7 +9,7 @@ import time
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
+from . import (__version__, adapters, approvals, away, config, costs, history, launch, notify, paths, procs, remote, taskqueue, transcript,
                usage, windows)
 from .log import event
 from .registry import Registry
@@ -88,6 +88,11 @@ class Daemon:
         self.idle_watch = None
         self.lock_watch = None
         self.approvals = approvals.Pending()  # permission prompts waiting for a remote answer
+        self.git_head = history.head  # tests replace it
+        self.history_path = registry.path.parent / "history.jsonl"  # beside sessions.json
+        self.history_append = lambda record: history.append(record, self.history_path)
+        self.history_tasks = set()
+        self._history_tended = 0
 
     # ----------------------------------------------------------------- away
 
@@ -141,6 +146,47 @@ class Daemon:
             self.away.update(mode=mode)
             self.sync_away()
         return {"ok": True, "away": self.away.state()}
+
+    # --------------------------------------------------------------- history
+
+    def record_history(self, session, reason):
+        """Append the ended session to history.jsonl, off the event loop (its
+        cost comes from reading the transcript)."""
+        settings = self.settings["history"]
+
+        def write():
+            try:
+                self.history_append(history.build(session, reason, cost_fn=costs.session_cost,
+                                                  titles=settings["titles"]))
+            except OSError as e:
+                event(logging.WARNING, "could not record history", id=session.get("id"), error=str(e))
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            write()  # no event loop (a synchronous test)
+            return
+        task = loop.create_task(asyncio.to_thread(write))
+        self.history_tasks.add(task)
+        task.add_done_callback(self.history_tasks.discard)
+
+    def tend_history(self, now=None):
+        """Retention: drop old records (once a day), and task text if titles
+        is off."""
+        now = time.time() if now is None else now
+        if now - self._history_tended < 86400:
+            return
+        self._history_tended = now
+        settings = self.settings["history"]
+        try:
+            dropped = history.prune(settings["keep_days"], now, self.history_path)
+            if not settings["titles"]:
+                history.forget_titles(self.history_path)
+        except OSError as e:
+            event(logging.WARNING, "could not prune history", error=str(e))
+            return
+        if dropped:
+            event(logging.INFO, "history pruned", dropped=dropped, keep_days=settings["keep_days"])
 
     # ------------------------------------------------------------- approvals
 
@@ -288,6 +334,7 @@ class Daemon:
         if request.get("stop"):
             from . import control
             try:
+                self.registry.sessions[sid]["stopping"] = True
                 control.stop(session)
                 stopped = True
             except control.ControlError:
@@ -466,6 +513,9 @@ class Daemon:
         if self.pusher:
             self.pusher.settings, self.pusher.notifications = new["remote"], new["notifications"]
         self.away.update(push=new["remote"]["push"], answers=new["remote"]["answer_prompts"])
+        if new["history"] != old["history"]:
+            self._history_tended = 0
+            self.tend_history()
         self.sync_away()
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()
@@ -481,6 +531,8 @@ class Daemon:
         # session gone: its remote requests are over.
         if previous and (session or {}).get("status") != "needs-input":
             self.approvals.settle_session(previous["id"], "answered at the terminal" if session else "session ended")
+        if session is None and previous and reason != "adopted":
+            self.record_history(previous, reason)
         if self.notifier:
             self.notifier.changed(previous, session)
         if self.pusher:
@@ -666,6 +718,10 @@ class Daemon:
                 transcript_path=request.get("transcript_path"),
                 **self.transcript_facts(before, request),
             )
+            if before is None and "git_start" not in session:
+                # Where its folder stood, so history can tell which commits it made.
+                session["git_start"] = self.git_head(session.get("cwd"))
+                self.registry.save()
             if session.get("provider") and previous != session["status"] and session.get("transcript_path"):
                 self.record_spend(session)
             if previous is None:
@@ -688,6 +744,12 @@ class Daemon:
                 return {"ok": False, "error": str(e)}
         if cmd == "away":
             return self.handle_away(request)
+        if cmd == "stopping":
+            session = self.registry.sessions.get(request.get("session_id"))
+            if session:
+                session["stopping"] = True
+                self.registry.save()
+            return {"ok": True, "known": session is not None}
         if cmd == "approvals":
             return {"ok": True, "approvals": self.approvals.public()}
         if cmd == "approval-answer":
@@ -741,6 +803,7 @@ async def prune_forever(daemon, interval=PRUNE_INTERVAL):
     while True:
         await asyncio.sleep(interval)
         daemon.prune()
+        daemon.tend_history()
         daemon.offer_handoffs()
         daemon.check_limits()
         # A queue waiting on a usage limit gets another look (limits reset).
@@ -795,6 +858,7 @@ def run(verbose=False):
         loop.add_signal_handler(signal.SIGHUP, daemon.reload)
         daemon.start_pruner()
         daemon.start_launch_watch()
+        daemon.tend_history()
         daemon.away.save()  # for the bar widget, as with the registry
         daemon.sync_away()
         daemon.dispatch()  # tasks may have been waiting while the daemon was down

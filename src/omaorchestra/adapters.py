@@ -41,6 +41,10 @@ class Adapter:
     def command(self, task, session_id, workdir, model=None, permission_mode=None, extra=(), agent_bin=None):
         raise NotImplementedError
 
+    def resume_command(self, session_id, workdir, agent_bin=None):
+        """Reopen an earlier conversation (`omaorchestra resume`)."""
+        raise NotImplementedError
+
     def message(self, event):
         return event.get("message")
 
@@ -108,6 +112,9 @@ class Claude(Adapter):
             command += ["--model", model]
         return command + list(extra) + ["--", task]
 
+    def resume_command(self, session_id, workdir, agent_bin=None):
+        return [agent_bin or self.binary(), "--resume", session_id]
+
     @property
     def hook_timeouts(self):
         from .approvals import HOOK_TIMEOUT
@@ -173,6 +180,9 @@ class Codex(Adapter):
         if permission_mode:
             command += ["-a", permission_mode]
         return command + list(extra) + ["--", task]
+
+    def resume_command(self, session_id, workdir, agent_bin=None):
+        return [agent_bin or self.binary(), "resume", "-C", str(workdir), session_id]
 
     def message(self, event):
         if event.get("message"):
@@ -257,6 +267,9 @@ class OpenCode(Adapter):
         if model:
             command += ["-m", model]
         return command + list(extra)
+
+    def resume_command(self, session_id, workdir, agent_bin=None):
+        return [agent_bin or self.binary(), str(workdir), "--session", session_id]
 
     def agent_process(self, event):
         """The plugin runs inside opencode and sends its PID."""

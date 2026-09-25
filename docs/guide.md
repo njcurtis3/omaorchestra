@@ -387,6 +387,46 @@ unless you click it).
 process first, so a reused PID is never signalled. The conversation stays in
 the agent's transcript.
 
+
+## History
+
+Every session is recorded when it ends: what it worked on, how long it took
+(working, waiting for you, idle), what it cost, the commits it made, how
+often it waited for you, and how it ended. The transcript stays with the
+agent; the record only points to it.
+
+```bash
+omaorchestra history                         # newest first
+omaorchestra history --project api --since 7d
+omaorchestra history --search "login" --outcome crashed
+omaorchestra history show 3f9a1c2e           # one session: commits, latest activity
+omaorchestra history stats --since 30d       # time and cost per project, agent and model
+omaorchestra resume 3f9a1c2e                 # reopen that conversation in its folder
+```
+
+In the app, **History** lists them by day, with the same search and
+filters; open one for its details, its latest activity (while the
+transcript is still there), and the changes its commits made. **Resume**
+reopens it. The **Usage** page adds time and cost per project, agent and
+model, and how often agents waited for you and how quickly you answered.
+
+![The History page](screenshots/history.png)
+
+| Outcome | Meaning |
+|---|---|
+| finished | ended after its work: went idle, or quit cleanly |
+| stopped | stopped from omaorchestra, or quit while working |
+| crashed | its process went away while it was working or waiting for you |
+| never started | a launched agent that never reported |
+| dismissed | removed from the list while still busy |
+
+`resume` runs `claude --resume`, `codex resume` or `opencode --session` in
+a new terminal, in the session's folder (a worktree must still exist), and
+the session shows in the list at once, marked as resumed.
+
+Records are kept for `history.keep_days` days (90; 0 keeps them all).
+`history.titles = false` keeps task titles and prompts out of the records,
+and removes any already kept.
 ## Jumping to a session
 
 ```bash

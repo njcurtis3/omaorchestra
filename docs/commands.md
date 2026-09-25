@@ -34,6 +34,8 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`hook`](#omaorchestra-hook) | receive an agent hook event on stdin |
 | [`hooks`](#omaorchestra-hooks) | manage the hooks agents report to omaorchestra with |
 | [`remote`](#omaorchestra-remote) | push notifications to your phone (ntfy) |
+| [`history`](#omaorchestra-history) | ended sessions: what each did, how long it took, what it cost |
+| [`resume`](#omaorchestra-resume) | reopen an ended session's conversation in its folder, in a new terminal |
 | [`approvals`](#omaorchestra-approvals) | permission prompts waiting for a remote answer (while you are away) |
 | [`approve`](#omaorchestra-approve) | allow one waiting permission prompt (just this request) |
 | [`deny`](#omaorchestra-deny) | refuse one waiting permission prompt |
@@ -822,6 +824,63 @@ omaorchestra remote ssh-key [--add] [--comment COMMENT] [key]
 | `key` | the public key file (default: read it from standard input) |
 | `--add` | append it to ~/.ssh/authorized_keys (backed up first) |
 | `--comment COMMENT` | a name for the key in authorized_keys (default: the key's own comment) |
+
+## `omaorchestra history`
+
+Ended sessions: what each did, how long it took, what it cost.
+
+```
+omaorchestra history [--project PROJECT] [--agent <command>] [--since SINCE] [--search SEARCH] [--outcome <command>] [--limit LIMIT] [--json] <command> ...
+```
+
+| Argument | Meaning |
+|---|---|
+| `--project PROJECT` | only this project (folder name or part of its path) |
+| `--agent AGENT` | only this agent; one of `claude`, `codex`, `opencode` |
+| `--since SINCE` | only sessions that ended since: 7d, 12h, 2w, or a date (2026-09-01) |
+| `--search SEARCH` | only sessions whose task, folder, model or branch mention this |
+| `--outcome OUTCOME` | only sessions that ended this way; one of `finished`, `stopped`, `crashed`, `never-started`, `dismissed` |
+| `--limit LIMIT` | how many to show (0: all; default 30) |
+| `--json` | machine-readable output |
+
+### `omaorchestra history show`
+
+One session in full, with its commits and latest activity.
+
+```
+omaorchestra history show [--limit LIMIT] [--json] id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | session id (or its first characters) |
+| `--limit LIMIT` | how much of its activity to show |
+| `--json` | machine-readable output |
+
+### `omaorchestra history stats`
+
+Time and cost per project, agent and model; how often agents waited.
+
+```
+omaorchestra history stats [--since SINCE] [--json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--since SINCE` | only sessions that ended since: 7d, 12h, 2w, or a date |
+| `--json` | machine-readable output |
+
+## `omaorchestra resume`
+
+Reopen an ended session's conversation in its folder, in a new terminal.
+
+```
+omaorchestra resume id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | session id from `omaorchestra history` (or its first characters) |
 
 ## `omaorchestra approvals`
 

@@ -11,6 +11,15 @@ class ControlError(Exception):
     pass
 
 
+def announce(session_id, request):
+    """Tell the daemon a session is being stopped on purpose, so its history
+    says "stopped" rather than "crashed". Best effort."""
+    try:
+        request({"cmd": "stopping", "session_id": session_id}, timeout=1.0)
+    except Exception:
+        pass
+
+
 def stop(session, sig=signal.SIGTERM, is_alive=procs.is_alive, kill=os.kill):
     """Ask the session's agent process to exit.
 

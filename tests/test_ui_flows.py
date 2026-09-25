@@ -72,13 +72,14 @@ class UiFlowTest(unittest.TestCase):
         self.worktrees = backend.Worktrees()
         self.queue = backend.Queue(self.sessions)
         self.away = backend.Away(self.sessions)
+        self.history = backend.History(self.sessions)
         self.providers = backend.Providers()
         self.spend = backend.Spend(self.sessions)
         self.mcp = backend.Mcp(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("sessionHistory", self.history), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -290,6 +291,28 @@ class UiFlowTest(unittest.TestCase):
         # Changed elsewhere (the CLI, top, the bar): the dropdown follows.
         self.client.request({"cmd": "away", "mode": "auto"})
         self.assertTrue(wait_for(lambda: self.find("away-mode").property("currentText").startswith("Auto")))
+        self.assertEqual(self.warnings, [])
+
+    def test_history_page(self):
+        self.add_session("h1", "working", self.tmp.name, title="Tidy the aliases")
+        self.add_session("h1", "idle", self.tmp.name)
+        self.client.request({"cmd": "remove", "session_id": "h1"})
+        self.assertTrue(wait_for(lambda: any(r["id"] == "h1" for r in self.history.rows), timeout=10),
+                        "the ended session did not reach the history")
+        self.click("nav-history")
+        self.assertTrue(wait_for(lambda: self.shown("history-row-h1")), "no history row")
+        self.click("history-row-h1")
+        self.assertTrue(wait_for(lambda: self.shown("history-detail")), "no history detail")
+        self.assertTrue(self.shown("history-resume"))
+        self.click("history-tab-changes")
+        spin(300)
+        QTest.keyClick(self.window, Qt.Key.Key_Escape)
+        self.assertTrue(wait_for(lambda: self.shown("history-row-h1")), "Esc did not go back")
+        self.click("history-filter-crashed")
+        self.assertTrue(wait_for(lambda: not self.shown("history-row-h1")), "the filter did not apply")
+        self.click("history-filter-all")
+        self.click("nav-usage")
+        self.assertTrue(wait_for(lambda: "1 session" in (self.find("stats-summary").property("text") or "")))
         self.assertEqual(self.warnings, [])
 
     def test_queue_from_the_form_then_pause_resume_cancel(self):

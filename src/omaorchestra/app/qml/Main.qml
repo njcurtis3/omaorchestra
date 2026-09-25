@@ -62,6 +62,7 @@ ApplicationWindow {
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
     { id: "new", glyph: "󰐕", label: "New task" },
     { id: "queue", glyph: "󰒲", label: "Queue" },
+    { id: "history", glyph: "󰋚", label: "History" },
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
     { id: "providers", glyph: "󰒍", label: "Providers" },
     { id: "usage", glyph: "󰄨", label: "Usage" },
@@ -240,6 +241,13 @@ ApplicationWindow {
       // Queue
       QueuePage {
         visible: window.page === "queue"
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+      }
+
+      // History
+      HistoryPage {
+        visible: window.page === "history"
         Layout.fillWidth: true
         Layout.fillHeight: true
       }

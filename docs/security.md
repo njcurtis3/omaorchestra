@@ -19,9 +19,10 @@ your tailnet, or an agent turned against you.
   logs. A secret is never sent over plain http, except to this machine
   (localhost).
 - **Private local state.** `~/.local/state/omaorchestra` holds your
-  sessions (with what agents asked), the queue (task text), and the
-  approvals record (commands agents asked to run). The daemon keeps that
-  folder at mode 0700.
+  sessions (with what agents asked), the queue (task text), the approvals
+  record (commands agents asked to run), and the session history (task
+  titles, unless `history.titles` is off). The daemon keeps that folder at
+  mode 0700.
 - **Agents stay in charge of themselves.** omaorchestra never approves
   anything on its own. It relays your answer, one request at a time, and
   only while you are away.
