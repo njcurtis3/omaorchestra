@@ -19,9 +19,13 @@
 - Remote means outbound only: phone pushes are HTTPS POSTs to ntfy
   (`remote.py`); omaorchestra opens no port of its own. What a push says is
   set by `[remote] content`, and prompts leave the machine only at `full`.
-  Pushes go out only while you are away (`away.py`): the mode is set by hand,
-  or read from the lock screen and the compositor's idle notifications,
-  both local.
+  Pushes go out only while you are away (`away.py`): the mode is set by
+  hand, or read from the lock screen and the compositor's idle
+  notifications, both local.
+- Reaching the machine from a phone is the system's SSH over Tailscale
+  ([remote.md](remote.md)), ideally with a key whose forced command is
+  `omaorchestra top`. `setup --only remote` (`remote_access.py`) only reads
+  that setup; it never changes sshd, Tailscale or the firewall.
 
 ## Protocol
 Newline-delimited JSON over the socket, one response per request:

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               modeldefaults, procs, providers, remote, service, setup, windows, worktrees)
+               modeldefaults, procs, providers, remote, remote_access, service, setup, windows, worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -742,6 +742,35 @@ def cmd_remote_test(args):
     return 0
 
 
+def cmd_remote_ssh_key(args):
+    binary = own_binary()
+    if not binary:
+        raise remote_access.RemoteAccessError("cannot find the omaorchestra binary to put in the key's command")
+    if args.key:
+        try:
+            text = Path(args.key).expanduser().read_text()
+        except OSError as e:
+            raise remote_access.RemoteAccessError(f"cannot read {args.key}: {e.strerror}") from None
+    else:
+        if sys.stdin.isatty():
+            print("paste the phone's public key (one line, starting ssh-ed25519 or similar), then Enter:",
+                  file=sys.stderr)
+            text = sys.stdin.readline()
+        else:
+            text = sys.stdin.read()
+    line = remote_access.key_line(binary, text, args.comment)
+    if not args.add:
+        print(line)
+        print("\nadd that line to ~/.ssh/authorized_keys (or run this again with --add); the key can then only "
+              "run `omaorchestra top`", file=sys.stderr)
+        return 0
+    if remote_access.add_key(line):
+        print(f"added to {remote_access.authorized_keys_path()}; this key can only run `omaorchestra top`")
+    else:
+        print(f"that key is already in {remote_access.authorized_keys_path()}; left it as it is")
+    return 0
+
+
 def cmd_config_path(args):
     print(config.path())
     return 0
@@ -842,7 +871,7 @@ def cmd_service_status(args):
 def cmd_setup(args):
     for line in setup.setup(own_binary(), only=args.only or (), skip=args.skip or (), dry_run=args.dry_run):
         print(line)
-    if not args.dry_run:
+    if not args.dry_run and list(args.only or ()) != ["remote"]:
         print("done: `omaorchestra app` opens the app, and `omaorchestra teardown` undoes this")
     return 0
 
@@ -1110,6 +1139,12 @@ def build_parser():
     how.add_argument("--clear", action="store_true", help="forget the token")
     rk.set_defaults(func=cmd_remote_token)
     remote_sub.add_parser("test", help="send one test notification now").set_defaults(func=cmd_remote_test)
+    rs = remote_sub.add_parser("ssh-key", help="an authorized_keys line that lets a key run only `omaorchestra "
+                                               "top` (for a phone; see docs/remote.md)")
+    rs.add_argument("key", nargs="?", help="the public key file (default: read it from standard input)")
+    rs.add_argument("--add", action="store_true", help="append it to ~/.ssh/authorized_keys (backed up first)")
+    rs.add_argument("--comment", help="a name for the key in authorized_keys (default: the key's own comment)")
+    rs.set_defaults(func=cmd_remote_ssh_key)
     away_p = sub.add_parser("away", help="push only while you are away: show or set the mode")
     away_p.add_argument("mode", nargs="?", choices=["auto", "on", "off"],
                         help="auto: away when locked or idle (default); on: always push; off: never push")
@@ -1178,7 +1213,8 @@ def run_command(args, parser=None):
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
-            keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError) as e:
+            keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
+            remote_access.RemoteAccessError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

@@ -806,6 +806,20 @@ Send one test notification now.
 omaorchestra remote test
 ```
 
+### `omaorchestra remote ssh-key`
+
+An authorized_keys line that lets a key run only `omaorchestra top` (for a phone; see docs/remote.md).
+
+```
+omaorchestra remote ssh-key [--add] [--comment COMMENT] [key]
+```
+
+| Argument | Meaning |
+|---|---|
+| `key` | the public key file (default: read it from standard input) |
+| `--add` | append it to ~/.ssh/authorized_keys (backed up first) |
+| `--comment COMMENT` | a name for the key in authorized_keys (default: the key's own comment) |
+
 ## `omaorchestra away`
 
 Push only while you are away: show or set the mode.
@@ -816,7 +830,7 @@ omaorchestra away [--json] [{auto,on,off}]
 
 | Argument | Meaning |
 |---|---|
-| `mode` | auto: away when locked or idle (default); on: always push; off: never push; one of `auto`, `on`, `off` |
+| `mode` | auto: away when locked or idle (default); on: always push; off: never push |
 | `--json` | machine-readable output |
 
 ## `omaorchestra config`
@@ -918,8 +932,8 @@ omaorchestra setup [--only STEP] [--skip STEP] [--dry-run]
 
 | Argument | Meaning |
 |---|---|
-| `--only STEP` | only this step (repeatable): service, hooks, widget, bindings, menu, launcher; one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher` |
-| `--skip STEP` | skip this step (repeatable); one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher` |
+| `--only STEP` | only this step (repeatable): service, hooks, widget, bindings, menu, launcher, remote |
+| `--skip STEP` | skip this step (repeatable); one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher`, `remote` |
 | `--dry-run` | show what would be done |
 
 ## `omaorchestra teardown`
@@ -932,6 +946,6 @@ omaorchestra teardown [--only STEP] [--skip STEP] [--dry-run]
 
 | Argument | Meaning |
 |---|---|
-| `--only STEP` | only this step (repeatable): service, hooks, widget, bindings, menu, launcher; one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher` |
-| `--skip STEP` | skip this step (repeatable); one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher` |
+| `--only STEP` | only this step (repeatable): service, hooks, widget, bindings, menu, launcher, remote |
+| `--skip STEP` | skip this step (repeatable); one of `service`, `hooks`, `widget`, `bindings`, `menu`, `launcher`, `remote` |
 | `--dry-run` | show what would be done |

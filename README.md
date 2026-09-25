@@ -152,6 +152,7 @@ again, and `--dry-run` shows what it would change first:
 | `bindings` | **Super+Alt+A** jumps to the agent that needs you, **Super+Ctrl+Alt+A** toggles the sessions panel, **Super+Shift+Ctrl+Alt+A** opens the app; the app window floats, centered |
 | `menu` | an **Agents** submenu in the Omarchy menu |
 | `launcher` | a checkout only: the `omaorchestra` command on your PATH, and the app in the launcher |
+| `remote` | only with `--only remote`: checks how a phone can reach this machine (Tailscale, sshd, firewall, keys) and changes nothing; see [From your phone](docs/remote.md) |
 
 Pick steps with `--only <step>` or `--skip <step>`. Changes to your own
 files (Hyprland bindings, the window rule, the menu) go in a marked block,
@@ -219,6 +220,8 @@ a new omaorchestra release.
   notifications, starting and queueing tasks, worktrees, agents and handoffs,
   keybindings, configuration
 - [Commands](docs/commands.md): every command and option
+- [From your phone](docs/remote.md): `omaorchestra top` over SSH on your
+  tailnet, with a key that can run nothing else
 - [Providers and models](docs/providers.md): API providers, model defaults,
   routing agents through a provider, costs and budgets
 - [MCP servers and permissions](docs/mcp.md)

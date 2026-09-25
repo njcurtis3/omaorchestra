@@ -63,7 +63,7 @@ def arguments(parser):
         text = action.help or ""
         if action.choices and not action.option_strings and not text:
             text = "one of " + ", ".join(map(str, action.choices))
-        elif action.choices and "one of" not in text:
+        elif action.choices and "one of" not in text and not all(str(c) in text for c in action.choices):
             text = (text + "; " if text else "") + "one of " + ", ".join(f"`{c}`" for c in action.choices)
         rows.append((flags, text))
     return rows

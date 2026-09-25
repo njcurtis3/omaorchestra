@@ -122,8 +122,9 @@ omarchy bar move omaorchestra.sessions --before omarchy.agents
 
 `omaorchestra top` shows sessions and the queue in the terminal, live, the
 way the app does. It fits a phone's screen (about 40 columns), so over SSH
-from Termius or Blink it is the way to check on agents while you are away;
-reaching the machine is up to you (Tailscale works well).
+from Termius or Blink it is the way to check on agents while you are away.
+[From your phone](remote.md) sets that up safely: over Tailscale, with a key
+that can run `top` and nothing else.
 
 - Two tabs, **Sessions** (waiting ones first, with what they are asking) and
   **Queue**. Tab or ←/→ switches; ↑/↓ (or j/k) picks; Enter shows everything
@@ -139,9 +140,9 @@ reaching the machine is up to you (Tailscale works well).
   says whether you count as away.
 - **q** quits.
 
-Every key is also a button along the bottom, and rows, tabs and buttons all
-respond to taps in terminals that report the mouse (most phone SSH apps do),
-so a phone keyboard is only needed to type a task. Focusing a terminal window
+Every key is also a button along the bottom, and rows, tabs and buttons
+respond to taps in terminals that pass them through as mouse clicks, so a
+phone keyboard is mostly needed to type a task. Focusing a terminal window
 is left out on purpose: it would happen on a desk nobody is at.
 
 ## Notifications

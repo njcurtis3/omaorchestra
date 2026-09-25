@@ -212,6 +212,10 @@ class TopTest(unittest.TestCase):
         self.assertEqual(self.daemon.requests[-1], {"cmd": "away", "mode": "on"})
         self.assertTrue(self.screen().splitlines()[0].endswith(" away "))
 
+    def test_connecting_first(self):
+        fresh = top.Top(request=self.daemon, now=lambda: NOW, agents=["claude"])
+        self.assertIn("Connecting", fresh.render(40, 20).text())
+
     def test_daemon_down(self):
         self.t.apply({"event": "lost"})
         self.assertIn("not running", self.screen())

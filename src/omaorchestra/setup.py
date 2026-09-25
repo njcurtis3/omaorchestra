@@ -15,13 +15,16 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import adapters, claude_settings, config, service
+from . import adapters, claude_settings, config, remote_access, service
 
 PLUGIN_ID = "omaorchestra.sessions"
 PACKAGED_DATA = Path("/usr/share/omaorchestra")
 BEGIN = ">>> omaorchestra (added by `omaorchestra setup`; `omaorchestra teardown` removes it)"
 END = "<<< omaorchestra"
-STEPS = ("service", "hooks", "widget", "bindings", "menu", "launcher")
+STEPS = ("service", "hooks", "widget", "bindings", "menu", "launcher", "remote")
+# Steps that run only when named with --only: `remote` checks how a phone can
+# reach this machine, and changes nothing.
+ASKED_FOR = ("remote",)
 
 
 class SetupError(Exception):
@@ -375,13 +378,20 @@ def teardown_launcher(dry_run):
     return done
 
 
+def check_remote(run):
+    """How a phone can reach this machine (docs/remote.md). Only reads."""
+    marks = {"ok": "ok  ", "note": "note", "fix": "fix "}
+    lines = [f"remote: {marks[level]} {text}" for level, text in remote_access.check(run)]
+    return lines + ["remote: this step only checks and changed nothing; docs/remote.md walks through it"]
+
+
 # ---------------------------------------------------------------- entry points
 
 def selected(only=(), skip=()):
     for name in list(only) + list(skip):
         if name not in STEPS:
             raise SetupError(f"unknown step {name} (steps: {', '.join(STEPS)})")
-    return [s for s in STEPS if (not only or s in only) and s not in skip]
+    return [s for s in STEPS if (s in only if only else s not in ASKED_FOR) and s not in skip]
 
 
 def setup(binary, only=(), skip=(), dry_run=False, run=subprocess.run):
@@ -401,6 +411,8 @@ def setup(binary, only=(), skip=(), dry_run=False, run=subprocess.run):
             done += setup_menu(dry_run)
         elif step == "launcher":
             done += setup_launcher(binary, dry_run)
+        elif step == "remote":
+            done += check_remote(run)
     return done
 
 
@@ -420,6 +432,8 @@ def teardown(only=(), skip=(), dry_run=False, run=subprocess.run):
             done += teardown_menu(dry_run)
         elif step == "launcher":
             done += teardown_launcher(dry_run)
+        elif step == "remote":
+            done.append("remote: nothing to undo; setup never changes sshd, Tailscale or the firewall")
     return done
 
 

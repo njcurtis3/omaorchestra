@@ -99,6 +99,7 @@ class Top:
         self.queue = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
         self.away = None
         self.connected = False
+        self.lost = False  # the daemon failed to answer (until then: still connecting)
         self.tab = "sessions"
         self.index = {"sessions": 0, "queue": 0}
         self.offset = {"sessions": 0, "queue": 0}
@@ -128,7 +129,7 @@ class Top:
         elif kind == "away":
             self.away = message["away"]
         elif kind == "lost":
-            self.connected = False
+            self.connected, self.lost = False, True
 
     def rows(self, tab=None):
         tab = tab or self.tab
@@ -340,7 +341,9 @@ class Top:
         self.header(screen)
         footer = self.footer(width)
         body = height - len(screen.lines) - len(footer.lines)
-        if not self.connected:
+        if not self.connected and not self.lost:
+            screen.line(("Connecting to omaorchestrad…", "dim"))
+        elif not self.connected:
             for text in textwrap.wrap("omaorchestrad is not running; waiting for it to start "
                                       "(omaorchestra service install).", width)[:body]:
                 screen.line((text, "dim"))
