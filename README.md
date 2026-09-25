@@ -31,9 +31,13 @@ their MCP servers in one place.
   keyring, per-task server profiles, and omaorchestra itself as an MCP server.
 - **Handoffs.** Move a task to another agent or model with a brief of where
   it stands.
+- **Phone pushes.** Optional notifications through ntfy when an agent needs
+  you or a task finishes or fails. They say only the project and what
+  happened unless you ask for more.
 - **Local and private.** A user service and a Unix socket only you can
-  reach. The app is native Qt, not a web page, and omaorchestra itself never
-  sends your prompts anywhere.
+  reach, and no open port. The app is native Qt, not a web page, and
+  omaorchestra itself never sends your prompts anywhere unless you set phone
+  pushes to `full`.
 
 | New task | Queue |
 |---|---|

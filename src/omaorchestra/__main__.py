@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               modeldefaults, procs, providers, service, setup, windows, worktrees)
+               modeldefaults, procs, providers, remote, service, setup, windows, worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -614,6 +614,75 @@ def hook_command(args):
     return claude_settings.hook_command(binary, getattr(args, "agent", "claude") or "claude")
 
 
+def cmd_remote_status(args):
+    settings = config.load()["remote"]
+    topic, token = keys.lookup_remote("topic"), keys.lookup_remote("token")
+    print(f"push     {'on' if settings['push'] else 'off'}")
+    print(f"server   {settings['server']}")
+    print(f"topic    {'stored in the keyring' if topic else 'none yet (omaorchestra remote topic --new)'}")
+    print(f"token    {'stored in the keyring' if token else 'none'}")
+    print(f"content  {settings['content']}")
+    print(f"events   {', '.join(settings['events']) or 'none'}")
+    if topic and not settings["push"]:
+        print("turn it on with: omaorchestra config set remote.push true")
+    return 0
+
+
+def cmd_remote_topic(args):
+    if args.clear:
+        keys.clear_remote("topic")
+        print("forgot the topic")
+        return 0
+    if args.show:
+        topic = keys.lookup_remote("topic")
+        if not topic:
+            print("no topic yet; make one with `omaorchestra remote topic --new`", file=sys.stderr)
+            return 1
+        print(topic.strip())
+        return 0
+    if args.new:
+        topic = remote.new_topic()
+    elif args.stdin:
+        topic = sys.stdin.read()
+    else:
+        import getpass
+        topic = getpass.getpass("ntfy topic (not shown): ")
+    topic = topic.strip()
+    if not topic or any(c.isspace() or c == "/" for c in topic) or len(topic) > 64:
+        raise remote.RemoteError("a topic is up to 64 characters, with no spaces or slashes")
+    keys.store_remote("topic", topic)
+    print("stored the topic in the system keyring")
+    if args.new:
+        server = config.load()["remote"]["server"]
+        print(f"\nsubscribe to it in the ntfy app on your phone:\n  server {server}\n  topic  {topic}\n"
+              "\nanyone who knows the topic can read what is sent to it; keep it private.")
+    return 0
+
+
+def cmd_remote_token(args):
+    if args.clear:
+        keys.clear_remote("token")
+        print("forgot the token")
+        return 0
+    if args.stdin:
+        token = sys.stdin.read()
+    else:
+        import getpass
+        token = getpass.getpass("ntfy access token (not shown): ")
+    keys.store_remote("token", token)
+    print("stored the token in the system keyring")
+    return 0
+
+
+def cmd_remote_test(args):
+    settings = config.load()["remote"]
+    remote.send(settings, "needs-you", "omaorchestra test", "Push notifications work.")
+    print(f"sent a test notification through {settings['server']}")
+    if not settings["push"]:
+        print("push is off, so agents will not send any yet: omaorchestra config set remote.push true")
+    return 0
+
+
 def cmd_config_path(args):
     print(config.path())
     return 0
@@ -961,6 +1030,24 @@ def main(argv=None):
         if name in ("install", "snippet"):
             p.add_argument("--command", dest="hook_command", help="hook command to use (default: this omaorchestra, by absolute path)")
 
+    remote_cmd = sub.add_parser("remote", help="push notifications to your phone (ntfy)")
+    remote_sub = remote_cmd.add_subparsers(dest="remote_command")
+    remote_cmd.set_defaults(func=cmd_remote_status)
+    remote_sub.add_parser("status", help="how pushes are set up").set_defaults(func=cmd_remote_status)
+    rt = remote_sub.add_parser("topic", help="set the ntfy topic (kept in the system keyring)")
+    how = rt.add_mutually_exclusive_group()
+    how.add_argument("--new", action="store_true", help="make up a hard-to-guess topic and print it")
+    how.add_argument("--stdin", action="store_true", help="read the topic from standard input")
+    how.add_argument("--show", action="store_true", help="print the stored topic")
+    how.add_argument("--clear", action="store_true", help="forget the topic")
+    rt.set_defaults(func=cmd_remote_topic)
+    rk = remote_sub.add_parser("token", help="set an ntfy access token, for protected topics")
+    how = rk.add_mutually_exclusive_group()
+    how.add_argument("--stdin", action="store_true", help="read the token from standard input")
+    how.add_argument("--clear", action="store_true", help="forget the token")
+    rk.set_defaults(func=cmd_remote_token)
+    remote_sub.add_parser("test", help="send one test notification now").set_defaults(func=cmd_remote_test)
+
     config_cmd = sub.add_parser("config", help="inspect the configuration")
     config_sub = config_cmd.add_subparsers(dest="config_command", required=True)
     config_sub.add_parser("path", help="print the config file path").set_defaults(func=cmd_config_path)
@@ -1018,7 +1105,7 @@ def run_command(args, parser=None):
         return args.func(args)
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
-            keys.KeyError_, mcp_registry.McpError, setup.SetupError) as e:
+            keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

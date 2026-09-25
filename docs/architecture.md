@@ -16,6 +16,9 @@
 - Parallel tasks are isolated in separate git worktrees; merging is manual.
 - Approval requests are surfaced to the user, never auto-approved.
 - The socket is user-only (0600) and never exposed over the network.
+- Remote means outbound only: phone pushes are HTTPS POSTs to ntfy
+  (`remote.py`); omaorchestra opens no port of its own. What a push says is
+  set by `[remote] content`, and prompts leave the machine only at `full`.
 
 ## Protocol
 Newline-delimited JSON over the socket, one response per request:

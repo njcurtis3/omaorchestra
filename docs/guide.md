@@ -128,6 +128,41 @@ notification server, so Omarchy's do-not-disturb silences them like any other
 app. Turn either off, or change the two-minute threshold, under
 `[notifications]` in the config.
 
+### On your phone
+
+omaorchestra can also push to your phone through [ntfy](https://ntfy.sh), an
+open-source notification service with Android and iOS apps. It only sends:
+each push is one HTTPS request from the daemon, and nothing listens for
+connections.
+
+```bash
+omaorchestra remote topic --new         # make a hard-to-guess topic; prints it
+omaorchestra config set remote.push true
+omaorchestra remote test                # one test notification
+```
+
+Subscribe to the printed topic in the ntfy app (server `https://ntfy.sh`
+unless you changed it). On ntfy.sh, anyone who knows a topic can read it, so
+the topic is kept in the system keyring rather than the config file, and
+`remote topic --new` makes one nobody will guess. For a self-hosted ntfy
+server, set `remote.server` and, if its topics need one, store an access token
+with `omaorchestra remote token`. `omaorchestra remote` shows how things
+stand.
+
+Pushes go out when an agent needs you, when long work finishes (after
+`notifications.finished_after`), when a queued task fails to start, when a
+busy agent reaches its usage limit, and when the queue is held back; pick
+which with `remote.events`. What they say is `remote.content`:
+
+| Level | A push carries |
+|---|---|
+| `minimal` (default) | the project folder's name and what happened |
+| `summary` | also the task's title |
+| `full` | also the agent's question, which can quote commands and code |
+
+Prompts and code leave the machine only at `full`. For now pushes go out
+whether or not you are at the desk; an away mode is planned.
+
 ## Starting an agent
 
 ```bash

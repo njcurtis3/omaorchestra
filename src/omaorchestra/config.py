@@ -45,6 +45,26 @@ def _agents(value):
         return f"unknown agent {', '.join(unknown)} (known: {', '.join(KNOWN_AGENTS)})"
 
 
+REMOTE_EVENTS = ("needs-you", "finished", "failed", "usage-limit", "queue-blocked")
+CONTENT_LEVELS = ("minimal", "summary", "full")
+
+
+def _events(value):
+    if not isinstance(value, list) or not all(isinstance(e, str) for e in value):
+        return "must be a list of event names"
+    unknown = [e for e in value if e not in REMOTE_EVENTS]
+    if unknown:
+        return f"unknown event {', '.join(unknown)} (known: {', '.join(REMOTE_EVENTS)})"
+
+
+def _server(value):
+    if not isinstance(value, str) or not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", value):
+        return "must be an http:// or https:// URL"
+
+
+# Multiple-choice list settings and what they may contain.
+OPTIONS = {("agents", "enabled"): KNOWN_AGENTS, ("remote", "events"): REMOTE_EVENTS}
+
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
            ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
            ("tasks", "daily_budget"): (0, 100000)}
@@ -70,6 +90,13 @@ SCHEMA = {
         "fallback_agent": ("", lambda v: None if v in ("", *KNOWN_AGENTS) else
                            f"must be empty or one of {', '.join(KNOWN_AGENTS)}"),
         "daily_budget": (0, _int_between(*_RANGES[("tasks", "daily_budget")])),
+    },
+    "remote": {
+        "push": (False, _bool),
+        "server": ("https://ntfy.sh", _server),
+        "content": ("minimal", lambda v: None if v in CONTENT_LEVELS else
+                    f"must be one of {', '.join(CONTENT_LEVELS)}"),
+        "events": (list(REMOTE_EVENTS), _events),
     },
 }
 
@@ -120,6 +147,21 @@ METADATA = {
                                "above this (from Omarchy's usage records); 0 turns it off."),
         },
     },
+    "remote": {
+        "title": "Remote",
+        "help": "Push notifications to your phone through ntfy. The topic lives in the keyring: "
+                "`omaorchestra remote topic`.",
+        "keys": {
+            "push": ("Send push notifications", "Test with `omaorchestra remote test`."),
+            "server": ("ntfy server", "ntfy.sh, or your own ntfy server."),
+            "content": ("What a notification says", "minimal: the project and what happened; summary: adds the "
+                                                     "task title; full: adds the agent's question. Prompts and code "
+                                                     "leave the machine only with full."),
+            "events": ("Push when", "needs-you: an agent waits for you; finished: long work ended; failed: a "
+                                    "task did not start; usage-limit: a busy agent hit its limit; queue-blocked: "
+                                    "the queue is held back."),
+        },
+    },
 }
 
 
@@ -138,13 +180,13 @@ def describe(config):
             elif isinstance(default, str):
                 kind = "text"
             else:
-                kind = "agents"
+                kind = "choices"
             field = {"section": section, "key": key, "label": label, "help": help_text, "kind": kind,
                      "value": config[section][key], "default": default}
             if kind == "int":
                 field["min"], field["max"] = _RANGES[(section, key)]
-            if kind == "agents":
-                field["options"] = list(KNOWN_AGENTS)
+            if kind == "choices":
+                field["options"] = list(OPTIONS[(section, key)])
             fields.append(field)
         sections.append({"section": section, "title": meta["title"], "help": meta["help"], "fields": fields})
     return sections

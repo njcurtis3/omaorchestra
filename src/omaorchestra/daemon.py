@@ -8,7 +8,8 @@ import time
 
 import subprocess
 
-from . import __version__, adapters, config, costs, launch, notify, paths, procs, taskqueue, transcript, usage, windows
+from . import (__version__, adapters, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
+               usage, windows)
 from .log import event
 from .registry import Registry
 
@@ -52,10 +53,11 @@ ALREADY_RUNNING_EXIT = 3
 
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
-                 settings=None, force_verbose=False):
+                 settings=None, force_verbose=False, pusher=None):
         self.registry = registry
         self.is_alive = is_alive
         self.notifier = notifier
+        self.pusher = pusher  # phone pushes (remote.Pusher), beside the desktop notifier
         self.backlog = backlog
         self.subscribers = set()
         self.settings = settings or config.defaults()
@@ -73,6 +75,7 @@ class Daemon:
         # which starting another agent needs.
         self.user_path = None
         self.offered = set()  # sessions already offered a hand-off
+        self.limited = set()  # busy agents known to be at a usage limit (pushed once)
 
     # ---------------------------------------------------------------- queue
 
@@ -182,6 +185,22 @@ class Daemon:
             self.notifier.offer(f"{project}: {usage.describe(block)}", f"Hand its work to {label}?",
                                 f"Hand off to {label}", accept)
 
+    def check_limits(self):
+        """Push once when an agent with sessions at work reaches a usage
+        limit; again only after it has dropped below and come back."""
+        if not self.pusher:
+            return
+        busy = {s.get("agent") or "claude" for s in self.registry.sessions.values()
+                if s.get("status") in ("working", "needs-input") and not s.get("provider")}
+        for agent in busy | self.limited:
+            block = self.usage_check(agent, 0.99) if agent in busy else None
+            if block and agent not in self.limited:
+                self.limited.add(agent)
+                event(logging.INFO, "usage limit reached", agent=agent, reason=usage.describe(block))
+                self.pusher.limit_reached(block)
+            elif not block:
+                self.limited.discard(agent)
+
     def usage_block(self, agent="claude"):
         """The subscription limit that should hold `agent`'s tasks now, if
         any. Also asks Omarchy to refresh an old record (at most every 5
@@ -218,6 +237,8 @@ class Daemon:
         except launch.LaunchError as e:
             self.queue.fail(item, str(e))
             event(logging.WARNING, "task failed to start", task=item["id"], error=str(e))
+            if self.pusher:
+                self.pusher.task_failed(item, str(e))
             return None
         self.queue.tasks.remove(item)
         self.queue.save()
@@ -241,6 +262,8 @@ class Daemon:
             if blocked != self.blocked:
                 if blocked:
                     event(logging.INFO, "queue waiting", reason=blocked.get("text") or usage.describe(blocked))
+                    if not self.blocked and self.pusher:
+                        self.pusher.queue_blocked(blocked)
                 elif self.blocked:
                     event(logging.INFO, "queue resumed", reason="usage limit no longer reached")
                 self.blocked = blocked
@@ -303,18 +326,22 @@ class Daemon:
         log.set_verbose(self.force_verbose or new["daemon"]["verbose"])
         if self.notifier:
             self.notifier.settings = new["notifications"]
+        if self.pusher:
+            self.pusher.settings, self.pusher.notifications = new["remote"], new["notifications"]
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()
         self.publish_queue()
         self.dispatch()  # max_parallel may have grown
         event(logging.INFO, "config reloaded", prune_interval=new["daemon"]["prune_interval"],
               verbose=new["daemon"]["verbose"], waiting=new["notifications"]["waiting"],
-              finished_after=new["notifications"]["finished_after"])
+              finished_after=new["notifications"]["finished_after"], push=new["remote"]["push"])
         return ""
 
     def changed(self, previous, session, reason=None):
         if self.notifier:
             self.notifier.changed(previous, session)
+        if self.pusher:
+            self.pusher.changed(previous, session)
         self.record_approval(previous, session, reason)
         if session is not None:
             self.publish({"event": "session", "session": session})
@@ -470,6 +497,8 @@ class Daemon:
             reason = "process-gone" if "pid" in session else "did-not-start"
             event(logging.INFO, "session ended", id=sid, reason=reason, pid=session.get("pid"))
             self.changed(session, None, reason=reason)
+            if reason == "did-not-start" and self.pusher:
+                self.pusher.task_failed(session, "the agent did not start")
         return list(removed)
 
     def handle(self, request):
@@ -550,6 +579,7 @@ async def prune_forever(daemon, interval=PRUNE_INTERVAL):
         await asyncio.sleep(interval)
         daemon.prune()
         daemon.offer_handoffs()
+        daemon.check_limits()
         # A queue waiting on a usage limit gets another look (limits reset).
         if daemon.queue.next_pending():
             daemon.dispatch()
@@ -586,6 +616,7 @@ def run(verbose=False):
     async def main():
         daemon = Daemon(registry, settings=settings, force_verbose=verbose)
         daemon.notifier = notify.Notifier(settings["notifications"], focus=daemon.focus)
+        daemon.pusher = remote.Pusher(settings["remote"], settings["notifications"])
         # Catch sessions that died while the daemon was down.
         daemon.prune()
         server = await serve(sock_path, registry, daemon)

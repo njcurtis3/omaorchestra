@@ -185,7 +185,7 @@ ColumnLayout {
                 }
 
                 Row {
-                  visible: fieldRow.modelData.kind === "agents"
+                  visible: fieldRow.modelData.kind === "choices"
                   spacing: 12
                   Repeater {
                     model: fieldRow.modelData.options || []

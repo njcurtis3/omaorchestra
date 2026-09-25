@@ -37,3 +37,19 @@ daily_budget = 0
 # instead (claude, codex or opencode; empty waits); also offered as a
 # hand-off when a running agent reaches its limit
 fallback_agent = ""
+
+[remote]
+# Push notifications to your phone through ntfy (https://ntfy.sh). Store a
+# topic first: `omaorchestra remote topic --new`, then subscribe to it in the
+# ntfy app; `omaorchestra remote test` sends one
+push = false
+# ntfy.sh, or your own ntfy server
+server = "https://ntfy.sh"
+# What a notification says: "minimal" (the project and what happened),
+# "summary" (adds the task title) or "full" (adds the agent's question, which
+# can quote commands and code). Prompts and code leave the machine only with full
+content = "minimal"
+# Which events push: needs-you, finished (after notifications.finished_after),
+# failed (a task did not start), usage-limit (a busy agent hit its limit),
+# queue-blocked (the queue is held back by a limit or the budget)
+events = ["needs-you", "finished", "failed", "usage-limit", "queue-blocked"]

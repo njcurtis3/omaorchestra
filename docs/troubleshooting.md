@@ -80,6 +80,12 @@ Omarchy's do-not-disturb silences omaorchestra like any other app. Check
 `[notifications]` in the config too: `waiting = false` and `finished_after = 0`
 turn them off.
 
+Phone pushes: `omaorchestra remote` shows whether push is on and a topic is
+stored, and `omaorchestra remote test` sends one and reports any error (no
+network, the server wants a token, rate limited). The daemon logs `push
+failed` once when pushes start failing (`journalctl --user -u omaorchestrad`)
+and `push working again` when they recover.
+
 ## Removing everything
 
 `omaorchestra teardown` undoes `setup` and keeps your settings, state,
