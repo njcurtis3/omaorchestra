@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs"
 // Format.js is a QML ".pragma library"; strip the pragma and load it as a script.
 const src = readFileSync(new URL("../../plugin/omaorchestra.sessions/Format.js", import.meta.url), "utf8")
 const F = new Function(src.replace(/^\.pragma library\s*$/m, "") +
-  "\nreturn { projectName, ago, modelName, statusLabel, sessionList, sorted, counts, barLabel, tooltip }")()
+  "\nreturn { projectName, ago, modelName, statusLabel, sessionList, sorted, counts, barLabel, tooltip, awayText }")()
 
 test("projectName uses the last path component", () => {
   assert.equal(F.projectName("/home/u/Work/proj"), "proj")
@@ -54,4 +54,17 @@ test("modelName matches the Python formatting", () => {
   assert.equal(F.modelName("claude-sonnet-5"), "Sonnet 5")
   assert.equal(F.modelName(""), "")
   assert.equal(F.modelName("gpt-5"), "Gpt 5")
+})
+
+test("away mode shows only while phone pushes are on", () => {
+  const c = { total: 1, waiting: 1, working: 0, idle: 0 }
+  const locked = { push: true, away: true, reason: "locked", mode: "auto" }
+  assert.equal(F.barLabel("G", c, locked), "G 1 waiting 󰄜")
+  assert.equal(F.barLabel("G", c, { ...locked, push: false }), "G 1 waiting")
+  assert.equal(F.barLabel("G", c, null), "G 1 waiting")
+  assert.equal(F.tooltip(c, locked), "omaorchestra: 1 waiting\nAway (locked): pushing to your phone")
+  assert.equal(F.tooltip(c, { push: false }), "omaorchestra: 1 waiting")
+  assert.equal(F.awayText({ push: true, away: false, mode: "auto" }), "At the desk: phone pushes held")
+  assert.equal(F.awayText({ push: true, away: false, mode: "off" }), "At the desk: phone pushes off")
+  assert.equal(F.awayText({ push: true, away: true, reason: "on", mode: "on" }), "Away: pushing to your phone")
 })

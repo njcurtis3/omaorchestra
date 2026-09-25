@@ -18,8 +18,11 @@ BarWidget {
   readonly property string glyph: "󰚩"
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
   readonly property string registryPath: stateHome + "/omaorchestra/sessions.json"
+  readonly property string awayPath: stateHome + "/omaorchestra/away.json"
 
   property var sessions: []
+  // Away mode, from away.json (the daemon rewrites it as you come and go).
+  property var away: null
   // A FileView only watches a file that exists, so a registry created after
   // the bar loaded (first daemon start) is noticed by the retry timer below.
   property bool registryLoaded: false
@@ -38,6 +41,7 @@ BarWidget {
 
   function refresh() {
     registry.reload()
+    awayFile.reload()
     root.now = Date.now() / 1000
   }
 
@@ -86,11 +90,26 @@ BarWidget {
     }
   }
 
+  FileView {
+    id: awayFile
+    path: root.awayPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.away = JSON.parse(String(text() || "")) } catch (e) {}
+    }
+    onLoadFailed: root.away = null
+  }
+
   Timer {
     interval: 5000
-    running: !root.registryLoaded
+    running: !root.registryLoaded || root.away === null
     repeat: true
-    onTriggered: registry.reload()
+    onTriggered: {
+      if (!root.registryLoaded) registry.reload()
+      if (root.away === null) awayFile.reload()
+    }
   }
 
   Timer {
@@ -116,7 +135,7 @@ BarWidget {
     target: "omaorchestra.sessions"
 
     function status(): string {
-      return JSON.stringify({ path: root.registryPath, loaded: root.registryLoaded, counts: root.counts, sessions: root.sessions.length })
+      return JSON.stringify({ path: root.registryPath, loaded: root.registryLoaded, counts: root.counts, sessions: root.sessions.length, away: root.away })
     }
     function refresh(): void { root.refresh() }
     function open(): void { root.open() }
@@ -130,11 +149,11 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? root.glyph : Format.barLabel(root.glyph, root.counts)
+    text: root.vertical ? root.glyph : Format.barLabel(root.glyph, root.counts, root.away)
     // Urgent colour only when an agent is blocked on you.
     active: root.counts.waiting > 0
     dimmed: root.counts.waiting === 0 && root.counts.working === 0
-    tooltipText: Format.tooltip(root.counts)
+    tooltipText: Format.tooltip(root.counts, root.away)
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.refresh()

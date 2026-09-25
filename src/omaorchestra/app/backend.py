@@ -340,6 +340,49 @@ class Spend(QObject):
     loading = Property(bool, lambda self: self._loading, notify=changed)
 
 
+class Away(QObject):
+    """Away mode (away.py), kept current from the session subscription."""
+
+    changed = Signal()
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self._state = {}
+        sessions.awayUpdated.connect(self._update)
+
+    @Slot("QVariantMap")
+    def _update(self, state):
+        self._state = dict(state)
+        self.changed.emit()
+
+    @Slot(str, result=str)
+    def setMode(self, mode):
+        """Returns an error message, or ""."""
+        try:
+            response = client.request({"cmd": "away", "mode": mode})
+        except client.DaemonUnavailable:
+            return "omaorchestrad is not running"
+        if not response.get("ok"):
+            return response.get("error") or "the daemon refused"
+        self._update(response["away"])
+        return ""
+
+    def _text(self):
+        state = self._state
+        if not state:
+            return ""
+        if state.get("away"):
+            why = {"locked": " (locked)", "idle": " (idle)"}.get(state.get("reason"), "")
+            return f"Away{why}: pushing to your phone"
+        return "At the desk: phone pushes off" if state.get("mode") == "off" else "At the desk: pushes held"
+
+    known = Property(bool, lambda self: bool(self._state), notify=changed)
+    push = Property(bool, lambda self: bool(self._state.get("push")), notify=changed)
+    away = Property(bool, lambda self: bool(self._state.get("away")), notify=changed)
+    mode = Property(str, lambda self: self._state.get("mode", ""), notify=changed)
+    text = Property(str, _text, notify=changed)
+
+
 class Queue(QObject):
     """The daemon's task queue, kept current from the session subscription."""
 
@@ -473,6 +516,7 @@ class Sessions(QObject):
     changed = Signal()
     changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
     queueUpdated = Signal("QVariantMap")  # taskqueue snapshot, from the same subscription
+    awayUpdated = Signal("QVariantMap")  # away mode (away.Away.state()), likewise
     _snapshot = Signal(list)
     _event = Signal(dict)
     _lost = Signal()
@@ -498,6 +542,8 @@ class Sessions(QObject):
                 self._snapshot.emit(snapshot["sessions"])
                 if "queue" in snapshot:
                     self.queueUpdated.emit(snapshot["queue"])
+                if "away" in snapshot:
+                    self.awayUpdated.emit(snapshot["away"])
                 for message in stream:
                     self._event.emit(message)
             except (client.DaemonUnavailable, StopIteration, OSError, ValueError):
@@ -515,6 +561,9 @@ class Sessions(QObject):
     def _on_event(self, message):
         if message.get("event") == "queue":
             self.queueUpdated.emit(message["queue"])
+            return
+        if message.get("event") == "away":
+            self.awayUpdated.emit(message["away"])
             return
         if message.get("event") == "session":
             self.by_id[message["session"]["id"]] = message["session"]

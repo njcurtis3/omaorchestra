@@ -67,13 +67,36 @@ function counts(sessions) {
   return c
 }
 
-function barLabel(glyph, c) {
-  if (c.waiting > 0) return glyph + " " + c.waiting + " waiting"
-  if (c.working > 0) return glyph + " " + c.working
-  return glyph
+var PHONE = "󰄜"
+
+// Away while phone pushes are on (away.json, written by the daemon).
+function pushing(away) {
+  return !!(away && away.push && away.away)
 }
 
-function tooltip(c) {
+function barLabel(glyph, c, away) {
+  var label = glyph
+  if (c.waiting > 0) label = glyph + " " + c.waiting + " waiting"
+  else if (c.working > 0) label = glyph + " " + c.working
+  return pushing(away) ? label + " " + PHONE : label
+}
+
+// One line on away mode, or "" while phone pushes are off.
+function awayText(away) {
+  if (!away || !away.push) return ""
+  if (away.away) {
+    var why = away.reason === "locked" ? " (locked)" : away.reason === "idle" ? " (idle)" : ""
+    return "Away" + why + ": pushing to your phone"
+  }
+  return away.mode === "off" ? "At the desk: phone pushes off" : "At the desk: phone pushes held"
+}
+
+function tooltip(c, away) {
+  var line = awayText(away)
+  return sessionsTooltip(c) + (line ? "\n" + line : "")
+}
+
+function sessionsTooltip(c) {
   if (c.total === 0) return "omaorchestra: no agent sessions"
   var parts = []
   if (c.waiting) parts.push(c.waiting + " waiting")

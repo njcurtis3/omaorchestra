@@ -120,13 +120,15 @@ class Pusher:
     """Sends pushes from the daemon without ever holding it up or failing it.
 
     `send` is injectable for tests; it is called as send(settings, kind,
-    title, body) in a worker thread.
+    title, body) in a worker thread. `away`, when given, is awaited before
+    each push: False (you are at the desk) drops it.
     """
 
-    def __init__(self, settings, notifications, send=send):
+    def __init__(self, settings, notifications, send=send, away=None):
         self.settings = settings  # the [remote] section
         self.notifications = notifications  # [notifications], for finished_after
         self.send = send
+        self.away = away
         self.tasks = set()
         self.failing = False  # log the first failure of a run, not every one
 
@@ -157,6 +159,9 @@ class Pusher:
         settings = dict(self.settings)
 
         async def run():
+            if self.away is not None and not await self.away():
+                event(logging.DEBUG, "push held", kind=kind, reason="at the desk")
+                return
             try:
                 await asyncio.to_thread(self.send, settings, kind, title, body)
             except RemoteError as e:

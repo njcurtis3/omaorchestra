@@ -270,7 +270,8 @@ class ConfigTest(unittest.TestCase):
 class CliTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = mock.patch.dict(os.environ, {"OMAORCHESTRA_CONFIG": os.path.join(self.tmp.name, "c.toml")})
+        self.env = mock.patch.dict(os.environ, {"OMAORCHESTRA_CONFIG": os.path.join(self.tmp.name, "c.toml"),
+                                                "OMAORCHESTRA_SOCKET": os.path.join(self.tmp.name, "none.sock")})
         self.env.start()
         self.stored = {}
         patches = [mock.patch.object(cli.keys, "store_remote", lambda n, v: self.stored.__setitem__(n, v.strip())),

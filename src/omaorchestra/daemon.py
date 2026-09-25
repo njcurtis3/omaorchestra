@@ -8,7 +8,7 @@ import time
 
 import subprocess
 
-from . import (__version__, adapters, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
+from . import (__version__, adapters, away, config, costs, launch, notify, paths, procs, remote, taskqueue, transcript,
                usage, windows)
 from .log import event
 from .registry import Registry
@@ -34,6 +34,9 @@ def claim_socket(path):
 
 
 PRUNE_INTERVAL = 30
+# How often the lock screen is checked while away mode is automatic (and
+# again right before each push).
+LOCK_CHECK_INTERVAL = 10
 # How often launched agents are looked for until their first hook arrives, and
 # how long a found agent may stay silent before it is shown as waiting for you
 # (a new agent often starts by asking whether to trust its folder, and runs no
@@ -76,6 +79,65 @@ class Daemon:
         self.user_path = None
         self.offered = set()  # sessions already offered a hand-off
         self.limited = set()  # busy agents known to be at a usage limit (pushed once)
+        self.away = away.Away(registry.path.parent / "away.json", self.settings["remote"]["away_after"],
+                              on_change=lambda state: self.publish({"event": "away", "away": state}))
+        self.away.push = self.settings["remote"]["push"]
+        self.is_locked = away.is_locked  # tests replace it
+        self.idle_watch = None
+        self.lock_watch = None
+
+    # ----------------------------------------------------------------- away
+
+    def watching_away(self):
+        return self.away.push and self.away.mode == "auto"
+
+    def sync_away(self):
+        """Watch the lock screen and input only while that decides anything:
+        pushes on, and away mode automatic."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no event loop (a synchronous test)
+        minutes = self.settings["remote"]["away_after"]
+        self.away.minutes = minutes
+        if not self.watching_away():
+            if self.idle_watch:
+                self.idle_watch.stop()
+                self.lock_watch.cancel()
+                self.idle_watch = self.lock_watch = None
+            self.away.update(locked=None, idle=None)
+            return
+        if self.idle_watch:
+            if self.idle_watch.minutes != minutes:
+                self.idle_watch.notify_after(minutes)
+            return
+        self.idle_watch = away.IdleWatch(minutes, lambda idle: self.away.update(idle=idle))
+        self.idle_watch.start()
+
+        async def watch_lock():
+            while True:
+                await self.check_lock()
+                await asyncio.sleep(LOCK_CHECK_INTERVAL)
+        self.lock_watch = loop.create_task(watch_lock())
+
+    async def check_lock(self):
+        self.away.update(locked=await asyncio.to_thread(self.is_locked))
+
+    async def is_away(self):
+        """For the pusher: are you away right now? The lock screen is looked
+        at afresh, so a push right after locking is not lost."""
+        if self.watching_away():
+            await self.check_lock()
+        return self.away.away
+
+    def handle_away(self, request):
+        mode = request.get("mode")
+        if mode is not None:
+            if mode not in away.MODES:
+                return {"ok": False, "error": f"unknown away mode {mode!r} (use {', '.join(away.MODES)})"}
+            self.away.update(mode=mode)
+            self.sync_away()
+        return {"ok": True, "away": self.away.state()}
 
     # ---------------------------------------------------------------- queue
 
@@ -328,6 +390,8 @@ class Daemon:
             self.notifier.settings = new["notifications"]
         if self.pusher:
             self.pusher.settings, self.pusher.notifications = new["remote"], new["notifications"]
+        self.away.update(push=new["remote"]["push"])
+        self.sync_away()
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()
         self.publish_queue()
@@ -390,7 +454,8 @@ class Daemon:
         # Snapshot and registration happen with no await in between, so no
         # change can fall between them.
         self.subscribers.add(queue)
-        snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot()}
+        snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot(),
+                    "away": self.away.state()}
         event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
         client_gone = asyncio.ensure_future(reader.read())  # EOF when the client disconnects
         try:
@@ -542,6 +607,8 @@ class Daemon:
                 return {"ok": True, **self.handoff(request)}
             except (ValueError, launch.LaunchError) as e:
                 return {"ok": False, "error": str(e)}
+        if cmd == "away":
+            return self.handle_away(request)
         if cmd == "reload":
             error = self.reload()
             return {"ok": not error, "error": error} if error else {"ok": True}
@@ -616,7 +683,7 @@ def run(verbose=False):
     async def main():
         daemon = Daemon(registry, settings=settings, force_verbose=verbose)
         daemon.notifier = notify.Notifier(settings["notifications"], focus=daemon.focus)
-        daemon.pusher = remote.Pusher(settings["remote"], settings["notifications"])
+        daemon.pusher = remote.Pusher(settings["remote"], settings["notifications"], away=daemon.is_away)
         # Catch sessions that died while the daemon was down.
         daemon.prune()
         server = await serve(sock_path, registry, daemon)
@@ -632,6 +699,8 @@ def run(verbose=False):
         loop.add_signal_handler(signal.SIGHUP, daemon.reload)
         daemon.start_pruner()
         daemon.start_launch_watch()
+        daemon.away.save()  # for the bar widget, as with the registry
+        daemon.sync_away()
         daemon.dispatch()  # tasks may have been waiting while the daemon was down
         try:
             async with server:
@@ -644,6 +713,9 @@ def run(verbose=False):
         finally:
             daemon.pruner.cancel()
             daemon.launch_watch.cancel()
+            if daemon.idle_watch:
+                daemon.idle_watch.stop()
+                daemon.lock_watch.cancel()
             # Remove the socket only if it is still the one we bound.
             try:
                 if os.stat(sock_path).st_ino == socket_inode:

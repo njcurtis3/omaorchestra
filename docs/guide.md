@@ -160,8 +160,30 @@ which with `remote.events`. What they say is `remote.content`:
 | `summary` | also the task's title |
 | `full` | also the agent's question, which can quote commands and code |
 
-Prompts and code leave the machine only at `full`. For now pushes go out
-whether or not you are at the desk; an away mode is planned.
+Prompts and code leave the machine only at `full`.
+
+#### Away mode
+
+Pushes go out only while you are away, so your phone stays quiet while you
+sit at the desk:
+
+```bash
+omaorchestra away           # the mode, and whether you count as away now
+omaorchestra away auto      # away once the screen locks, or after a while without input (default)
+omaorchestra away on        # away until you switch back: everything is pushed
+omaorchestra away off       # at the desk: nothing is pushed
+```
+
+In `auto`, locking the screen (Super+Ctrl+L, or Omarchy locking it for you)
+makes you away at once; so do `remote.away_after` minutes (10 by default)
+without keyboard or mouse input. Anything that keeps the screen awake, such
+as a playing video, keeps you at the desk too. The lock screen is checked
+again right before each push, so locking and walking off loses nothing.
+`remote test` always sends.
+
+While push is on, the bar widget shows 󰄜 beside its count when pushes are
+going out, its panel has an auto / on / off switch, and so does the app's
+sidebar. The mode is remembered across restarts.
 
 ## Starting an agent
 

@@ -614,15 +614,66 @@ def hook_command(args):
     return claude_settings.hook_command(binary, getattr(args, "agent", "claude") or "claude")
 
 
+AWAY_MODES = {"auto": "away once the screen locks, or after {after} without input",
+              "on": "away: every push goes out", "off": "at the desk: nothing is pushed"}
+AWAY_REASONS = {"on": "away", "locked": "away (the screen is locked)", "idle": "away (no input for {after})"}
+
+
+def minutes(n):
+    return f"{n} minute" if n == 1 else f"{n} minutes"
+
+
+def away_now(state):
+    """"away (the screen is locked) since 14:02", or "at the desk"."""
+    if not state["away"]:
+        return "at the desk"
+    since = time.strftime("%H:%M", time.localtime(state["since"]))
+    return AWAY_REASONS[state["reason"]].format(after=minutes(state["after"])) + f" since {since}"
+
+
+def cmd_away(args):
+    request = {"cmd": "away"}
+    if args.mode:
+        request["mode"] = args.mode
+    try:
+        response = client.request(request)
+    except client.DaemonUnavailable:
+        print("omaorchestrad is not running; away mode lives in the daemon", file=sys.stderr)
+        return 1
+    if not response.get("ok"):
+        print(f"omaorchestra: {response.get('error')}", file=sys.stderr)
+        return 1
+    state = response["away"]
+    if args.json:
+        print(json.dumps(state))
+        return 0
+    print(f"mode  {state['mode']}: {AWAY_MODES[state['mode']].format(after=minutes(state['after']))}")
+    print(f"now   {away_now(state)}")
+    if state["mode"] == "auto" and state["push"]:
+        unknown = [what for what, key in (("the lock screen", "locked"), ("idle time", "idle"))
+                   if state[key] is None]
+        if unknown:
+            print(f"cannot read {' or '.join(unknown)} yet; see `journalctl --user -u omaorchestrad`")
+    if not state["push"]:
+        print("push is off, so nothing is sent either way: omaorchestra config set remote.push true")
+    return 0
+
+
 def cmd_remote_status(args):
     settings = config.load()["remote"]
     topic, token = keys.lookup_remote("topic"), keys.lookup_remote("token")
+    try:
+        state = client.request({"cmd": "away"}).get("away")
+    except client.DaemonUnavailable:
+        state = None
     print(f"push     {'on' if settings['push'] else 'off'}")
     print(f"server   {settings['server']}")
     print(f"topic    {'stored in the keyring' if topic else 'none yet (omaorchestra remote topic --new)'}")
     print(f"token    {'stored in the keyring' if token else 'none'}")
     print(f"content  {settings['content']}")
     print(f"events   {', '.join(settings['events']) or 'none'}")
+    away = f"{state['mode']}, {away_now(state)}" if state else "unknown (is omaorchestrad running?)"
+    print(f"away     {away}")
     if topic and not settings["push"]:
         print("turn it on with: omaorchestra config set remote.push true")
     return 0
@@ -1047,6 +1098,11 @@ def main(argv=None):
     how.add_argument("--clear", action="store_true", help="forget the token")
     rk.set_defaults(func=cmd_remote_token)
     remote_sub.add_parser("test", help="send one test notification now").set_defaults(func=cmd_remote_test)
+    away_p = sub.add_parser("away", help="push only while you are away: show or set the mode")
+    away_p.add_argument("mode", nargs="?", choices=["auto", "on", "off"],
+                        help="auto: away when locked or idle (default); on: always push; off: never push")
+    away_p.add_argument("--json", action="store_true")
+    away_p.set_defaults(func=cmd_away)
 
     config_cmd = sub.add_parser("config", help="inspect the configuration")
     config_sub = config_cmd.add_subparsers(dest="config_command", required=True)

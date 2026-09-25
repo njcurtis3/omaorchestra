@@ -89,7 +89,7 @@ open port.
     <td><b>Handoffs</b><br>Move a task to another agent or model, with a brief of where it stands, when one hits its limit.</td>
   </tr>
   <tr>
-    <td><b>Phone pushes</b><br>Optional ntfy notifications when an agent needs you or a task finishes or fails; minimal text by default.</td>
+    <td><b>Phone pushes</b><br>Optional ntfy notifications when an agent needs you or a task finishes or fails, only while you are away from the desk; minimal text by default.</td>
     <td><b>Local and private</b><br>A user service behind a Unix socket, no open port, keys in the system keyring, and a native Qt app, not a web page.</td>
   </tr>
 </table>

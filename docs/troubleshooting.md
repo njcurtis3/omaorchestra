@@ -86,6 +86,14 @@ network, the server wants a token, rate limited). The daemon logs `push
 failed` once when pushes start failing (`journalctl --user -u omaorchestrad`)
 and `push working again` when they recover.
 
+No pushes although push is on: you are probably counted as at the desk.
+`omaorchestra away` says which, and why. In `auto` it needs to read the
+lock screen (`omarchy-shell lock isLocked`) and idle time (the compositor's
+ext-idle-notify protocol, over `WAYLAND_DISPLAY`); if it cannot, it says so
+and the daemon logs `idle detection unavailable`. The service gets
+`WAYLAND_DISPLAY` from the session (`systemctl --user show-environment`);
+`omaorchestra away on` pushes regardless.
+
 ## Removing everything
 
 `omaorchestra teardown` undoes `setup` and keeps your settings, state,

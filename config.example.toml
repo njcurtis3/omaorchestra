@@ -53,3 +53,7 @@ content = "minimal"
 # failed (a task did not start), usage-limit (a busy agent hit its limit),
 # queue-blocked (the queue is held back by a limit or the budget)
 events = ["needs-you", "finished", "failed", "usage-limit", "queue-blocked"]
+# Pushes go out only while you are away. With `omaorchestra away auto` (the
+# default) that is once the screen is locked, or after this many minutes
+# without input; `away on` and `away off` set it by hand
+away_after = 10

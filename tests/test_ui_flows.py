@@ -63,8 +63,7 @@ class UiFlowTest(unittest.TestCase):
             "OMAORCHESTRA_MCP": str(tmp / "mcp.json"), "OMAORCHESTRA_AGENT_HOME": str(tmp / "agent-home"),
         })
         self.env.start()
-        env = dict(os.environ)
-        env.pop("JOURNAL_STREAM", None)
+        env = self.daemon_env()
         self.daemon_log = open(tmp / "daemon.log", "w+")
         self.daemon = subprocess.Popen([str(ROOT / "bin" / "omaorchestra"), "daemon"], env=env, stderr=self.daemon_log)
         self.assertTrue(wait_for(lambda: (tmp / "o.sock").exists()), "daemon did not start")
@@ -72,13 +71,14 @@ class UiFlowTest(unittest.TestCase):
         self.theme, self.sessions, self.settings = backend.Theme(), backend.Sessions(), backend.Settings()
         self.worktrees = backend.Worktrees()
         self.queue = backend.Queue(self.sessions)
+        self.away = backend.Away(self.sessions)
         self.providers = backend.Providers()
         self.spend = backend.Spend(self.sessions)
         self.mcp = backend.Mcp(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
@@ -99,6 +99,15 @@ class UiFlowTest(unittest.TestCase):
         qInstallMessageHandler(self.previous_handler)
 
     # ---------------------------------------------------------- helpers
+    def daemon_env(self):
+        env = dict(os.environ)
+        env.pop("JOURNAL_STREAM", None)
+        # Keep the test daemon off this desktop's lock screen, input and keyring.
+        for name in ("WAYLAND_DISPLAY", "OMARCHY_PATH"):
+            env.pop(name, None)
+        env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(Path(self.tmp.name) / "no-bus")
+        return env
+
     def find(self, name, item=None):
         item = item or self.window.property("contentItem")
         if item.objectName() == name:
@@ -252,6 +261,19 @@ class UiFlowTest(unittest.TestCase):
         self.assertFalse(Path(record["path"]).exists())
         self.assertEqual(self.warnings, [])
 
+    def test_away_switch_shows_with_push_on(self):
+        self.assertFalse(self.shown("away"), "no away switch while push is off")
+        self.config_path.write_text("[remote]\npush = true\n")
+        self.client.request({"cmd": "reload"})
+        self.assertTrue(wait_for(lambda: self.shown("away")), "away switch did not appear")
+        self.assertEqual(self.away.mode, "auto")
+        self.click("away-on")
+        self.assertTrue(wait_for(lambda: self.away.away), "not away after choosing Away")
+        self.assertEqual(self.client.request({"cmd": "away"})["away"]["mode"], "on")
+        self.click("away-off")
+        self.assertTrue(wait_for(lambda: self.away.mode == "off" and not self.away.away))
+        self.assertEqual(self.warnings, [])
+
     def test_queue_from_the_form_then_pause_resume_cancel(self):
         # Hold first, so nothing is actually launched during the test.
         self.click("nav-queue")
@@ -336,8 +358,7 @@ class UiFlowTest(unittest.TestCase):
         self.daemon.terminate()
         self.daemon.wait(timeout=5)
         self.assertTrue(wait_for(lambda: not self.sessions.connected), "did not notice the daemon going")
-        env = dict(os.environ)
-        env.pop("JOURNAL_STREAM", None)
+        env = self.daemon_env()
         self.daemon = subprocess.Popen([str(ROOT / "bin" / "omaorchestra"), "daemon"], env=env, stderr=self.daemon_log)
         self.assertTrue(wait_for(lambda: self.sessions.connected, timeout=10), "did not reconnect")
         self.assertTrue(wait_for(lambda: self.shown("row-w1")), "sessions not shown after reconnecting")

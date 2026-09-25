@@ -116,6 +116,59 @@ ApplicationWindow {
 
         Item { Layout.fillHeight: true }
 
+        // Away mode, while phone pushes are on (`omaorchestra away`).
+        ColumnLayout {
+          objectName: "away"
+          visible: awayMode.known && awayMode.push && sessions.connected
+          Layout.fillWidth: true
+          Layout.bottomMargin: 12
+          spacing: 6
+
+          Label {
+            text: "󰄜  " + awayMode.text
+            color: awayMode.away ? theme.foreground : theme.muted
+            font.pixelSize: 12
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+          }
+
+          RowLayout {
+            spacing: 4
+            Layout.fillWidth: true
+
+            Repeater {
+              model: [{ mode: "auto", label: "Auto", tip: "Away once the screen locks, or after a while without input" },
+                      { mode: "on", label: "Away", tip: "Push everything until you switch back" },
+                      { mode: "off", label: "Here", tip: "Push nothing" }]
+
+              delegate: ItemDelegate {
+                required property var modelData
+                objectName: "away-" + modelData.mode
+                readonly property bool current: awayMode.mode === modelData.mode
+                Layout.fillWidth: true
+                implicitHeight: 26
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                ToolTip.text: modelData.tip
+                onClicked: awayMode.setMode(modelData.mode)
+
+                contentItem: Label {
+                  text: modelData.label
+                  horizontalAlignment: Text.AlignHCenter
+                  font.pixelSize: 12
+                  color: parent.current ? theme.foreground : theme.muted
+                }
+                background: Rectangle {
+                  radius: 4
+                  color: parent.current ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
+                  border.width: 1
+                  border.color: theme.selection
+                }
+              }
+            }
+          }
+        }
+
         Label {
           text: "v" + appVersion
           color: theme.muted

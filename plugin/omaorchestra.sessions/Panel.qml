@@ -27,6 +27,7 @@ Panel {
   readonly property var barIdentity: hostWidget || root
 
   readonly property var sessions: hostWidget ? hostWidget.sessions : []
+  readonly property var away: hostWidget ? hostWidget.away : null
   readonly property real now: hostWidget ? hostWidget.now : Date.now() / 1000
 
   readonly property int cardWidth: Style.space(340)
@@ -98,6 +99,56 @@ Panel {
           onActivated: {
             Quickshell.execDetached(["omaorchestra", "app"])
             root.close()
+          }
+        }
+      }
+
+      // Away mode, while phone pushes are on: where you are, and the switch.
+      Item {
+        width: parent.width
+        visible: Format.awayText(root.away) !== ""
+        height: visible ? Math.max(awayLine.implicitHeight, modes.implicitHeight) : 0
+
+        Text {
+          id: awayLine
+          anchors.left: parent.left
+          anchors.right: modes.left
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰄜  " + Format.awayText(root.away)
+          color: Format.pushing(root.away) ? Color.foreground : Color.muted
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+
+        Row {
+          id: modes
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(8)
+
+          Repeater {
+            model: ["auto", "on", "off"]
+
+            Text {
+              required property string modelData
+              readonly property bool current: root.away && root.away.mode === modelData
+              text: modelData
+              color: current ? Color.accent : modeMouse.containsMouse ? Color.foreground : Color.muted
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              font.underline: current
+
+              MouseArea {
+                id: modeMouse
+                anchors.fill: parent
+                anchors.margins: -Style.space(3)
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Quickshell.execDetached(["omaorchestra", "away", parent.modelData])
+              }
+            }
           }
         }
       }
