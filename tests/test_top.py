@@ -251,7 +251,8 @@ class TerminalTest(unittest.TestCase):
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 20, 40, 0, 0))  # a phone-sized screen
             output = b""
             deadline = time.time() + 10
-            while b"New task" not in output and time.time() < deadline:
+            # "Connecting…" first, then "not running" once the connection fails.
+            while b"not running" not in output and time.time() < deadline:
                 try:
                     if select.select([fd], [], [], 0.2)[0]:
                         output += os.read(fd, 65536)
