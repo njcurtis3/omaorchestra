@@ -879,7 +879,8 @@ def cmd_hooks_status(args):
     return 0 if installed else 1
 
 
-def main(argv=None):
+def build_parser():
+    """Every command and option (also read by scripts/commands for docs/commands.md)."""
     parser = argparse.ArgumentParser(prog="omaorchestra", description="Agent coordinator for Omarchy")
     parser.add_argument("--version", action="version", version=f"omaorchestra {__version__}")
     sub = parser.add_subparsers(dest="subcommand")
@@ -889,7 +890,7 @@ def main(argv=None):
     daemon_p.set_defaults(func=cmd_daemon)
     sub.add_parser("ping", help="check whether the daemon is running").set_defaults(func=cmd_ping)
     ls = sub.add_parser("ls", help="list agent sessions")
-    ls.add_argument("--json", action="store_true")
+    ls.add_argument("--json", action="store_true", help="machine-readable output")
     ls.set_defaults(func=cmd_ls)
     focus_p = sub.add_parser("focus", help="focus a session's terminal window")
     focus_p.add_argument("session", nargs="?", help="session id or prefix (default: the one that needs you)")
@@ -921,12 +922,13 @@ def main(argv=None):
     q_sub = qp.add_subparsers(dest="queue_command")
     q_sub.add_parser("list", help="the queue and how many slots are busy").set_defaults(func=cmd_queue_list)
     qa = q_sub.add_parser("add", help="queue a task (anything after -- goes to the agent)")
-    qa.add_argument("task")
-    qa.add_argument("--in", dest="dir", default=".")
-    qa.add_argument("--model")
-    qa.add_argument("--permission-mode")
-    qa.add_argument("--worktree", dest="worktree", action="store_true", default=None)
-    qa.add_argument("--no-worktree", dest="worktree", action="store_false")
+    qa.add_argument("task", help="what the agent should do")
+    qa.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
+    qa.add_argument("--model", help="model to use, passed to the agent")
+    qa.add_argument("--permission-mode", help="the agent's permission mode (default: its own setting)")
+    qa.add_argument("--worktree", dest="worktree", action="store_true", default=None,
+                    help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
+    qa.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     qa.add_argument("--paused", action="store_true", help="add it paused")
     qa.add_argument("--provider", help="run through this API provider instead of the subscription")
     qa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
@@ -941,38 +943,38 @@ def main(argv=None):
     for name, text in (("hold", "start nothing new until released"), ("release", "let the queue run again")):
         q_sub.add_parser(name, help=text).set_defaults(func=cmd_queue_action)
     mv = q_sub.add_parser("move", help="put a task at a position (1 = next)")
-    mv.add_argument("id")
-    mv.add_argument("position", type=int)
+    mv.add_argument("id", help="queued task id or prefix")
+    mv.add_argument("position", type=int, help="its new place; 1 runs next")
     mv.set_defaults(func=cmd_queue_move)
     for name in ("up", "down"):
         p = q_sub.add_parser(name, help=f"move a task one place {name}")
-        p.add_argument("id")
+        p.add_argument("id", help="queued task id or prefix")
         p.set_defaults(func=cmd_queue_move)
 
     ho = sub.add_parser("handoff", help="start another agent (or model) on a session's work, with a brief")
     ho.add_argument("session", help="session id or prefix")
     ho.add_argument("--agent", choices=list(adapters.ADAPTERS), help="default: tasks.fallback_agent, else claude")
-    ho.add_argument("--model")
-    ho.add_argument("--provider")
+    ho.add_argument("--model", help="model for the new agent (default: its own)")
+    ho.add_argument("--provider", help="run the new agent through this API provider")
     ho.add_argument("--queue", action="store_true", help="queue it instead of starting it now")
     ho.add_argument("--stop", action="store_true", help="stop the old session once the new one is started")
     ho.set_defaults(func=cmd_handoff)
     pm = sub.add_parser("permissions", help="what agents may do without asking, and what they asked")
-    pm.add_argument("--json", action="store_true")
+    pm.add_argument("--json", action="store_true", help="machine-readable output")
     pm.add_argument("--limit", type=int, default=20, help="how many recent requests to show")
     pm.set_defaults(func=cmd_permissions)
     sp = sub.add_parser("spend", help="provider spend today, subscription limits, and what sessions cost")
-    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--json", action="store_true", help="machine-readable output")
     sp.add_argument("--offline", action="store_true", help="do not ask providers for their balances")
     sp.set_defaults(func=cmd_spend)
     mcp_p = sub.add_parser("mcp", help="MCP servers across Claude Code, Codex and opencode")
     mcp_sub = mcp_p.add_subparsers(dest="mcp_command", required=True)
     ml = mcp_sub.add_parser("list", help="every configured MCP server, per agent and scope")
-    ml.add_argument("--json", action="store_true")
+    ml.add_argument("--json", action="store_true", help="machine-readable output")
     ml.set_defaults(func=cmd_mcp_list)
     ma = mcp_sub.add_parser("add", help="add a server to agents, its secrets to the keyring "
                                         "(stdio: the command after --; HTTP: --url)")
-    ma.add_argument("name")
+    ma.add_argument("name", help="a name for the server")
     ma.add_argument("--agent", action="append",
                     help="claude[:user|:local:/project], codex, opencode (repeatable; default claude)")
     ma.add_argument("--url", help="an HTTP server's URL")
@@ -987,51 +989,51 @@ def main(argv=None):
     mcp_sub.add_parser("managed", help="servers omaorchestra manages").set_defaults(func=cmd_mcp_managed)
     mc = mcp_sub.add_parser("check", help="start servers, do the MCP handshake, list their tools")
     mc.add_argument("name", nargs="?", help="only this server")
-    mc.add_argument("--agent", choices=["claude", "codex", "opencode"])
+    mc.add_argument("--agent", choices=["claude", "codex", "opencode"], help="only this agent's servers")
     mc.set_defaults(func=cmd_mcp_check)
     mcp_sub.add_parser("serve", help="omaorchestra's own MCP server, over stdio (for agents)").set_defaults(func=cmd_mcp_serve)
     mpr = mcp_sub.add_parser("profile", help="named sets of managed servers to start tasks with")
     mpr.set_defaults(func=cmd_mcp_profile, profile_command=None)
     mpr_sub = mpr.add_subparsers(dest="profile_command")
-    mpr_sub.add_parser("list").set_defaults(func=cmd_mcp_profile)
+    mpr_sub.add_parser("list", help="every profile and its servers").set_defaults(func=cmd_mcp_profile)
     ps = mpr_sub.add_parser("set", help="create or replace a profile")
-    ps.add_argument("name")
-    ps.add_argument("servers", nargs="*")
+    ps.add_argument("name", help="profile name")
+    ps.add_argument("servers", nargs="*", help="managed servers in it (none: an empty profile)")
     ps.set_defaults(func=cmd_mcp_profile)
-    pr = mpr_sub.add_parser("remove")
-    pr.add_argument("name")
+    pr = mpr_sub.add_parser("remove", help="delete a profile (its servers stay)")
+    pr.add_argument("name", help="profile name")
     pr.set_defaults(func=cmd_mcp_profile)
     for name, text in (("remove", "remove from its agents and forget it, secrets too"),
                        ("enable", "install it in its agents again"), ("disable", "take it out of its agents, keep it here")):
         p = mcp_sub.add_parser(name, help=text)
-        p.add_argument("name")
+        p.add_argument("name", help="a managed server's name")
         p.set_defaults(func=cmd_mcp_change)
     for name, func, text in (("exec", cmd_mcp_exec, "start a managed stdio server with its secrets (agents run this)"),
                              ("headers", cmd_mcp_headers, "print a managed HTTP server's headers (Claude's headersHelper)")):
         p = mcp_sub.add_parser(name, help=text)
-        p.add_argument("name")
+        p.add_argument("name", help="a managed server's name")
         p.set_defaults(func=func)
     pp = sub.add_parser("provider", help="model providers (API keys live in the system keyring)")
     p_sub = pp.add_subparsers(dest="provider_command", required=True)
     p_sub.add_parser("list", help="configured providers").set_defaults(func=cmd_provider_list)
     pa = p_sub.add_parser("add", help="add a provider: " + ", ".join(providers.KINDS))
-    pa.add_argument("kind", choices=list(providers.KINDS))
+    pa.add_argument("kind", choices=list(providers.KINDS), help="which service")
     pa.add_argument("--id", help="a name for it (default: the kind)")
     pa.add_argument("--base-url", help="a different endpoint (a proxy, a self-hosted Ollama, ...)")
     pa.set_defaults(func=cmd_provider_add)
     pk = p_sub.add_parser("key", help="store its API key in the system keyring")
-    pk.add_argument("id")
+    pk.add_argument("id", help="the provider's id (see `provider list`)")
     pk.add_argument("--stdin", action="store_true", help="read the key from standard input")
     pk.set_defaults(func=cmd_provider_key)
     for name, func, text in (("remove", cmd_provider_remove, "forget it and its key"),
                              ("test", cmd_provider_test, "check it answers and accepts the key")):
         p = p_sub.add_parser(name, help=text)
-        p.add_argument("id")
+        p.add_argument("id", help="the provider's id (see `provider list`)")
         p.set_defaults(func=func)
     mp = sub.add_parser("models", help="models from Claude Code and your providers")
     mp.add_argument("--provider", help="only this provider")
     mp.add_argument("--refresh", action="store_true", help="fetch the lists again")
-    mp.add_argument("--json", action="store_true")
+    mp.add_argument("--json", action="store_true", help="machine-readable output")
     mp.set_defaults(func=cmd_models)
     m_sub = mp.add_subparsers(dest="models_command")
     md = m_sub.add_parser("default", help="show or set the model tasks use when they name none")
@@ -1059,7 +1061,7 @@ def main(argv=None):
     dismiss_p.add_argument("session", help="session id or prefix")
     dismiss_p.set_defaults(func=cmd_dismiss)
     hook = sub.add_parser("hook", help="receive an agent hook event on stdin")
-    hook.add_argument("agent", choices=list(adapters.ADAPTERS))
+    hook.add_argument("agent", choices=list(adapters.ADAPTERS), help="the agent sending the event")
     hook.set_defaults(func=cmd_hook)
 
     hooks_cmd = sub.add_parser("hooks", help="manage the hooks agents report to omaorchestra with")
@@ -1101,7 +1103,7 @@ def main(argv=None):
     away_p = sub.add_parser("away", help="push only while you are away: show or set the mode")
     away_p.add_argument("mode", nargs="?", choices=["auto", "on", "off"],
                         help="auto: away when locked or idle (default); on: always push; off: never push")
-    away_p.add_argument("--json", action="store_true")
+    away_p.add_argument("--json", action="store_true", help="machine-readable output")
     away_p.set_defaults(func=cmd_away)
 
     config_cmd = sub.add_parser("config", help="inspect the configuration")
@@ -1133,6 +1135,11 @@ def main(argv=None):
         step_p.add_argument("--dry-run", action="store_true", help="show what would be done")
         step_p.set_defaults(func=func)
 
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
     # `run ... -- <agent args>`: split them off first, since argparse would
     # otherwise mix them up with run's own options.
     argv = list(sys.argv[1:] if argv is None else argv)

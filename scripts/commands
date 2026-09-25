@@ -1,0 +1,130 @@
+#!/usr/bin/python3
+"""Write docs/commands.md, every omaorchestra command and option, from the
+CLI's own parser (so the page cannot drift from the code; a test checks it).
+
+    scripts/commands          # rewrite docs/commands.md
+    scripts/commands --check  # exit 1 if it is out of date
+"""
+
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+OUT = ROOT / "docs" / "commands.md"
+
+# Usage lines wrap the same whatever the terminal.
+os.environ["COLUMNS"] = "100"
+
+from omaorchestra import __main__ as cli  # noqa: E402
+
+INTRO = """\
+# Commands
+
+Every `omaorchestra` command, with its options. `omaorchestra <command> --help`
+prints the same from the command line.
+
+This page is generated from the CLI itself by `scripts/commands`; edit the
+help text in `src/omaorchestra/__main__.py`, not this file.
+
+Anything after `--` goes on unchanged: to the agent with `run` and
+`queue add`, and as the server's command with `mcp add`.
+"""
+
+
+def subcommands(parser):
+    """(name, help, subparser) for each of parser's subcommands, in order."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            helps = {a.dest: a.help for a in action._choices_actions}
+            seen = set()
+            for name, sub in action.choices.items():
+                if id(sub) in seen:
+                    continue
+                seen.add(id(sub))
+                yield name, helps.get(name) or "", sub
+
+
+def arguments(parser):
+    """(how it is written, help) for each argument and option but --help."""
+    rows = []
+    for action in parser._actions:
+        if isinstance(action, (argparse._HelpAction, argparse._SubParsersAction)) or action.help == argparse.SUPPRESS:
+            continue
+        if action.option_strings:
+            flags = ", ".join(action.option_strings)
+            if action.nargs != 0:
+                flags += " " + (action.metavar or action.dest.upper())
+        else:
+            flags = action.metavar or action.dest
+        text = action.help or ""
+        if action.choices and not action.option_strings and not text:
+            text = "one of " + ", ".join(map(str, action.choices))
+        elif action.choices and "one of" not in text:
+            text = (text + "; " if text else "") + "one of " + ", ".join(f"`{c}`" for c in action.choices)
+        rows.append((flags, text))
+    return rows
+
+
+def escape(text):
+    return text.replace("|", "\\|")
+
+
+def section(parser, name, help_text, depth):
+    """Markdown for one command and everything under it."""
+    prog = parser.prog
+    lines = [f"{'#' * depth} `{prog}`", ""]
+    if help_text:
+        lines += [help_text[0].upper() + help_text[1:] + ("" if help_text.endswith(".") else "."), ""]
+    children = list(subcommands(parser))
+    # Drop "usage: " and -h (every command has it), and outdent the wrapped lines to match.
+    usage = parser.format_usage().removeprefix("usage: ").rstrip().replace(" [-h]", "")
+    usage = "\n".join(line[7:] if n and line.startswith(" " * 7) else line
+                      for n, line in enumerate(usage.splitlines()))
+    if children:  # each has its own section below; name the slot instead of listing them
+        usage = " ".join(re.sub(r"\{[^}]*\}", "<command>", usage).split())
+    lines += ["```", usage, "```", ""]
+    rows = arguments(parser)
+    if rows:
+        lines += ["| Argument | Meaning |", "|---|---|"]
+        lines += [f"| `{escape(flags)}` | {escape(text)} |" for flags, text in rows]
+        lines.append("")
+    for child_name, child_help, child in children:
+        lines += section(child, child_name, child_help, min(depth + 1, 4))
+    return lines
+
+
+def render():
+    parser = cli.build_parser()
+    top = list(subcommands(parser))
+    lines = [INTRO, "## At a glance", "", "| Command | What it does |", "|---|---|"]
+    for name, help_text, _ in top:
+        lines.append(f"| [`{name}`](#{anchor(name)}) | {escape(help_text)} |")
+    lines += ["", "Global options: `--version`, `--help`.", ""]
+    for name, help_text, sub in top:
+        lines += section(sub, name, help_text, 2)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def anchor(name):
+    """GitHub's heading anchor for "## `omaorchestra <name>`"."""
+    return f"omaorchestra-{name}"
+
+
+def main():
+    text = render()
+    if "--check" in sys.argv[1:]:
+        if OUT.read_text() != text:
+            print("docs/commands.md is out of date; run scripts/commands", file=sys.stderr)
+            return 1
+        return 0
+    OUT.write_text(text)
+    print(OUT.relative_to(ROOT))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

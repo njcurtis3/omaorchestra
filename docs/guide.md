@@ -1,7 +1,8 @@
 # User guide
 
 Everything omaorchestra does, feature by feature. Installing and setting it
-up is in the [README](../README.md).
+up is in the [README](../README.md); every command and option is listed in
+[Commands](commands.md).
 
 ## The daemon and hooks
 

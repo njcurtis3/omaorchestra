@@ -25,7 +25,7 @@ See [docs/architecture.md](architecture.md).
 | `src/omaorchestra/app/` | desktop app (PySide6 + QML) |
 | `bin/` | entry-point scripts |
 | `plugin/` | Omarchy shell bar widget and panel (QML) |
-| `scripts/` | dev install, screenshots, AUR publishing |
+| `scripts/` | dev install, screenshots, the commands page, the logo, AUR publishing |
 | `packaging/` | PKGBUILD, systemd user unit, desktop entry, Omarchy snippets |
 | `config.example.toml` | documented configuration |
 
@@ -65,6 +65,12 @@ env -i PATH=/usr/bin:/bin HOME=$(mktemp -d) LANG=C.UTF-8 /usr/bin/python3 -m uni
 made-up sessions, in the app's built-in neutral dark palette
 (`--theme <name>` uses a stock Omarchy theme instead). Nothing from your own
 sessions, folders, keys or theme appears in them.
+
+## The commands page
+
+`docs/commands.md` is generated from the CLI's parser by `scripts/commands`.
+After adding or changing a command or its help text, run it again; a test
+fails while the page is out of date.
 
 ## Releasing
 

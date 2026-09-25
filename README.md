@@ -31,6 +31,7 @@
   <a href="#install">Install</a> ·
   <a href="#setup">Setup</a> ·
   <a href="docs/guide.md">User guide</a> ·
+  <a href="docs/commands.md">Commands</a> ·
   <a href="docs/troubleshooting.md">Troubleshooting</a> ·
   <a href="https://github.com/njcurtis3/omaorchestra/releases">Releases</a>
 </p>
@@ -216,6 +217,7 @@ a new omaorchestra release.
 - [User guide](docs/guide.md): sessions, the app, the bar widget,
   notifications, starting and queueing tasks, worktrees, agents and handoffs,
   keybindings, configuration
+- [Commands](docs/commands.md): every command and option
 - [Providers and models](docs/providers.md): API providers, model defaults,
   routing agents through a provider, costs and budgets
 - [MCP servers and permissions](docs/mcp.md)
