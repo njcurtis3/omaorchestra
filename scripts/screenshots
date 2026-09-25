@@ -7,6 +7,7 @@ neutral dark palette, or in a stock Omarchy theme with --theme.
     scripts/screenshots [--theme <omarchy theme>] [output dir]   # default: docs/screenshots
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -29,7 +30,14 @@ SESSIONS = [
     ("d4", "idle", "blog", {"model": "claude-sonnet-5", "branch": "drafts", "title": "Proofread the September post"}),
 ]
 QUEUED = ["Update the dependencies and run the tests", "Write a changelog entry for 0.1.0"]
-PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue.png")]
+PAGES = [("sessions", "sessions.png"), ("new", "new-task.png"), ("queue", "queue.png"), ("usage", "usage.png"), ("mcp", "mcp.png")]
+# Subscription limits, as Omarchy's usage records hold them.
+LIMITS = [("Session (5-hour)", 0.42, 3), ("Weekly (7-day)", 0.67, 70)]  # label, used, hours until reset
+MCP_SERVERS = {
+    "github": {"type": "http", "url": "https://api.githubcopilot.com/mcp/"},
+    "playwright": {"command": "npx", "args": ["@playwright/mcp@latest"]},
+    "postgres": {"command": "uvx", "args": ["postgres-mcp", "--access-mode=restricted"]},
+}
 
 
 def main():
@@ -57,11 +65,14 @@ def main():
             theme_dir = home / ".local" / "state" / "omarchy" / "current" / "theme"
             theme_dir.mkdir(parents=True)
             shutil.copy(colors, theme_dir / "colors.toml")
+        seed(home)
         (tmp / "config.toml").write_text("[notifications]\nwaiting = false\nfinished_after = 0\n[tasks]\nmax_parallel = 4\n")
         os.environ.update({
             "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_STATE_HOME": str(home / ".local" / "state"),
             "XDG_DATA_HOME": str(home / ".local" / "share"), "OMAORCHESTRA_SOCKET": str(tmp / "o.sock"),
             "OMAORCHESTRA_STATE_DIR": str(tmp / "state"), "OMAORCHESTRA_CONFIG": str(tmp / "config.toml"),
+            # No session bus: the real keyring stays out of the pictures.
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + str(tmp / "no-bus"),
         })
         env = {k: v for k, v in os.environ.items() if k != "JOURNAL_STREAM"}
         daemon = subprocess.Popen([str(ROOT / "bin" / "omaorchestra"), "daemon"], env=env, stderr=subprocess.DEVNULL)
@@ -74,6 +85,19 @@ def main():
         finally:
             daemon.terminate()
             daemon.wait(timeout=5)
+
+
+def seed(home):
+    """Made-up usage records and MCP servers in the made-up home."""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    usage = home / ".local" / "state" / "omarchy" / "agents" / "usage"
+    usage.mkdir(parents=True)
+    (usage / "claude.json").write_text(json.dumps({
+        "id": "claude", "name": "Claude Code", "ready": True, "updatedAt": now.isoformat(),
+        "limits": [{"label": label, "percent": used, "resetsAt": (now + timedelta(hours=hours)).isoformat()}
+                   for label, used, hours in LIMITS]}))
+    (home / ".claude.json").write_text(json.dumps({"mcpServers": MCP_SERVERS}))
 
 
 def render(home, out):

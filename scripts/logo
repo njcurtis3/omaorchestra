@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Draw omaorchestra's logo: the app icon, the README logos (dark and light)
+and GitHub's social preview.
+
+The mark is three beamed notes whose heads are the app's status dots
+(working, waiting for you, idle): agents playing together, held together by
+the coordinator. The wordmark is JetBrains Mono Bold, Omarchy's default
+font, turned into outlines so it looks the same where the font is missing.
+
+Needs fontTools and rsvg-convert:
+
+    python -m venv /tmp/ft && /tmp/ft/bin/pip install fonttools
+    /tmp/ft/bin/python scripts/logo
+"""
+
+import subprocess
+import tempfile
+from pathlib import Path
+
+from fontTools.pens.svgPathPen import SVGPathPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.ttLib import TTFont
+
+ROOT = Path(__file__).resolve().parent.parent
+ASSETS = ROOT / "docs" / "assets"
+FONT_FILE = "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Bold.ttf"
+
+# The app's own palette (app/theme.py).
+BACKGROUND, SURFACE, FOREGROUND = "#101315", "#1a1f22", "#cacccc"
+ACCENT, URGENT, MUTED = "#6e9fb0", "#a55555", "#707880"
+LIGHT_ACCENT = "#3f7486"  # the accent, darkened to read on white
+
+# The mark, on a 128 grid: note heads (x, y, colour), stems on the heads'
+# right edges, and one beam rising with the melody.
+HEADS = [(34, 97, ACCENT), (64, 88, URGENT), (94, 79, MUTED)]
+HEAD_RADIUS = 12
+STEM_WIDTH = 6.5
+BEAM_HEIGHT = 11
+
+
+def beam_top(x):
+    return 37 - (x - 39.5) * 0.3
+
+
+def mark():
+    parts = [f'<rect x="4" y="4" width="120" height="120" rx="28" fill="{SURFACE}"/>']
+    stems = [cx + HEAD_RADIUS - STEM_WIDTH for cx, _, _ in HEADS]
+    for sx, (_, cy, _) in zip(stems, HEADS):
+        top = beam_top(sx)
+        parts.append(f'<rect x="{sx:.1f}" y="{top:.1f}" width="{STEM_WIDTH}" height="{cy - top:.1f}" rx="1" '
+                     f'fill="{FOREGROUND}"/>')
+    x0, x1 = stems[0], stems[-1] + STEM_WIDTH
+    parts.append(f'<path d="M{x0:.1f} {beam_top(x0):.1f}L{x1:.1f} {beam_top(x1):.1f}'
+                 f'L{x1:.1f} {beam_top(x1) + BEAM_HEIGHT:.1f}L{x0:.1f} {beam_top(x0) + BEAM_HEIGHT:.1f}Z" '
+                 f'fill="{FOREGROUND}"/>')
+    parts += [f'<circle cx="{cx}" cy="{cy}" r="{HEAD_RADIUS}" fill="{colour}"/>' for cx, cy, colour in HEADS]
+    return "\n  ".join(parts)
+
+
+class Font:
+    def __init__(self, path):
+        font = TTFont(path)
+        self.glyphs, self.cmap = font.getGlyphSet(), font.getBestCmap()
+        self.upm = font["head"].unitsPerEm
+        self.x_height = font["OS/2"].sxHeight
+
+    def path(self, text, x, baseline, size, tracking=0):
+        """`text` as one SVG path, and the x where it ends."""
+        scale = size / self.upm
+        pen = SVGPathPen(self.glyphs)
+        for ch in text:
+            glyph = self.glyphs[self.cmap[ord(ch)]]
+            glyph.draw(TransformPen(pen, (scale, 0, 0, -scale, x, baseline)))
+            x += glyph.width * scale + tracking
+        return pen.getCommands(), x - tracking
+
+    def wordmark(self, x, baseline, size):
+        """"oma" in the accent, "orchestra" plain: two paths, and the end x."""
+        oma, x = self.path("oma", x, baseline, size, -2)
+        rest, x = self.path("orchestra", x - 2, baseline, size, -2)
+        return oma, rest, x
+
+
+def logo(font, theme):
+    text, oma_colour = {"dark": (FOREGROUND, ACCENT), "light": (SURFACE, LIGHT_ACCENT)}[theme]
+    size = 80
+    baseline = 64 + font.x_height * size / font.upm / 2  # the x-height centred on the mark
+    oma, rest, end = font.wordmark(128 + 28, baseline, size)
+    width = end + 8
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} 128" '
+            f'width="{width * 0.75:.0f}" height="96">\n'
+            f'  <title>omaorchestra</title>\n  {mark()}\n'
+            f'  <path fill="{oma_colour}" d="{oma}"/>\n  <path fill="{text}" d="{rest}"/>\n</svg>\n')
+
+
+def icon():
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n'
+            f'  <title>omaorchestra</title>\n  {mark()}\n</svg>\n')
+
+
+def social(font):
+    """GitHub's social preview, 1280x640: the logo and a tagline."""
+    size, scale, gap, middle = 96, 1.6, 40, 300
+    oma, rest, word_width = font.wordmark(0, 0, size)
+    left = (1280 - (128 * scale + gap + word_width)) / 2
+    tagline, tag_width = font.path("Conduct your AI coding agents on Omarchy", 0, 0, 34)
+    baseline = middle + font.x_height * size / font.upm / 2
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">\n'
+            f'  <rect width="1280" height="640" fill="{BACKGROUND}"/>\n'
+            f'  <g transform="translate({left:.1f} {middle - 64 * scale:.1f}) scale({scale})">{mark()}</g>\n'
+            f'  <g transform="translate({left + 128 * scale + gap:.1f} {baseline:.1f})">'
+            f'<path fill="{ACCENT}" d="{oma}"/><path fill="{FOREGROUND}" d="{rest}"/></g>\n'
+            f'  <g transform="translate({(1280 - tag_width) / 2:.1f} 470)"><path fill="{MUTED}" d="{tagline}"/></g>\n'
+            f'</svg>\n')
+
+
+def main():
+    font = Font(FONT_FILE)
+    ASSETS.mkdir(parents=True, exist_ok=True)
+    for theme in ("dark", "light"):
+        (ASSETS / f"logo-{theme}.svg").write_text(logo(font, theme))
+    (ROOT / "packaging" / "icons" / "omaorchestra.svg").write_text(icon())
+    with tempfile.NamedTemporaryFile("w", suffix=".svg") as svg:
+        svg.write(social(font))
+        svg.flush()
+        subprocess.run(["rsvg-convert", svg.name, "-o", str(ASSETS / "social-preview.png")], check=True)
+    for path in ("logo-dark.svg", "logo-light.svg", "social-preview.png"):
+        print(ASSETS / path)
+    print(ROOT / "packaging" / "icons" / "omaorchestra.svg")
+
+
+if __name__ == "__main__":
+    main()

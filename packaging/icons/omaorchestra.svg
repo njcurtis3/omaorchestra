@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect x="4" y="4" width="56" height="56" rx="12" fill="#1a1f22"/>
-  <g fill="none" stroke="#d6d5bc" stroke-width="4" stroke-linecap="round">
-    <path d="M18 44V30"/>
-    <path d="M28 44V20"/>
-    <path d="M38 44V26"/>
-    <path d="M48 44V34"/>
-  </g>
-  <circle cx="48" cy="22" r="5" fill="#509475"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <title>omaorchestra</title>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#1a1f22"/>
+  <rect x="39.5" y="37.0" width="6.5" height="60.0" rx="1" fill="#cacccc"/>
+  <rect x="69.5" y="28.0" width="6.5" height="60.0" rx="1" fill="#cacccc"/>
+  <rect x="99.5" y="19.0" width="6.5" height="60.0" rx="1" fill="#cacccc"/>
+  <path d="M39.5 37.0L106.0 17.1L106.0 28.1L39.5 48.0Z" fill="#cacccc"/>
+  <circle cx="34" cy="97" r="12" fill="#6e9fb0"/>
+  <circle cx="64" cy="88" r="12" fill="#a55555"/>
+  <circle cx="94" cy="79" r="12" fill="#707880"/>
 </svg>
