@@ -124,7 +124,8 @@ def render(home, out):
     QQuickStyle.setStyle("Basic")
     sessions = backend.Sessions()
     objects = {"theme": backend.Theme(), "sessions": sessions, "settings": backend.Settings(),
-               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "providerList": backend.Providers(),
+               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "awayMode": backend.Away(sessions),
+               "providerList": backend.Providers(),
                "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions),
                "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": ""}
     engine = QQmlApplicationEngine()

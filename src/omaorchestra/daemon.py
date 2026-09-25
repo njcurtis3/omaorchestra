@@ -83,6 +83,7 @@ class Daemon:
         self.away = away.Away(registry.path.parent / "away.json", self.settings["remote"]["away_after"],
                               on_change=lambda state: self.publish({"event": "away", "away": state}))
         self.away.push = self.settings["remote"]["push"]
+        self.away.answers = self.settings["remote"]["answer_prompts"]
         self.is_locked = away.is_locked  # tests replace it
         self.idle_watch = None
         self.lock_watch = None
@@ -91,11 +92,11 @@ class Daemon:
     # ----------------------------------------------------------------- away
 
     def watching_away(self):
-        return self.away.push and self.away.mode == "auto"
+        return self.away.active and self.away.mode == "auto"
 
     def sync_away(self):
         """Watch the lock screen and input only while that decides anything:
-        pushes on, and away mode automatic."""
+        pushes or remote answers on, and away mode automatic."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -464,7 +465,7 @@ class Daemon:
             self.notifier.settings = new["notifications"]
         if self.pusher:
             self.pusher.settings, self.pusher.notifications = new["remote"], new["notifications"]
-        self.away.update(push=new["remote"]["push"])
+        self.away.update(push=new["remote"]["push"], answers=new["remote"]["answer_prompts"])
         self.sync_away()
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()

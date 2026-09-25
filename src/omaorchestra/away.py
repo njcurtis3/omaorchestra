@@ -1,9 +1,12 @@
-"""Away mode: push to the phone only while you are away from the desk.
+"""Away mode: whether you are away from the desk. While you are away,
+pushes go to your phone ([remote] push) and permission prompts can be
+answered remotely ([remote] answer_prompts, approvals.py); at the desk,
+neither happens.
 
   auto  away while the session is locked, or after [remote] away_after
         minutes without keyboard or mouse input (the default)
-  on    away until turned off: every push goes out
-  off   at the desk: nothing is pushed
+  on    away until switched back
+  off   at the desk until switched back
 
 The mode is kept in away.json in the state folder, beside sessions.json; the
 daemon rewrites it whenever you come or go, which is how the bar widget
@@ -49,7 +52,8 @@ class Away:
         self.minutes = minutes
         self.on_change = on_change
         self.mode = "auto"
-        self.push = False  # [remote] push: away mode means nothing without it
+        self.push = False  # [remote] push
+        self.answers = False  # [remote] answer_prompts; with push off too, away mode means nothing
         self.locked = None  # None: not known (not watched, or cannot be read)
         self.idle = None
         self.since = time.time()
@@ -76,17 +80,23 @@ class Away:
     def away(self):
         return self.reason is not None
 
+    @property
+    def active(self):
+        """Whether being away changes anything."""
+        return self.push or self.answers
+
     def state(self):
         return {"mode": self.mode, "away": self.away, "reason": self.reason, "since": self.since,
-                "push": self.push, "after": self.minutes, "locked": self.locked, "idle": self.idle}
+                "push": self.push, "answers": self.answers, "active": self.active, "after": self.minutes,
+                "locked": self.locked, "idle": self.idle}
 
     def update(self, **facts):
-        """Set mode, push, locked or idle; saves and reports when the mode,
-        push, or whether (and why) you are away changes."""
-        before = (self.mode, self.reason, self.push)
+        """Set mode, push, answers, locked or idle; saves and reports when
+        the mode, the settings, or whether (and why) you are away changes."""
+        before = (self.mode, self.reason, self.push, self.answers)
         for key, value in facts.items():
             setattr(self, key, value)
-        if (self.mode, self.reason, self.push) == before:
+        if (self.mode, self.reason, self.push, self.answers) == before:
             return False
         if self.reason != before[1]:
             self.since = time.time()
@@ -100,7 +110,8 @@ class Away:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"mode": self.mode, "away": self.away, "reason": self.reason,
-                                   "since": self.since, "push": self.push}, indent=2))
+                                   "since": self.since, "push": self.push, "answers": self.answers,
+                                   "active": self.active}, indent=2))
         os.replace(tmp, self.path)
 
 

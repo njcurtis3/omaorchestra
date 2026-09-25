@@ -147,6 +147,9 @@ class Top:
         self.index[self.tab] = min(self.index[self.tab], len(rows) - 1)
         return rows[self.index[self.tab]]
 
+    def away_active(self):
+        return bool(self.away and self.away.get("active", self.away.get("push")))
+
     def pending(self, session):
         """The oldest request of `session` waiting for a remote answer."""
         return next((a for a in self.approvals if session and a["session_id"] == session["id"]), None)
@@ -395,7 +398,7 @@ class Top:
                 (f" Queue {len(self.queue.get('tasks') or [])} ", "tab-on" if self.tab == "queue" else "tab",
                  ("tab", "queue"))]
         right = None
-        if self.away and self.away.get("push"):
+        if self.away_active():
             right = (" away " if self.away["away"] else " here ", "urgent" if self.away["away"] else "dim", "a")
         screen.line(*tabs, right=right)
         screen.line(("─" * screen.width, "dim"))
@@ -530,7 +533,7 @@ class Top:
                 items.append(("x Cancel", "x"))
             items.append(("H Release" if self.queue.get("held") else "H Hold", "H"))
         items.append(("n New task", "n"))
-        if self.away and self.away.get("push"):
+        if self.away_active():
             items.append((f"a Away: {self.away['mode']}", "a"))
         items.append(("q Quit", "q"))
         return items

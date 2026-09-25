@@ -260,7 +260,7 @@ class DaemonAwayTest(unittest.TestCase):
         d.handle({"cmd": "away", "mode": "off"})
         self.assertEqual(queue.get_nowait()["event"], "away")
 
-    def test_watches_only_with_push_on_and_mode_auto(self):
+    def test_watches_only_while_it_matters_and_mode_auto(self):
         async def main():
             d = self.make()
             d.sync_away()
@@ -275,8 +275,12 @@ class DaemonAwayTest(unittest.TestCase):
             self.assertEqual(len(FakeWatch.made), 2)
             self.config.write_text("[remote]\npush = false\n")
             d.reload()
+            self.assertFalse(FakeWatch.made[1].stopped, "remote answers still need to know")
+            self.config.write_text("[remote]\npush = false\nanswer_prompts = false\n")
+            d.reload()
             self.assertTrue(FakeWatch.made[1].stopped)
             self.assertIsNone(d.idle_watch)
+            self.assertFalse(d.away.state()["active"])
         asyncio.run(main())
 
     def test_a_changed_idle_time_reaches_the_watch(self):
@@ -368,8 +372,10 @@ class CliAwayTest(unittest.TestCase):
     def test_says_when_push_is_off_or_a_signal_is_missing(self):
         _, out, _ = self.run_cli("away", answer={"ok": True, "away": self.state(idle=None)})
         self.assertIn("cannot read idle time", out)
-        _, out, _ = self.run_cli("away", answer={"ok": True, "away": self.state(push=False)})
-        self.assertIn("push is off", out)
+        _, out, _ = self.run_cli("away", answer={"ok": True, "away": self.state(push=False, active=True)})
+        self.assertIn("prompts can be answered remotely, but nothing is pushed", out)
+        _, out, _ = self.run_cli("away", answer={"ok": True, "away": self.state(push=False, active=False)})
+        self.assertIn("changes nothing", out)
 
     def test_daemon_down(self):
         def request(payload, timeout=1.0):

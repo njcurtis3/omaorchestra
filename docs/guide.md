@@ -140,7 +140,7 @@ that can run `top` and nothing else.
   queue.
 - **n** queues a new task: type it, then the folder (the picked session's, or
   the last one you used), then pick the agent.
-- **a** switches [away mode](#away-mode) while pushes are on; the top right
+- **a** switches [away mode](#away-mode); the top right
   says whether you count as away.
 - **q** quits.
 
@@ -196,14 +196,15 @@ Prompts and code leave the machine only at `full`.
 
 #### Away mode
 
-Pushes go out only while you are away, so your phone stays quiet while you
-sit at the desk:
+Pushes go out, and permission prompts can be
+[answered remotely](#answering-permission-prompts-remotely), only while you
+are away, so your phone stays quiet while you sit at the desk:
 
 ```bash
 omaorchestra away           # the mode, and whether you count as away now
 omaorchestra away auto      # away once the screen locks, or after a while without input (default)
-omaorchestra away on        # away until you switch back: everything is pushed
-omaorchestra away off       # at the desk: nothing is pushed
+omaorchestra away on        # away until you switch back
+omaorchestra away off       # at the desk until you switch back
 ```
 
 In `auto`, locking the screen (Super+Ctrl+L, or Omarchy locking it for you)
@@ -213,9 +214,11 @@ as a playing video, keeps you at the desk too. The lock screen is checked
 again right before each push, so locking and walking off loses nothing.
 `remote test` always sends.
 
-While push is on, the bar widget shows 󰄜 beside its count when pushes are
-going out, its panel has an auto / on / off switch, and so does the app's
-sidebar. The mode is remembered across restarts.
+The app's sidebar has an **Auto / Away / Here** switch, the bar widget's
+panel an auto / on / off one, and `omaorchestra top` switches with **a**.
+While you are away the bar shows 󰄜 beside its count. The switches show
+whenever being away changes something (push or remote answers on, which is
+the default), and the mode is remembered across restarts.
 
 #### Answering permission prompts remotely
 

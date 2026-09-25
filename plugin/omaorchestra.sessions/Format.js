@@ -69,26 +69,32 @@ function counts(sessions) {
 
 var PHONE = "󰄜"
 
-// Away while phone pushes are on (away.json, written by the daemon).
-function pushing(away) {
-  return !!(away && away.push && away.away)
+// Whether away mode changes anything: pushes or remote answers are on
+// (away.json, written by the daemon; older daemons only wrote push).
+function awayActive(away) {
+  return !!(away && (away.active !== undefined ? away.active : away.push))
+}
+
+// Away, while that changes anything.
+function awayNow(away) {
+  return awayActive(away) && !!away.away
 }
 
 function barLabel(glyph, c, away) {
   var label = glyph
   if (c.waiting > 0) label = glyph + " " + c.waiting + " waiting"
   else if (c.working > 0) label = glyph + " " + c.working
-  return pushing(away) ? label + " " + PHONE : label
+  return awayNow(away) ? label + " " + PHONE : label
 }
 
-// One line on away mode, or "" while phone pushes are off.
+// One line on away mode, or "" while it changes nothing.
 function awayText(away) {
-  if (!away || !away.push) return ""
+  if (!awayActive(away)) return ""
   if (away.away) {
     var why = away.reason === "locked" ? " (locked)" : away.reason === "idle" ? " (idle)" : ""
-    return "Away" + why + ": pushing to your phone"
+    return "Away" + why + (away.push ? ": pushing to your phone" : ": answering prompts from your phone")
   }
-  return away.mode === "off" ? "At the desk: phone pushes off" : "At the desk: phone pushes held"
+  return away.mode === "off" ? "At the desk (until you switch)" : "At the desk"
 }
 
 function tooltip(c, away) {

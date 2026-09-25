@@ -373,11 +373,11 @@ class Away(QObject):
             return ""
         if state.get("away"):
             why = {"locked": " (locked)", "idle": " (idle)"}.get(state.get("reason"), "")
-            return f"Away{why}: pushing to your phone"
-        return "At the desk: phone pushes off" if state.get("mode") == "off" else "At the desk: pushes held"
+            return f"Away{why}: " + ("pushing to your phone" if state.get("push") else "answering prompts from your phone")
+        return "At the desk (until you switch)" if state.get("mode") == "off" else "At the desk"
 
     known = Property(bool, lambda self: bool(self._state), notify=changed)
-    push = Property(bool, lambda self: bool(self._state.get("push")), notify=changed)
+    active = Property(bool, lambda self: bool(self._state.get("active", self._state.get("push"))), notify=changed)
     away = Property(bool, lambda self: bool(self._state.get("away")), notify=changed)
     mode = Property(str, lambda self: self._state.get("mode", ""), notify=changed)
     text = Property(str, _text, notify=changed)

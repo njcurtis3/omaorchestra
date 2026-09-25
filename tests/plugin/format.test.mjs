@@ -56,15 +56,16 @@ test("modelName matches the Python formatting", () => {
   assert.equal(F.modelName("gpt-5"), "Gpt 5")
 })
 
-test("away mode shows only while phone pushes are on", () => {
+test("away mode shows while pushes or remote answers are on", () => {
   const c = { total: 1, waiting: 1, working: 0, idle: 0 }
-  const locked = { push: true, away: true, reason: "locked", mode: "auto" }
+  const locked = { push: true, answers: true, active: true, away: true, reason: "locked", mode: "auto" }
   assert.equal(F.barLabel("G", c, locked), "G 1 waiting 󰄜")
-  assert.equal(F.barLabel("G", c, { ...locked, push: false }), "G 1 waiting")
+  assert.equal(F.barLabel("G", c, { ...locked, push: false, answers: false, active: false }), "G 1 waiting")
   assert.equal(F.barLabel("G", c, null), "G 1 waiting")
   assert.equal(F.tooltip(c, locked), "omaorchestra: 1 waiting\nAway (locked): pushing to your phone")
-  assert.equal(F.tooltip(c, { push: false }), "omaorchestra: 1 waiting")
-  assert.equal(F.awayText({ push: true, away: false, mode: "auto" }), "At the desk: phone pushes held")
-  assert.equal(F.awayText({ push: true, away: false, mode: "off" }), "At the desk: phone pushes off")
+  assert.equal(F.awayText({ ...locked, push: false }), "Away (locked): answering prompts from your phone")
+  assert.equal(F.tooltip(c, { push: false, active: false }), "omaorchestra: 1 waiting")
+  assert.equal(F.awayText({ active: true, away: false, mode: "auto" }), "At the desk")
+  assert.equal(F.awayText({ active: true, away: false, mode: "off" }), "At the desk (until you switch)")
   assert.equal(F.awayText({ push: true, away: true, reason: "on", mode: "on" }), "Away: pushing to your phone")
 })

@@ -632,7 +632,7 @@ def hook_command(args):
 
 
 AWAY_MODES = {"auto": "away once the screen locks, or after {after} without input",
-              "on": "away: every push goes out", "off": "at the desk: nothing is pushed"}
+              "on": "away until you switch back", "off": "at the desk until you switch back"}
 AWAY_REASONS = {"on": "away", "locked": "away (the screen is locked)", "idle": "away (no input for {after})"}
 
 
@@ -666,13 +666,18 @@ def cmd_away(args):
         return 0
     print(f"mode  {state['mode']}: {AWAY_MODES[state['mode']].format(after=minutes(state['after']))}")
     print(f"now   {away_now(state)}")
-    if state["mode"] == "auto" and state["push"]:
+    active = state.get("active", state["push"])
+    if state["mode"] == "auto" and active:
         unknown = [what for what, key in (("the lock screen", "locked"), ("idle time", "idle"))
                    if state[key] is None]
         if unknown:
             print(f"cannot read {' or '.join(unknown)} yet; see `journalctl --user -u omaorchestrad`")
-    if not state["push"]:
-        print("push is off, so nothing is sent either way: omaorchestra config set remote.push true")
+    if not active:
+        print("push and remote answers are both off, so being away changes nothing: "
+              "omaorchestra config set remote.push true")
+    elif not state["push"]:
+        print("push is off: while away, prompts can be answered remotely, but nothing is pushed "
+              "(omaorchestra config set remote.push true)")
     return 0
 
 
@@ -1208,9 +1213,10 @@ def build_parser():
         if name == "deny":
             p.add_argument("--message", help="what to tell the agent (default: that you denied it remotely)")
         p.set_defaults(func=cmd_answer, answer=name)
-    away_p = sub.add_parser("away", help="push only while you are away: show or set the mode")
+    away_p = sub.add_parser("away", help="whether you are away (pushes and remote answers happen only then): "
+                                        "show or set the mode")
     away_p.add_argument("mode", nargs="?", choices=["auto", "on", "off"],
-                        help="auto: away when locked or idle (default); on: always push; off: never push")
+                        help="auto: away when locked or idle (default); on: away; off: at the desk")
     away_p.add_argument("--json", action="store_true", help="machine-readable output")
     away_p.set_defaults(func=cmd_away)
 

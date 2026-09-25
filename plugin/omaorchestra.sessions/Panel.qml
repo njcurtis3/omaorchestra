@@ -103,7 +103,7 @@ Panel {
         }
       }
 
-      // Away mode, while phone pushes are on: where you are, and the switch.
+      // Away mode: where you are, and the switch.
       Item {
         width: parent.width
         visible: Format.awayText(root.away) !== ""
@@ -116,7 +116,7 @@ Panel {
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
           text: "󰄜  " + Format.awayText(root.away)
-          color: Format.pushing(root.away) ? Color.foreground : Color.muted
+          color: Format.awayNow(root.away) ? Color.foreground : Color.muted
           font.family: Style.font.family
           font.pixelSize: Style.font.body
           elide: Text.ElideRight

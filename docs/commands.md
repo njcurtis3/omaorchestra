@@ -37,7 +37,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`approvals`](#omaorchestra-approvals) | permission prompts waiting for a remote answer (while you are away) |
 | [`approve`](#omaorchestra-approve) | allow one waiting permission prompt (just this request) |
 | [`deny`](#omaorchestra-deny) | refuse one waiting permission prompt |
-| [`away`](#omaorchestra-away) | push only while you are away: show or set the mode |
+| [`away`](#omaorchestra-away) | whether you are away (pushes and remote answers happen only then): show or set the mode |
 | [`config`](#omaorchestra-config) | inspect the configuration |
 | [`service`](#omaorchestra-service) | run the daemon as a systemd user service |
 | [`setup`](#omaorchestra-setup) | wire omaorchestra into this desktop: service, hooks, bar widget, keybindings, menu |
@@ -862,7 +862,7 @@ omaorchestra deny [--message MESSAGE] id
 
 ## `omaorchestra away`
 
-Push only while you are away: show or set the mode.
+Whether you are away (pushes and remote answers happen only then): show or set the mode.
 
 ```
 omaorchestra away [--json] [{auto,on,off}]
@@ -870,7 +870,7 @@ omaorchestra away [--json] [{auto,on,off}]
 
 | Argument | Meaning |
 |---|---|
-| `mode` | auto: away when locked or idle (default); on: always push; off: never push |
+| `mode` | auto: away when locked or idle (default); on: away; off: at the desk |
 | `--json` | machine-readable output |
 
 ## `omaorchestra config`

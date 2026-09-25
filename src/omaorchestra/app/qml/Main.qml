@@ -116,13 +116,53 @@ ApplicationWindow {
 
         Item { Layout.fillHeight: true }
 
-        // Away mode, while phone pushes are on (`omaorchestra away`).
+        // Away mode (`omaorchestra away`): pushes and remote answers happen only while away.
         ColumnLayout {
           objectName: "away"
-          visible: awayMode.known && awayMode.push && sessions.connected
+          visible: awayMode.known && awayMode.active && sessions.connected
           Layout.fillWidth: true
           Layout.bottomMargin: 12
           spacing: 6
+
+          Label {
+            text: "Away mode"
+            color: theme.muted
+            font.pixelSize: 12
+          }
+
+          ComboBox {
+            id: awayBox
+            objectName: "away-mode"
+            Layout.fillWidth: true
+            font.pixelSize: 12
+            model: [{ value: "auto", text: "Auto" },
+                    { value: "on", text: "Away" },
+                    { value: "off", text: "At the desk" }]
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: indexOfValue(awayMode.mode)
+            // Choosing sets the mode; the daemon's answer (or a change made
+            // elsewhere) sets what is shown.
+            onActivated: awayMode.setMode(currentValue)
+            Connections {
+              target: awayMode
+              function onChanged() { awayBox.currentIndex = awayBox.indexOfValue(awayMode.mode) }
+            }
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "Auto: away once the screen locks or after a while without input. Pushes go out, "
+                          + "and permission prompts can be answered remotely, only while you are away."
+            palette.button: theme.background
+            palette.buttonText: theme.foreground
+            palette.base: theme.surface
+            palette.text: theme.foreground
+            palette.window: theme.surface
+            palette.windowText: theme.foreground
+            palette.highlight: theme.selection
+            palette.highlightedText: theme.foreground
+            palette.mid: theme.selection
+            palette.dark: theme.muted
+          }
 
           Label {
             text: "󰄜  " + awayMode.text
@@ -130,42 +170,6 @@ ApplicationWindow {
             font.pixelSize: 12
             wrapMode: Text.Wrap
             Layout.fillWidth: true
-          }
-
-          RowLayout {
-            spacing: 4
-            Layout.fillWidth: true
-
-            Repeater {
-              model: [{ mode: "auto", label: "Auto", tip: "Away once the screen locks, or after a while without input" },
-                      { mode: "on", label: "Away", tip: "Push everything until you switch back" },
-                      { mode: "off", label: "Here", tip: "Push nothing" }]
-
-              delegate: ItemDelegate {
-                required property var modelData
-                objectName: "away-" + modelData.mode
-                readonly property bool current: awayMode.mode === modelData.mode
-                Layout.fillWidth: true
-                implicitHeight: 26
-                ToolTip.visible: hovered
-                ToolTip.delay: 500
-                ToolTip.text: modelData.tip
-                onClicked: awayMode.setMode(modelData.mode)
-
-                contentItem: Label {
-                  text: modelData.label
-                  horizontalAlignment: Text.AlignHCenter
-                  font.pixelSize: 12
-                  color: parent.current ? theme.foreground : theme.muted
-                }
-                background: Rectangle {
-                  radius: 4
-                  color: parent.current ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
-                  border.width: 1
-                  border.color: theme.selection
-                }
-              }
-            }
           }
         }
 

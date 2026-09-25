@@ -131,6 +131,16 @@ class UiFlowTest(unittest.TestCase):
         QTest.mouseClick(self.window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
         spin()
 
+    def choose(self, name, steps):
+        """Pick the entry `steps` below the current one in a dropdown, with the
+        keyboard (the open list highlights whatever the mouse is over)."""
+        self.click(name)  # focuses it and opens the list
+        QTest.keyClick(self.window, Qt.Key.Key_Escape)
+        spin()
+        for _ in range(steps):
+            QTest.keyClick(self.window, Qt.Key.Key_Down)
+            spin()
+
     def add_session(self, sid, status, cwd, **extra):
         self.client.request({"cmd": "update", "session_id": sid, "agent": "claude", "status": status,
                              "cwd": cwd, **extra})
@@ -261,17 +271,25 @@ class UiFlowTest(unittest.TestCase):
         self.assertFalse(Path(record["path"]).exists())
         self.assertEqual(self.warnings, [])
 
-    def test_away_switch_shows_with_push_on(self):
-        self.assertFalse(self.shown("away"), "no away switch while push is off")
+    def test_away_switch_shows_while_away_matters(self):
+        # Remote answers are on by default, so the switch shows with push off.
+        self.assertTrue(wait_for(lambda: self.shown("away")), "away switch did not appear")
+        self.config_path.write_text("[remote]\npush = false\nanswer_prompts = false\n")
+        self.client.request({"cmd": "reload"})
+        self.assertTrue(wait_for(lambda: not self.shown("away")), "away switch shown while it changes nothing")
         self.config_path.write_text("[remote]\npush = true\n")
         self.client.request({"cmd": "reload"})
-        self.assertTrue(wait_for(lambda: self.shown("away")), "away switch did not appear")
+        self.assertTrue(wait_for(lambda: self.shown("away")), "away switch did not come back")
         self.assertEqual(self.away.mode, "auto")
-        self.click("away-on")
+        self.choose("away-mode", 1)  # Away
         self.assertTrue(wait_for(lambda: self.away.away), "not away after choosing Away")
         self.assertEqual(self.client.request({"cmd": "away"})["away"]["mode"], "on")
-        self.click("away-off")
+        self.assertEqual(self.find("away-mode").property("currentText"), "Away")
+        self.choose("away-mode", 1)  # At the desk, one further down
         self.assertTrue(wait_for(lambda: self.away.mode == "off" and not self.away.away))
+        # Changed elsewhere (the CLI, top, the bar): the dropdown follows.
+        self.client.request({"cmd": "away", "mode": "auto"})
+        self.assertTrue(wait_for(lambda: self.find("away-mode").property("currentText").startswith("Auto")))
         self.assertEqual(self.warnings, [])
 
     def test_queue_from_the_form_then_pause_resume_cancel(self):
