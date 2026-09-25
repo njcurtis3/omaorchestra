@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" width="128" height="128" shape-rendering="crispEdges">
+  <title>omaorchestra</title>
+  <rect x="1" y="1" width="518" height="518" rx="53" fill="#eeeae1" stroke="#dcd7cc" stroke-width="2" shape-rendering="geometricPrecision"/>
+  <rect x="343" y="91" width="56" height="28" fill="#d9731a"/>
+  <rect x="343" y="119" width="56" height="28" fill="#d9731a"/>
+  <rect x="315" y="147" width="28" height="28" fill="#d9731a" fill-opacity="0.45"/>
+  <rect x="147" y="175" width="140" height="28" fill="#17181c"/>
+  <rect x="119" y="203" width="168" height="28" fill="#17181c"/>
+  <rect x="91" y="231" width="56" height="28" fill="#17181c"/>
+  <rect x="287" y="231" width="56" height="28" fill="#17181c"/>
+  <rect x="91" y="259" width="56" height="28" fill="#17181c"/>
+  <rect x="287" y="259" width="56" height="28" fill="#17181c"/>
+  <rect x="91" y="287" width="56" height="28" fill="#17181c"/>
+  <rect x="287" y="287" width="56" height="28" fill="#17181c"/>
+  <rect x="91" y="315" width="56" height="28" fill="#17181c"/>
+  <rect x="287" y="315" width="56" height="28" fill="#17181c"/>
+  <rect x="91" y="343" width="56" height="28" fill="#17181c"/>
+  <rect x="287" y="343" width="56" height="28" fill="#17181c"/>
+  <rect x="119" y="371" width="196" height="28" fill="#17181c"/>
+  <rect x="147" y="399" width="140" height="28" fill="#17181c"/>
+</svg>

@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
-    <img src="docs/assets/logo-light.svg" alt="omaorchestra" height="96">
+    <img src="docs/assets/logo-light.svg" alt="omaorchestra" height="72">
   </picture>
 </h1>
 
@@ -14,17 +14,17 @@
     <img src="https://img.shields.io/github/actions/workflow/status/njcurtis3/omaorchestra/test.yml?branch=main&label=tests&style=flat-square" alt="tests" style="height: 20px;">
   </a>
   <a href="https://github.com/njcurtis3/omaorchestra/releases/latest">
-    <img src="https://img.shields.io/github/v/release/njcurtis3/omaorchestra?style=flat-square&color=6e9fb0" alt="latest release" style="height: 20px;">
+    <img src="https://img.shields.io/github/v/release/njcurtis3/omaorchestra?style=flat-square&color=d9731a" alt="latest release" style="height: 20px;">
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-a55555.svg?style=flat-square" alt="license" style="height: 20px;">
+    <img src="https://img.shields.io/badge/license-MIT-8f8c84.svg?style=flat-square" alt="license" style="height: 20px;">
   </a>
   <br>
   <a href="https://omarchy.org/">
-    <img src="https://img.shields.io/badge/omarchy-4.x-1a1f22.svg?style=flat-square" alt="Omarchy 4.x" style="height: 20px;">
+    <img src="https://img.shields.io/badge/omarchy-4.x-17181c.svg?style=flat-square" alt="Omarchy 4.x" style="height: 20px;">
   </a>
-  <img src="https://img.shields.io/badge/python-3.11%2B-707880.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" style="height: 20px;">
-  <img src="https://img.shields.io/badge/Qt-PySide6-707880.svg?style=flat-square&logo=qt&logoColor=white" alt="PySide6" style="height: 20px;">
+  <img src="https://img.shields.io/badge/python-3.11%2B-8f8c84.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" style="height: 20px;">
+  <img src="https://img.shields.io/badge/Qt-PySide6-8f8c84.svg?style=flat-square&logo=qt&logoColor=white" alt="PySide6" style="height: 20px;">
 </h4>
 
 <p align="center">
