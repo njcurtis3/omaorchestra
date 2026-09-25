@@ -1,15 +1,16 @@
 """Keep one app window: a second launch asks the first to show itself,
 optionally on a given session ("activate <session id>")."""
 
-import os
-
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 ACTIVATE = b"activate\n"
 
 
 def server_name():
-    return f"omaorchestra-app-{os.getuid()}"
+    """A full path in the user's own runtime folder: a bare name would put the
+    socket in the shared /tmp, where another user could take the name first."""
+    from .. import paths
+    return str(paths.runtime_dir() / "omaorchestra-app.sock")
 
 
 def ask_running_instance(name=None, timeout_ms=300, session=""):

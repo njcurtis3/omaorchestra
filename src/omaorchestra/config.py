@@ -57,6 +57,14 @@ def _events(value):
         return f"unknown event {', '.join(unknown)} (known: {', '.join(REMOTE_EVENTS)})"
 
 
+def plain_http(url):
+    """True for an http:// URL to anywhere but this machine: what is sent
+    there, secrets included, can be read on the way."""
+    import urllib.parse
+    parsed = urllib.parse.urlsplit(str(url))
+    return parsed.scheme == "http" and parsed.hostname not in ("localhost", "127.0.0.1", "::1")
+
+
 def _server(value):
     if not isinstance(value, str) or not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", value):
         return "must be an http:// or https:// URL"

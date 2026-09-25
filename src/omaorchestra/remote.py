@@ -18,7 +18,7 @@ import secrets
 import urllib.error
 import urllib.request
 
-from . import keys, notify, usage
+from . import config, keys, notify, usage
 from .log import event
 
 TIMEOUT = 10
@@ -90,6 +90,8 @@ def payload(topic, kind, title, body):
 
 def post(server, data, token=None, opener=urllib.request.urlopen):
     """Publish one message (ntfy's JSON form: POST to the server root)."""
+    if token and config.plain_http(server):
+        raise RemoteError(f"refusing to send the access token to {server} over plain http; use https")
     request = urllib.request.Request(server.rstrip("/") + "/", data=json.dumps(data).encode(),
                                      headers={"Content-Type": "application/json"}, method="POST")
     if token:

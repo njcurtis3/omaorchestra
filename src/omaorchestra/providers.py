@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import keys
+from . import config, keys
 
 TIMEOUT = 15
 
@@ -76,6 +76,9 @@ def add(kind, provider_id=None, base_url=None, label=None):
     url = (base_url or KINDS[kind]["base_url"]).rstrip("/")
     if not re.match(r"https?://", url):
         raise ProviderError("the base URL must start with http:// or https://")
+    if KINDS[kind]["key"] and config.plain_http(url):
+        raise ProviderError("that base URL is plain http, and this provider's API key would go over it "
+                            "unencrypted; use https (plain http is fine for this machine: localhost)")
     item = {"id": provider_id, "kind": kind, "base_url": url, "label": label or KINDS[kind]["label"]}
     _save(items + [item])
     return item
@@ -107,6 +110,8 @@ def get_json(provider, route, key=None, lookup=None):
     if key is None and needs_key(provider):
         key = lookup(provider["id"])
     url = provider["base_url"] + route
+    if key and config.plain_http(url):
+        raise ProviderError(f"refusing to send the API key to {provider['base_url']} over plain http; use https")
     request = urllib.request.Request(url, headers={**_headers(provider, key), "Accept": "application/json",
                                                    "User-Agent": "omaorchestra"})
     try:

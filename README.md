@@ -222,6 +222,8 @@ a new omaorchestra release.
 - [Commands](docs/commands.md): every command and option
 - [From your phone](docs/remote.md): `omaorchestra top` over SSH on your
   tailnet, with a key that can run nothing else
+- [Security](docs/security.md): what leaves the machine, and what to do if
+  a phone or a push topic goes astray
 - [Providers and models](docs/providers.md): API providers, model defaults,
   routing agents through a provider, costs and budgets
 - [MCP servers and permissions](docs/mcp.md)

@@ -733,7 +733,8 @@ def cmd_remote_status(args):
     except client.DaemonUnavailable:
         state = None
     print(f"push     {'on' if settings['push'] else 'off'}")
-    print(f"server   {settings['server']}")
+    print(f"server   {settings['server']}" + ("  (plain http: pushes can be read on the way)"
+                                               if config.plain_http(settings["server"]) else ""))
     print(f"topic    {'stored in the keyring' if topic else 'none yet (omaorchestra remote topic --new)'}")
     print(f"token    {'stored in the keyring' if token else 'none'}")
     print(f"content  {settings['content']}")

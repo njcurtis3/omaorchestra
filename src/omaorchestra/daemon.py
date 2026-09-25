@@ -774,7 +774,7 @@ def run(verbose=False):
         return CONFIG_ERROR_EXIT
     log.set_verbose(verbose or settings["daemon"]["verbose"])
     sock_path = paths.socket_path()
-    registry = Registry(paths.state_dir() / "sessions.json")
+    registry = Registry(paths.private_state_dir() / "sessions.json")
 
     async def main():
         daemon = Daemon(registry, settings=settings, force_verbose=verbose)

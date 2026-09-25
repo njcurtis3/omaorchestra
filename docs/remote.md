@@ -126,6 +126,8 @@ agent needs you, `top` shows what it asks, and **y** or **x** answers it
 
 ## If the phone is lost
 
+(What someone holding it could do, and why: [Security](security.md#a-lost-or-stolen-phone).)
+
 1. Remove the phone from your tailnet in the Tailscale admin console
    (Machines). It can then reach nothing, whichever option you use.
 2. With option 2, also delete its line from `~/.ssh/authorized_keys` (the

@@ -22,7 +22,9 @@
   answers whose sender (by the socket's peer credentials) runs under an
   agent: a guard against agents answering in passing, not a boundary, since
   agents run as the user.
-- The socket is user-only (0600) and never exposed over the network.
+- The socket is user-only (0600) and never exposed over the network; nothing
+  omaorchestra runs listens on a port (`tests/test_no_ports.py`). The threat
+  model is [security.md](security.md).
 - Remote means outbound only: phone pushes are HTTPS POSTs to ntfy
   (`remote.py`); omaorchestra opens no port of its own. What a push says is
   set by `[remote] content`, and prompts leave the machine only at `full`.
