@@ -131,6 +131,14 @@ def cmd_watch(args):
     return 0
 
 
+def cmd_top(args):
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("omaorchestra: top needs a terminal", file=sys.stderr)
+        return 1
+    from . import top
+    return top.run()
+
+
 def cmd_app(args):
     from .app import main as app_main
     return app_main.run(check=args.check, session=args.session or "")
@@ -904,6 +912,8 @@ def build_parser():
     watch_p = sub.add_parser("watch", help="print session changes as they happen")
     watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
     watch_p.set_defaults(func=cmd_watch)
+    sub.add_parser("top", help="sessions and the queue in the terminal, sized for a phone over SSH; "
+                               "keys or taps").set_defaults(func=cmd_top)
     run_p = sub.add_parser("run", help="start an agent on a task in a new terminal window")
     run_p.add_argument("task", help="what the agent should do")
     run_p.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")

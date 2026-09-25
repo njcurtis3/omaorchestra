@@ -118,6 +118,32 @@ puts it on the bar; to place it elsewhere:
 omarchy bar move omaorchestra.sessions --before omarchy.agents
 ```
 
+## In a terminal (and on your phone)
+
+`omaorchestra top` shows sessions and the queue in the terminal, live, the
+way the app does. It fits a phone's screen (about 40 columns), so over SSH
+from Termius or Blink it is the way to check on agents while you are away;
+reaching the machine is up to you (Tailscale works well).
+
+- Two tabs, **Sessions** (waiting ones first, with what they are asking) and
+  **Queue**. Tab or ←/→ switches; ↑/↓ (or j/k) picks; Enter shows everything
+  about the picked one.
+- On sessions: **d** dismisses, **s** stops the agent (after a yes), **h**
+  hands its work to another agent.
+- On the queue: **p** pauses or resumes a task (resume also retries a failed
+  one), **x** cancels it (after a yes), **H** holds or releases the whole
+  queue.
+- **n** queues a new task: type it, then the folder (the picked session's, or
+  the last one you used), then pick the agent.
+- **a** switches [away mode](#away-mode) while pushes are on; the top right
+  says whether you count as away.
+- **q** quits.
+
+Every key is also a button along the bottom, and rows, tabs and buttons all
+respond to taps in terminals that report the mouse (most phone SSH apps do),
+so a phone keyboard is only needed to type a task. Focusing a terminal window
+is left out on purpose: it would happen on a desk nobody is at.
+
 ## Notifications
 
 When an agent starts waiting for you, a notification says so ("proj needs

@@ -19,6 +19,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`focus`](#omaorchestra-focus) | focus a session's terminal window |
 | [`app`](#omaorchestra-app) | open the omaorchestra app window |
 | [`watch`](#omaorchestra-watch) | print session changes as they happen |
+| [`top`](#omaorchestra-top) | sessions and the queue in the terminal, sized for a phone over SSH; keys or taps |
 | [`run`](#omaorchestra-run) | start an agent on a task in a new terminal window |
 | [`queue`](#omaorchestra-queue) | tasks waiting for a free agent slot |
 | [`handoff`](#omaorchestra-handoff) | start another agent (or model) on a session's work, with a brief |
@@ -110,6 +111,14 @@ omaorchestra watch [--json]
 | Argument | Meaning |
 |---|---|
 | `--json` | raw protocol messages, one per line |
+
+## `omaorchestra top`
+
+Sessions and the queue in the terminal, sized for a phone over SSH; keys or taps.
+
+```
+omaorchestra top
+```
 
 ## `omaorchestra run`
 
