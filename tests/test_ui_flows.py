@@ -316,6 +316,8 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(self.warnings, [])
 
     def test_a_chain_from_the_form(self):
+        self.window.setProperty("height", 1000)  # the whole form on screen, whatever the fonts
+        spin()
         self.click("nav-queue")
         self.click("queue-hold")  # nothing actually starts
         self.assertTrue(wait_for(lambda: self.queue.held), "queue not held")

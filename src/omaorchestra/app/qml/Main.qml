@@ -230,12 +230,21 @@ ApplicationWindow {
       }
 
       // New task
-      NewTaskPage {
+      // Scrolls when the window is shorter than the form (Then… and a
+      // recipe make it taller).
+      ScrollView {
+        id: newTaskScroll
         visible: window.page === "new"
         Layout.fillWidth: true
         Layout.fillHeight: true
-        onLaunched: id => window.showSession(id)
-        onQueued: window.page = "queue"
+        clip: true
+        contentWidth: availableWidth
+
+        NewTaskPage {
+          width: newTaskScroll.availableWidth
+          onLaunched: id => window.showSession(id)
+          onQueued: window.page = "queue"
+        }
       }
 
       // Queue
