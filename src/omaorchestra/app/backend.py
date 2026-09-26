@@ -545,6 +545,49 @@ class Queue(QObject):
                 **launch.agent_environment(agent or "claude")}
         return self._send({"cmd": "queue-add", "item": item, "paused": paused})
 
+    @Slot(str, str, str, str, str, bool, str, str, str, result="QVariantMap")
+    def addChain(self, task, then, folder, model, permission_mode, worktree, provider_id, mcp_profile, agent):
+        """A task, then a follow-up in its worktree once it finishes (chain.py)."""
+        first = self.add(task, folder, model, permission_mode, worktree, False, provider_id, mcp_profile, agent)
+        if first.get("error"):
+            return first
+        import os
+        item = {"task": then, "cwd": os.path.expanduser(folder), "model": model or None,
+                "permission_mode": permission_mode or None, "extra": [], "provider": provider_id or None,
+                "agent": agent or "claude", "after": first["item"]["id"], "same_worktree": True,
+                **launch.agent_environment(agent or "claude")}
+        return self._send({"cmd": "queue-add", "item": item})
+
+    @Slot(result="QVariantList")
+    def recipeChoices(self):
+        from .. import recipes
+        try:
+            found = recipes.load()
+        except recipes.RecipeError as e:
+            return [{"value": "", "label": "None: one task", "description": f"recipes.toml: {e}"}]
+        return [{"value": "", "label": "None: one task", "description": ""}] + [
+            {"value": name, "label": name, "description": r.get("description", "")} for name, r in sorted(found.items())]
+
+    @Slot(str, str, str, str, bool, str, result="QVariantMap")
+    def runRecipe(self, name, task, folder, model, worktree, provider_id):
+        import os
+        from .. import recipes
+        try:
+            steps = recipes.items(name, task, os.path.expanduser(folder),
+                                  base={"worktree": worktree, "provider": provider_id or None, "model": model or None})
+        except recipes.RecipeError as e:
+            return {"error": str(e)}
+        after, response = None, {}
+        for step in steps:
+            item = {**step, **launch.agent_environment(step["agent"])}
+            if after:
+                item["after"] = after
+            response = self._send({"cmd": "queue-add", "item": item})
+            if response.get("error"):
+                return response
+            after = response["item"]["id"]
+        return response
+
     @Slot(str, result="QVariantMap")
     def cancel(self, task_id):
         return self._send({"cmd": "queue-cancel", "id": task_id})

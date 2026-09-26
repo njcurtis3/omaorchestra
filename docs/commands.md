@@ -29,6 +29,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`provider`](#omaorchestra-provider) | model providers (API keys live in the system keyring) |
 | [`models`](#omaorchestra-models) | models from Claude Code and your providers |
 | [`worktree`](#omaorchestra-worktree) | task worktrees: list, review, merge, remove |
+| [`recipe`](#omaorchestra-recipe) | named multi-step chains: plan-then-build, build-then-review, your own |
 | [`stop`](#omaorchestra-stop) | stop a session's agent process (asks first) |
 | [`dismiss`](#omaorchestra-dismiss) | remove a session from the list (it returns if the agent reports again) |
 | [`hook`](#omaorchestra-hook) | receive an agent hook event on stdin |
@@ -172,6 +173,7 @@ Queue a task (anything after -- goes to the agent).
 omaorchestra queue add [--in DIR] [--model MODEL] [--permission-mode PERMISSION_MODE]
                        [--worktree] [--no-worktree] [--paused] [--provider PROVIDER]
                        [--mcp-profile MCP_PROFILE] [--agent {claude,codex,opencode}]
+                       [--after AFTER] [--same-worktree] [--no-brief]
                        task
 ```
 
@@ -187,6 +189,9 @@ omaorchestra queue add [--in DIR] [--model MODEL] [--permission-mode PERMISSION_
 | `--provider PROVIDER` | run through this API provider instead of the subscription |
 | `--mcp-profile MCP_PROFILE` | only this profile's MCP servers ('none' for none) |
 | `--agent AGENT` | which agent (default claude); one of `claude`, `codex`, `opencode` |
+| `--after AFTER` | start only once this queued task (or running session) finishes; id or prefix |
+| `--same-worktree` | with --after: work in that task's worktree and branch, not a new one |
+| `--no-brief` | with --after: do not add a brief of what that task did |
 
 ### `omaorchestra queue cancel`
 
@@ -656,6 +661,70 @@ omaorchestra worktree remove [--force] worktree
 |---|---|
 | `worktree` | session id (or prefix), branch, or path |
 | `--force` | discard uncommitted or unmerged work |
+
+### `omaorchestra worktree review`
+
+Queue an agent to review a worktree's changes; the verdict shows in `worktree list`.
+
+```
+omaorchestra worktree review [--agent {claude,codex,opencode}] [--model MODEL]
+                             worktree
+```
+
+| Argument | Meaning |
+|---|---|
+| `worktree` | session id (or prefix), branch, or path |
+| `--agent AGENT` | the reviewer (default claude); one of `claude`, `codex`, `opencode` |
+| `--model MODEL` | the reviewer's model (a different one from the builder's is a good idea) |
+
+## `omaorchestra recipe`
+
+Named multi-step chains: plan-then-build, build-then-review, your own.
+
+```
+omaorchestra recipe <command> ...
+```
+
+### `omaorchestra recipe list`
+
+Every recipe.
+
+```
+omaorchestra recipe list
+```
+
+### `omaorchestra recipe show`
+
+A recipe's steps.
+
+```
+omaorchestra recipe show name
+```
+
+| Argument | Meaning |
+|---|---|
+| `name` | the recipe |
+
+### `omaorchestra recipe run`
+
+Queue a recipe's steps as a chain.
+
+```
+omaorchestra recipe run [--in DIR] [--model MODEL] [--provider PROVIDER] [--worktree]
+                        [--no-worktree] [--paused]
+                        name task
+```
+
+| Argument | Meaning |
+|---|---|
+| `name` | the recipe (see `recipe list`) |
+| `task` | what to do |
+| `--in DIR` | folder to work in (default: here) |
+| `--model MODEL` | model for its steps, where the recipe names none |
+| `--provider PROVIDER` | run through this API provider instead of the subscription |
+| `--worktree` | work in a separate git worktree (default: tasks.isolate_with_worktrees) |
+| `--no-worktree` | work in the folder itself |
+| `--paused` | add its first step paused |
 
 ## `omaorchestra stop`
 

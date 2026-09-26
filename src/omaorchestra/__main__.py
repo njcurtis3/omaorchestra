@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               history, modeldefaults, procs, providers, remote, remote_access, service, setup, windows, worktrees)
+               history, modeldefaults, procs, providers, recipes, remote, remote_access, service, setup, windows, worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -178,9 +178,17 @@ def print_queue(q):
     if not q["tasks"]:
         print("no queued tasks")
     for i, t in enumerate(q["tasks"], 1):
-        mark = {"pending": " ", "paused": "‖", "failed": "!"}.get(t["state"], "?")
-        print(f"{i:>2} {mark} {t['id'][:8]}  {launch.short(t['task'], 60)}")
-        print(f"             {t['cwd']}" + (f"   (failed: {t['error']})" if t.get("error") else ""))
+        mark = {"pending": " ", "paused": "‖", "failed": "!", "waiting": "…", "held": "✗"}.get(t["state"], "?")
+        chained = t.get("after") or t.get("parent_session")
+        indent = "  ↳ " if chained else ""
+        print(f"{i:>2} {mark} {t['id'][:8]}  {indent}{launch.short(t.get('base_task') or t['task'], 56)}")
+        note = ""
+        if t["state"] == "waiting":
+            note = f"   (waits for {(t.get('after') or t.get('parent_session'))[:8]} to finish)"
+        elif t.get("error"):
+            note = f"   ({'held' if t['state'] == 'held' else 'failed'}: {t['error']})"
+        step = f"step {t['step']}" + (f" of {t['recipe']}" if t.get("recipe") else "") + ", " if t.get("step") else ""
+        print(f"             {step}{t['cwd']}{note}")
 
 
 def cmd_queue_list(args):
@@ -201,6 +209,8 @@ def cmd_queue_add(args):
     item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
             "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
             "mcp_profile": args.mcp_profile, "agent": args.agent, **launch.agent_environment(args.agent)}
+    if args.after:
+        item.update(after=args.after, same_worktree=args.same_worktree, brief=not args.no_brief)
     response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
     print(f"queued {response['item']['id'][:8]}")
     print_queue(response["queue"])
@@ -532,8 +542,34 @@ def cmd_worktree_list(args):
         info = worktrees.status(r)
         state = ("removed" if not info["exists"] else "merged" if info["merged"]
                  else f"{len(info['commits'])} commit(s)" + (", uncommitted changes" if info["dirty"] else ""))
+        review = r.get("review")
+        if review:
+            state += f", reviewed: {review['verdict']}"
         print(f"{r['session_id'][:8]}  {r['branch']:<48} {state}")
         print(f"          {r['path']}")
+        if review:
+            print(f"          review: {review['file']}")
+    return 0
+
+
+def cmd_worktree_review(args):
+    from . import chain
+    record = worktrees.find(args.worktree)
+    if not Path(record["path"]).is_dir():
+        raise worktrees.WorktreeError("that worktree has been removed")
+    session = {"id": record["session_id"], "cwd": record.get("workdir") or record["path"], "worktree": record["path"]}
+    try:
+        diff, truncated = chain.diff_for(session)
+    except chain.ChainError as e:
+        raise worktrees.WorktreeError(str(e)) from None
+    task = chain.review_task(f"Review the changes made for this task: {record.get('task') or record['branch']}\n\n"
+                             "Look for bugs, missing tests, and anything that does not do what the task asked.",
+                             diff, truncated)
+    item = {"task": task, "cwd": session["cwd"], "worktree": False, "worktree_path": record["path"], "review": True,
+            "model": args.model, "agent": args.agent, "extra": [], **launch.agent_environment(args.agent)}
+    response = queue_request({"cmd": "queue-add", "item": item})
+    print(f"queued a review of {record['branch']} as {response['item']['id'][:8]}; its verdict will show in "
+          "`omaorchestra worktree list`")
     return 0
 
 
@@ -803,6 +839,46 @@ def cmd_resume(args):
     print(f"resumed {record['id'][:8]} ({record.get('agent')}) in {result['folder']}")
     if not result["tracked"]:
         print("(omaorchestrad is not running, so this session is not tracked)")
+    return 0
+
+
+def cmd_recipe_list(args):
+    for name, recipe in sorted(recipes.load().items()):
+        steps = len(recipe["steps"])
+        print(f"{name:<22} {steps} step{'s' if steps != 1 else ''}  {recipe.get('description', '')}"
+              + ("" if recipe.get("builtin") else "  (yours)"))
+    print(f"\nyour own go in {recipes.path()}")
+    return 0
+
+
+def cmd_recipe_show(args):
+    recipe = recipes.get(args.name)
+    print(f"{args.name}: {recipe.get('description', '')}")
+    for n, step in enumerate(recipe["steps"], 1):
+        how = ", ".join(x for x in (step.get("agent"), step.get("model"), step.get("permission_mode"),
+                                    "a review" if step.get("review") else "") if x)
+        print(f"\nstep {n}" + (f" ({how})" if how else ""))
+        for line in step["prompt"].splitlines():
+            print(f"  {line}")
+    return 0
+
+
+def cmd_recipe_run(args):
+    cwd = launch.Path(args.dir).expanduser().resolve()
+    steps = recipes.items(args.name, args.task, str(cwd),
+                          base={"worktree": args.worktree, "provider": args.provider, "model": args.model})
+    ids, after = [], None
+    for step in steps:
+        agent = step["agent"]
+        item = {**step, **launch.agent_environment(agent)}
+        if after:
+            item["after"] = after
+        response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused and not after})
+        after = response["item"]["id"]
+        ids.append(after)
+    print(f"queued {args.name} as {len(ids)} chained step(s): {', '.join(i[:8] for i in ids)}")
+    print("each step starts once the one before finishes; a step that stops or fails holds the rest")
+    print_queue(response["queue"])
     return 0
 
 
@@ -1156,6 +1232,11 @@ def build_parser():
     qa.add_argument("--provider", help="run through this API provider instead of the subscription")
     qa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
     qa.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="which agent (default claude)")
+    qa.add_argument("--after", help="start only once this queued task (or running session) finishes; id or prefix")
+    qa.add_argument("--same-worktree", action="store_true",
+                    help="with --after: work in that task's worktree and branch, not a new one")
+    qa.add_argument("--no-brief", action="store_true",
+                    help="with --after: do not add a brief of what that task did")
     qa.set_defaults(func=cmd_queue_add, agent_args=[])
     for name, text in (("cancel", "remove a task from the queue"), ("pause", "skip it until resumed"),
                        ("resume", "let it run again (also retries a failed task)"),
@@ -1276,6 +1357,29 @@ def build_parser():
         if name == "remove":
             p.add_argument("--force", action="store_true", help="discard uncommitted or unmerged work")
         p.set_defaults(func=func)
+    wr = wt_sub.add_parser("review", help="queue an agent to review a worktree's changes; the verdict shows in "
+                                          "`worktree list`")
+    wr.add_argument("worktree", help="session id (or prefix), branch, or path")
+    wr.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="the reviewer (default claude)")
+    wr.add_argument("--model", help="the reviewer's model (a different one from the builder's is a good idea)")
+    wr.set_defaults(func=cmd_worktree_review)
+    rcp = sub.add_parser("recipe", help="named multi-step chains: plan-then-build, build-then-review, your own")
+    rcp_sub = rcp.add_subparsers(dest="recipe_command", required=True)
+    rcp_sub.add_parser("list", help="every recipe").set_defaults(func=cmd_recipe_list)
+    rs2 = rcp_sub.add_parser("show", help="a recipe's steps")
+    rs2.add_argument("name", help="the recipe")
+    rs2.set_defaults(func=cmd_recipe_show)
+    rr = rcp_sub.add_parser("run", help="queue a recipe's steps as a chain")
+    rr.add_argument("name", help="the recipe (see `recipe list`)")
+    rr.add_argument("task", help="what to do")
+    rr.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
+    rr.add_argument("--model", help="model for its steps, where the recipe names none")
+    rr.add_argument("--provider", help="run through this API provider instead of the subscription")
+    rr.add_argument("--worktree", dest="worktree", action="store_true", default=None,
+                    help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
+    rr.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
+    rr.add_argument("--paused", action="store_true", help="add its first step paused")
+    rr.set_defaults(func=cmd_recipe_run)
     stop_p = sub.add_parser("stop", help="stop a session's agent process (asks first)")
     stop_p.add_argument("session", help="session id or prefix")
     stop_p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
@@ -1433,7 +1537,7 @@ def run_command(args, parser=None):
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
             keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
-            remote_access.RemoteAccessError, history.HistoryError) as e:
+            remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

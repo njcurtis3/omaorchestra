@@ -124,14 +124,38 @@ ColumnLayout {
           }
         }
 
-        Label {
+        ColumnLayout {
           Layout.alignment: Qt.AlignTop
-          color: item.modelData.error ? theme.urgent : item.modelData.merged ? theme.accent : theme.foreground
-          text: item.modelData.error ? "error"
-            : !item.modelData.exists ? "folder gone"
-            : item.modelData.merged ? "merged"
-            : item.modelData.commitCount + " commit" + (item.modelData.commitCount === 1 ? "" : "s")
-              + (item.modelData.dirty ? " · uncommitted changes" : "")
+          spacing: 2
+          Label {
+            Layout.alignment: Qt.AlignRight
+            color: item.modelData.error ? theme.urgent : item.modelData.merged ? theme.accent : theme.foreground
+            text: item.modelData.error ? "error"
+              : !item.modelData.exists ? "folder gone"
+              : item.modelData.merged ? "merged"
+              : item.modelData.commitCount + " commit" + (item.modelData.commitCount === 1 ? "" : "s")
+                + (item.modelData.dirty ? " · uncommitted changes" : "")
+          }
+          // A review step's verdict (chain.py); click for the findings.
+          Label {
+            objectName: "review-" + item.modelData.branch
+            visible: !!item.modelData.review
+            Layout.alignment: Qt.AlignRight
+            text: item.modelData.review ? "reviewed: " + item.modelData.review.verdict : ""
+            color: !item.modelData.review ? theme.muted
+                   : item.modelData.review.verdict === "ready" ? theme.accent
+                   : item.modelData.review.verdict === "needs work" ? theme.urgent : theme.muted
+            font.underline: reviewMouse.containsMouse
+            MouseArea {
+              id: reviewMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: Qt.openUrlExternally("file://" + item.modelData.review.file)
+            }
+            ToolTip.visible: reviewMouse.containsMouse
+            ToolTip.text: "Open the review's findings"
+          }
         }
 
         Row {

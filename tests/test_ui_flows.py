@@ -315,6 +315,49 @@ class UiFlowTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: "1 session" in (self.find("stats-summary").property("text") or "")))
         self.assertEqual(self.warnings, [])
 
+    def test_a_chain_from_the_form(self):
+        self.click("nav-queue")
+        self.click("queue-hold")  # nothing actually starts
+        self.assertTrue(wait_for(lambda: self.queue.held), "queue not held")
+        QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+        self.assertTrue(wait_for(lambda: self.shown("task-prompt")), "form not open")
+        self.click("task-prompt")
+        for key in ("Key_F", "Key_I", "Key_X"):
+            QTest.keyClick(self.window, getattr(Qt.Key, key))
+        self.find("task-folder").setProperty("text", self.tmp.name)
+        self.click("task-then-open")
+        self.assertTrue(wait_for(lambda: self.shown("task-then")), "no Then… box")
+        self.click("task-then")
+        for key in ("Key_T", "Key_E", "Key_S", "Key_T"):
+            QTest.keyClick(self.window, getattr(Qt.Key, key))
+        spin()
+        self.assertEqual(self.find("task-launch").property("text"), "Start chain")
+        self.assertFalse(self.shown("task-queue"))
+        self.click("task-launch")
+        self.assertTrue(wait_for(lambda: len(self.queue.tasks) == 2), "the chain was not queued")
+        first, second = self.queue.tasks
+        self.assertEqual((first["task"], first["state"]), ("fix", "pending"))
+        self.assertEqual((second["task"], second["state"], second["after"], second["same_worktree"]),
+                         ("test", "waiting", first["id"], True))
+        self.assertTrue(wait_for(lambda: self.shown("queued-1")), "the queue does not show it")
+        self.assertFalse(self.shown("queued-run-1"), "a waiting step cannot be started early")
+
+        # A recipe instead.
+        QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+        self.assertTrue(wait_for(lambda: self.shown("task-recipe")), "no recipe choice")
+        self.click("task-prompt")
+        QTest.keyClick(self.window, Qt.Key.Key_X)
+        self.find("task-folder").setProperty("text", self.tmp.name)
+        self.choose("task-recipe", 1)  # build-then-review, the first after None
+        spin()
+        self.assertEqual(self.find("task-launch").property("text"), "Start chain")
+        self.assertFalse(self.shown("task-then-open"), "a recipe has its own steps")
+        self.click("task-launch")
+        self.assertTrue(wait_for(lambda: len(self.queue.tasks) == 4), "the recipe was not queued")
+        self.assertEqual([t.get("recipe") for t in self.queue.tasks[2:]], ["build-then-review"] * 2)
+        self.assertTrue(self.queue.tasks[3]["review"])
+        self.assertEqual(self.warnings, [])
+
     def test_queue_from_the_form_then_pause_resume_cancel(self):
         # Hold first, so nothing is actually launched during the test.
         self.click("nav-queue")

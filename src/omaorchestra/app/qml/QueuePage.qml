@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Tasks waiting for a free agent slot, in the order they will start.
-// `queue` and `theme` come from Python.
+// Tasks waiting for a free agent slot, in the order they will start. A
+// chained task (the next step of a chain) is indented under the one it
+// follows and waits for it to finish. `queue` and `theme` come from Python.
 ColumnLayout {
   id: page
   spacing: 12
@@ -84,37 +85,44 @@ ColumnLayout {
       width: ListView.view.width
       height: rowContent.implicitHeight + 20
       radius: 6
+      readonly property bool chained: !!(modelData.after || modelData.parent_session)
+      readonly property bool waiting: modelData.state === "waiting"
       color: theme.surface
-      border.color: modelData.state === "failed" ? theme.urgent : "transparent"
-      opacity: modelData.state === "paused" ? 0.6 : 1
+      border.color: modelData.state === "failed" || modelData.state === "held" ? theme.urgent : "transparent"
+      opacity: modelData.state === "paused" || waiting ? 0.7 : 1
 
       RowLayout {
         id: rowContent
-        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14
+                  leftMargin: row.chained ? 40 : 14 }
         spacing: 14
 
         Label {
           Layout.alignment: Qt.AlignTop
-          text: (row.index + 1) + "."
+          text: row.chained ? "↳" : (row.index + 1) + "."
           color: theme.muted
         }
 
         ColumnLayout {
           Layout.fillWidth: true
           spacing: 3
-          Label { Layout.fillWidth: true; text: row.modelData.task; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
+          Label { Layout.fillWidth: true; text: (row.modelData.base_task || row.modelData.task).split("\n")[0]; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
           Label {
             Layout.fillWidth: true
-            text: [row.modelData.place, row.modelData.model || "", row.modelData.worktree === false ? "no worktree" : ""].filter(Boolean).join("   ·   ")
+            text: [row.modelData.step ? "step " + row.modelData.step + (row.modelData.recipe ? " of " + row.modelData.recipe : "") : "",
+                   row.modelData.review ? "review" : "",
+                   row.modelData.place, row.modelData.model || "",
+                   row.modelData.same_worktree ? "same worktree"
+                   : row.modelData.worktree === false ? "no worktree" : ""].filter(Boolean).join("   ·   ")
             color: theme.muted
             font.pixelSize: 12
-            elide: Text.ElideMiddle
+            elide: Text.ElideRight
           }
           Label {
             visible: !!row.modelData.error
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: "Failed to start: " + (row.modelData.error || "")
+            text: (row.modelData.state === "held" ? "Held: " : "Failed to start: ") + (row.modelData.error || "")
             color: theme.urgent
             font.pixelSize: 12
           }
@@ -123,8 +131,9 @@ ColumnLayout {
         Label {
           Layout.alignment: Qt.AlignTop
           text: row.modelData.state === "pending" ? (queue.held ? "held" : queue.blockedText ? "usage limit" : "waiting")
+                : row.waiting ? "after step " + ((row.modelData.step || 2) - 1)
                 : row.modelData.state
-          color: row.modelData.state === "failed" ? theme.urgent : theme.muted
+          color: row.modelData.state === "failed" || row.modelData.state === "held" ? theme.urgent : theme.muted
         }
 
         Row {
@@ -134,11 +143,12 @@ ColumnLayout {
           IconButton { glyph: "󰁅"; tip: "Move down"; visible: row.index < queue.tasks.length - 1; onActivated: page.act(queue.move(row.modelData.id, row.index + 1)) }
           IconButton {
             objectName: "queued-pause-" + row.index
+            visible: !row.waiting
             glyph: row.modelData.state === "pending" ? "󰏤" : "󰐊"
             tip: row.modelData.state === "pending" ? "Pause" : row.modelData.state === "failed" ? "Retry" : "Resume"
             onActivated: page.act(queue.setPaused(row.modelData.id, row.modelData.state === "pending"))
           }
-          IconButton { objectName: "queued-run-" + row.index; glyph: "󰑮"; tip: "Start now, whatever the limit"; onActivated: page.act(queue.runNow(row.modelData.id)) }
+          IconButton { objectName: "queued-run-" + row.index; visible: !row.waiting; glyph: "󰑮"; tip: "Start now, whatever the limit"; onActivated: page.act(queue.runNow(row.modelData.id)) }
           IconButton { objectName: "queued-cancel-" + row.index; glyph: "󰅖"; tip: "Remove from the queue"; onActivated: page.act(queue.cancel(row.modelData.id)) }
         }
       }

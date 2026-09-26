@@ -149,6 +149,15 @@ def render(home, out):
                         "cwd": str(home / "code" / project), **extra})
     for task in QUEUED:
         client.request({"cmd": "queue-add", "paused": True, "item": {"task": task, "cwd": str(home / "code" / "api")}})
+    # A two-step recipe: the build is paused, its review waits for it.
+    from omaorchestra import recipes
+    after = None
+    for step in recipes.items("build-then-review", "Add pagination to the search results",
+                              str(home / "code" / "website"), base={"worktree": False}):
+        step = {**step, "task": step["task"]}
+        if after:
+            step["after"] = after
+        after = client.request({"cmd": "queue-add", "paused": not after, "item": step})["item"]["id"]
 
     app = QGuiApplication(sys.argv[:1])
     QQuickStyle.setStyle("Basic")

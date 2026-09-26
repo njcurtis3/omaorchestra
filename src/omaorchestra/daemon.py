@@ -6,10 +6,11 @@ import signal
 import socket
 import struct
 import time
+from pathlib import Path
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, config, costs, history, launch, notify, paths, procs, remote, taskqueue, transcript,
+from . import (__version__, adapters, approvals, away, chain, config, costs, history, launch, notify, paths, procs, remote, taskqueue, transcript,
                usage, windows)
 from .log import event
 from .registry import Registry
@@ -416,7 +417,7 @@ class Daemon:
                 worktree=item.get("worktree"), agent_bin=item.get("agent_bin") if agent == own else None,
                 path=item.get("path") or self.user_path, provider=item.get("provider"),
                 mcp_profile=item.get("mcp_profile"), agent=agent,
-                spawn=self.spawn, request=self.handle,
+                spawn=self.spawn, request=self.handle, session_fields=self.chain_fields(item),
             )
         except launch.LaunchError as e:
             self.queue.fail(item, str(e))
@@ -425,9 +426,110 @@ class Daemon:
                 self.pusher.task_failed(item, str(e))
             return None
         self.queue.tasks.remove(item)
+        self.queue.mark_started(item, result["id"])
+        for child in self.queue.children(parent_id=item["id"]):
+            child["parent_session"] = result["id"]  # it now waits on the session
         self.queue.save()
         event(logging.INFO, "task started", task=item["id"], id=result["id"])
         return result["id"]
+
+    # ---------------------------------------------------------------- chains
+
+    @staticmethod
+    def chain_fields(item):
+        """What the started session carries of its chain."""
+        fields = {k: item.get(k) for k in ("chain", "step", "review") if item.get(k)}
+        if item.get("worktree_path"):
+            fields["worktree"] = item["worktree_path"]  # it runs in the step before's worktree
+        return fields
+
+    def link_chain(self, fields):
+        """Fill in a new chained task's place: the task or session it follows
+        (by id or prefix), its chain and step; raises QueueError."""
+        after = (fields.get("after") or "").strip()
+        if not after:
+            return None
+        parent_session = None
+        try:
+            parent = self.queue.find(after)
+            parent.setdefault("chain", parent["id"])
+            parent["chain"] = parent["chain"] or parent["id"]
+            parent["step"] = parent.get("step") or 1
+            fields.update(after=parent["id"], chain=parent["chain"], step=parent["step"] + 1)
+        except taskqueue.QueueError:
+            # A task that already started: follow the session it became.
+            sid = self.queue.started_session(after)
+            matches = ([self.registry.sessions[sid]] if sid in self.registry.sessions else
+                       [s for key, s in self.registry.sessions.items() if key.startswith(after)])
+            if len(matches) != 1:
+                if sid:
+                    raise taskqueue.QueueError(f"task {after} already ran and its session has ended; queue the "
+                                               "next step on its own") from None
+                raise taskqueue.QueueError(f"no queued task or session matching {after}") from None
+            parent_session = matches[0]
+            if not parent_session.get("chain"):
+                # It becomes the first step of a chain, named after its task if it was one.
+                parent_session["chain"] = next((tid for tid, s in self.queue.started.items()
+                                                if s == parent_session["id"]), parent_session["id"])
+                parent_session["step"] = 1
+                self.registry.save()
+            fields.update(after=None, parent_session=parent_session["id"], chain=parent_session["chain"],
+                          step=(parent_session.get("step") or 1) + 1)
+        limit = self.settings["tasks"]["max_chain_steps"]
+        if fields["step"] > limit:
+            raise taskqueue.QueueError(f"that would be step {fields['step']} of a chain; the limit is {limit} "
+                                       "(tasks.max_chain_steps)")
+        return parent_session
+
+    def prepare_step(self, child, parent):
+        """Make a chained task ready to run after `parent` (a session): the
+        brief, the worktree, or the diff to review. Raises ChainError."""
+        base = child.setdefault("base_task", child["task"])
+        if child.get("same_worktree") and parent.get("cwd") and Path(parent["cwd"]).is_dir():
+            child.update(cwd=parent["cwd"], worktree=False, worktree_path=parent.get("worktree"))
+        if child.get("review"):
+            diff, truncated = chain.diff_for(parent)
+            child["task"] = chain.review_task(base, diff, truncated)
+        elif child.get("brief", True) is not False:
+            child["task"] = base + "\n\n" + chain.parent_brief(parent)
+
+    def step_ended(self, session, finished, outcome=None):
+        """A session some chained tasks wait on has finished, or not: release
+        them, or hold them with the reason."""
+        if finished and session.get("review"):
+            self.save_review(session)
+        waiting = self.queue.children(session_id=session["id"])
+        for child in waiting:
+            if not finished:
+                child.update(state="held", error=f"the step before it {outcome}")
+                event(logging.INFO, "chain held", task=child["id"], reason=child["error"])
+                continue
+            try:
+                self.prepare_step(child, session)
+            except chain.ChainError as e:
+                child.update(state="held", error=str(e))
+                event(logging.INFO, "chain held", task=child["id"], reason=str(e))
+                continue
+            child.update(state="pending", error=None)
+            event(logging.INFO, "chain step released", task=child["id"], after=session["id"])
+        if waiting:
+            self.queue.save()
+            self.publish_queue()
+            self.dispatch()
+
+    def save_review(self, session):
+        def write():
+            try:
+                review = chain.record_review(session)
+            except OSError as e:
+                event(logging.WARNING, "could not save a review", id=session["id"], error=str(e))
+                return
+            if review:
+                event(logging.INFO, "review saved", id=session["id"], verdict=review["verdict"], file=review["file"])
+        try:
+            asyncio.get_running_loop().create_task(asyncio.to_thread(write))
+        except RuntimeError:
+            write()
 
     def dispatch(self):
         """Start pending tasks while there are free slots."""
@@ -462,11 +564,19 @@ class Daemon:
         if cmd == "queue-list":
             return {"ok": True, "queue": self.queue_snapshot()}
         if cmd == "queue-add":
-            item = q.add(request.get("item") or {}, paused=bool(request.get("paused")))
-            event(logging.INFO, "task queued", task=item["id"], cwd=item["cwd"])
+            fields = dict(request.get("item") or {})
+            parent_session = self.link_chain(fields)
+            item = q.add(fields, paused=bool(request.get("paused")))
+            event(logging.INFO, "task queued", task=item["id"], cwd=item["cwd"],
+                  after=item.get("after") or item.get("parent_session"))
+            if parent_session and parent_session.get("status") == "idle":
+                self.step_ended(parent_session, finished=True)  # what it follows is already done
         elif cmd == "queue-cancel":
             item = q.remove(request["id"])
             event(logging.INFO, "task cancelled", task=item["id"])
+            for child in q.children(parent_id=item["id"]):
+                child.update(state="held", error="the task before it was cancelled")
+            q.save()
         elif cmd == "queue-move":
             item = q.move(request["id"], int(request["position"]))
         elif cmd in ("queue-pause", "queue-resume"):
@@ -533,6 +643,10 @@ class Daemon:
             self.approvals.settle_session(previous["id"], "answered at the terminal" if session else "session ended")
         if session is None and previous and reason != "adopted":
             self.record_history(previous, reason)
+            outcome = history.outcome(previous, reason)
+            self.step_ended(previous, outcome == "finished", outcome)
+        elif previous and session and previous.get("status") == "working" and session.get("status") == "idle":
+            self.step_ended(session, finished=True)  # idle after working: this step is done
         if self.notifier:
             self.notifier.changed(previous, session)
         if self.pusher:
@@ -623,7 +737,8 @@ class Daemon:
         changed (a new status) or are still unknown, so the frequent
         same-status updates cost nothing."""
         # An agent adapter may report these itself; that wins over the transcript.
-        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree", "provider")
+        given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree", "provider",
+                                         "resumed_from", "chain", "step", "review")
                  if request.get(k)}
         path = request.get("transcript_path") or (before or {}).get("transcript_path")
         if not path or (before and before.get("status") == request.get("status") and before.get("model")):

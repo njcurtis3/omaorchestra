@@ -75,7 +75,7 @@ OPTIONS = {("agents", "enabled"): KNOWN_AGENTS, ("remote", "events"): REMOTE_EVE
 
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
            ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
-           ("tasks", "daily_budget"): (0, 100000), ("remote", "away_after"): (1, 240),
+           ("tasks", "daily_budget"): (0, 100000), ("tasks", "max_chain_steps"): (1, 20), ("remote", "away_after"): (1, 240),
            ("remote", "answer_wait"): (30, 3600), ("history", "keep_days"): (0, 3650)}
 
 # section -> key -> (default, validator)
@@ -99,6 +99,7 @@ SCHEMA = {
         "fallback_agent": ("", lambda v: None if v in ("", *KNOWN_AGENTS) else
                            f"must be empty or one of {', '.join(KNOWN_AGENTS)}"),
         "daily_budget": (0, _int_between(*_RANGES[("tasks", "daily_budget")])),
+        "max_chain_steps": (5, _int_between(*_RANGES[("tasks", "max_chain_steps")])),
     },
     "remote": {
         "push": (False, _bool),
@@ -158,6 +159,8 @@ METADATA = {
             "daily_budget": ("Daily provider budget (US$)",
                              "Start no queued task that runs through an API provider once today's estimated "
                              "provider spend reaches this; 0 turns it off."),
+            "max_chain_steps": ("Steps per chain", "The most tasks one chain (`queue add --after`, a recipe) "
+                                                   "may have; a longer one is refused."),
             "pause_at_usage": ("Hold the queue at usage (%)",
                                "Start no queued task while any of the agent's subscription limits is at or "
                                "above this (from Omarchy's usage records); 0 turns it off."),

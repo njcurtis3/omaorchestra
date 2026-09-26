@@ -15,15 +15,36 @@ ColumnLayout {
   readonly property bool folderOk: sessions.folderExists(folder.text)
   readonly property bool inRepo: folderOk && sessions.inGitRepo(folder.text)
   readonly property bool ready: prompt.text.trim() !== "" && folderOk
+  // A chain: a recipe, or a follow-up task ("Then…"). It is always queued.
+  readonly property string recipe: recipeBox.currentValue || ""
+  readonly property bool chained: recipe !== "" || thenText.text.trim() !== ""
 
   function reset() {
     prompt.text = ""
+    thenText.text = ""
+    thenOpen = false
     rememberBox.checked = false
     error = ""
     prompt.forceActiveFocus()
   }
+  property bool thenOpen: false
+  function startChain() {
+    let result
+    if (recipe) {
+      result = queue.runRecipe(recipe, prompt.text, folder.text, modelBox.value, page.inRepo && worktreeSwitch.checked,
+                               page.routing ? providerBox.currentValue || "" : "")
+    } else {
+      result = queue.addChain(prompt.text, thenText.text, folder.text, modelBox.value, permissionBox.currentValue,
+                              page.inRepo && worktreeSwitch.checked, page.routing ? providerBox.currentValue || "" : "",
+                              page.mcpProfiles ? mcpBox.currentValue || "" : "", agentBox.currentValue || "claude")
+    }
+    if (result.error) { error = result.error; return }
+    reset()
+    queued()
+  }
   function addToQueue() {
     if (!ready) return
+    if (chained) { startChain(); return }
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
                              page.inRepo && worktreeSwitch.checked, false, page.routing ? providerBox.currentValue || "" : "",
@@ -34,6 +55,7 @@ ColumnLayout {
   }
   function launch() {
     if (!ready) return
+    if (chained) { startChain(); return }
     if (rememberBox.checked && !providerBox.currentValue) sessions.rememberModel(folder.text, modelBox.value)
     const result = sessions.launch(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
                                    page.inRepo && worktreeSwitch.checked, page.routing ? providerBox.currentValue || "" : "",
@@ -105,6 +127,41 @@ ColumnLayout {
             event.accepted = true
           }
         }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------- Then…
+  Button {
+    objectName: "task-then-open"
+    visible: !page.thenOpen && !page.recipe
+    text: "Then…"
+    flat: true
+    onClicked: { page.thenOpen = true; thenText.forceActiveFocus() }
+    contentItem: Label { text: parent.text; color: theme.accent }
+    background: null
+    ToolTip.visible: hovered
+    ToolTip.delay: 500
+    ToolTip.text: "Add a follow-up task that starts in the same worktree once this one finishes"
+  }
+  FieldLabel { visible: page.thenOpen && !page.recipe; text: "Then, once that finishes, in the same worktree" }
+  Field {
+    visible: page.thenOpen && !page.recipe
+    Layout.fillWidth: true
+    Layout.preferredHeight: 80
+    border.color: thenText.activeFocus ? theme.accent : theme.selection
+    ScrollView {
+      anchors.fill: parent
+      anchors.margins: 2
+      TextArea {
+        id: thenText
+        objectName: "task-then"
+        wrapMode: TextEdit.Wrap
+        color: theme.foreground
+        selectionColor: theme.selection
+        placeholderText: "e.g. Write tests for it and commit them. (It gets a brief of what the first task did.)"
+        placeholderTextColor: theme.muted
+        background: null
       }
     }
   }
@@ -183,6 +240,20 @@ ColumnLayout {
       enabled: page.folderOk && !providerBox.currentValue && (agentBox.currentValue || "claude") === "claude"
       text: "Remember for this folder"
       contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6 }
+    }
+
+    ColumnLayout {
+      FieldLabel { text: "Recipe" }
+      ThemedComboBox {
+        id: recipeBox
+        objectName: "task-recipe"
+        model: queue.recipeChoices()
+        textRole: "label"
+        valueRole: "value"
+        ToolTip.visible: hovered && currentIndex > 0
+        ToolTip.delay: 500
+        ToolTip.text: currentIndex >= 0 && model.length ? model[currentIndex].description : ""
+      }
     }
 
     ColumnLayout {
@@ -281,10 +352,13 @@ ColumnLayout {
       wrapMode: Text.Wrap
       color: theme.muted
       font.pixelSize: 12
-      text: "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
+      text: page.chained
+        ? "A chain is queued: each step starts once the one before finishes, and one that stops or fails holds the rest. A step that waits for you pauses the chain."
+        : "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
     }
     Button {
       objectName: "task-queue"
+      visible: !page.chained
       text: "Add to queue"
       flat: true
       enabled: page.ready
@@ -294,11 +368,11 @@ ColumnLayout {
     }
     Button {
       objectName: "task-launch"
-      text: "Launch"
+      text: page.chained ? "Start chain" : "Launch"
       enabled: page.ready
       onClicked: page.launch()
       contentItem: Label { text: parent.text; color: parent.enabled ? theme.background : theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; implicitWidth: 100; color: parent.enabled ? theme.accent : "transparent"; border.color: theme.selection }
+      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.enabled ? theme.accent : "transparent"; border.color: theme.selection }
     }
   }
 

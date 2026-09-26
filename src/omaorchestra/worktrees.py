@@ -91,6 +91,18 @@ def find(key):
     return matches[0]
 
 
+def set_review(path, review):
+    """Record a review of the worktree at `path` (chain.py): verdict, when,
+    who, and the findings file."""
+    items = records()
+    for r in items:
+        if r.get("path") == path:
+            r["review"] = review
+            _save(items)
+            return r
+    raise WorktreeError(f"no worktree at {path}")
+
+
 # ---------------------------------------------------------------- lifecycle
 
 def create(cwd, task, session_id):

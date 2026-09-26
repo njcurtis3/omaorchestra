@@ -28,6 +28,16 @@ def brief(session):
     who = agent.label if agent else (session.get("agent") or "another agent")
     cwd = session.get("cwd") or ""
     lines = [f"You are taking over work that {who} was doing in {cwd}. Continue it; do not start over.", ""]
+    lines += context(session)
+    lines.append("Check the current state of the files before changing anything, then carry on from where it stopped.")
+    return "\n".join(lines)
+
+
+def context(session):
+    """Where a session's work stands, as brief lines: its task, git state and
+    latest activity (also used for the next step of a chain)."""
+    cwd = session.get("cwd") or ""
+    lines = []
     task = session.get("task") or session.get("title")
     if task:
         lines += ["The task was:", task.strip(), ""]
@@ -44,8 +54,7 @@ def brief(session):
         lines.append("Its latest activity, oldest first:")
         lines += [f"- {item['kind']}: {item['text']}" for item in recent]
         lines.append("")
-    lines.append("Check the current state of the files before changing anything, then carry on from where it stopped.")
-    return "\n".join(lines)
+    return lines
 
 
 def workdir(session):

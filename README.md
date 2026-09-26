@@ -79,7 +79,7 @@ open port.
 <table>
   <tr>
     <td width="50%"><b>Sessions at a glance</b><br>The bar counts working agents and turns urgent when one waits for you; <b>Focus</b> jumps to its terminal. Ended sessions stay in the <b>History</b>, searchable and resumable.</td>
-    <td width="50%"><b>Start and queue tasks</b><br><code>omaorchestra run</code> or <b>New task</b> opens an agent in a new terminal; the queue starts tasks as slots free up.</td>
+    <td width="50%"><b>Start, queue and chain tasks</b><br><code>omaorchestra run</code> or <b>New task</b> opens an agent in a new terminal; the queue starts tasks as slots free up, one after another if you chain them or run a recipe (build, then review).</td>
   </tr>
   <tr>
     <td><b>Isolated worktrees</b><br>Each task in a git repository gets its own branch and worktree to review, merge or discard.</td>

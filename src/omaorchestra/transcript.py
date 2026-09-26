@@ -117,3 +117,17 @@ def model_name(model):
     if not words:
         return model
     return " ".join(w.capitalize() for w in words) + (f" {version}" if version else "")
+
+
+def last_reply(path, tail_bytes=512 * 1024):
+    """The agent's last reply in full (its text blocks, joined), or ""."""
+    for entry in reversed(_tail_entries(path, tail_bytes)):
+        message = entry.get("message")
+        if entry.get("isSidechain") or entry.get("type") != "assistant" or not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            text = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+            if text.strip():
+                return text.strip()
+    return ""

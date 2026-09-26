@@ -54,6 +54,7 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "queue-list"}` | `{"ok": true, "queue": {"held", "busy", "limit", "blocked", "tasks": [...]}}` |
 | `{"cmd": "queue-add", "item", "paused"?}`, `queue-cancel`, `queue-move` (`id`, `position`), `queue-pause`, `queue-resume`, `queue-hold`, `queue-release` | `{"ok": true, "queue": {...}}` |
 | `{"cmd": "queue-run", "id"}` | `{"ok": true, "session_id"}` |
+| `{"cmd": "queue-add", "item": {..., "after"?, "same_worktree"?, "brief"?, "review"?}}` | a chained task (`chain.py`): it waits (state `waiting`) until the task or session it follows finishes, then is released, or `held` with the reason |
 | `{"cmd": "stopping", "session_id"}` | `{"ok": true, "known": bool}`: it is being stopped on purpose (history says "stopped", not "crashed") |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.

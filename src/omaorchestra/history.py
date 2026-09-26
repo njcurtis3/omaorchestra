@@ -120,8 +120,9 @@ def build(session, reason, ended=None, cost_fn=None, git_fn=git, titles=True):
         "reason": reason, "outcome": outcome(session, reason),
         "transcript": session.get("transcript_path"),
     }
-    if session.get("resumed_from"):
-        record["resumed_from"] = session["resumed_from"]
+    for key in ("resumed_from", "chain", "step", "review"):
+        if session.get(key):
+            record[key] = session[key]
     if titles:
         record["title"] = session.get("title")
         task = session.get("task")

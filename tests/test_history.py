@@ -242,6 +242,13 @@ class ResumeTest(unittest.TestCase):
         self.assertEqual(kw["env"][launch.LAUNCH_VARIABLE], "abc-123")
         self.assertEqual((sent[0]["session_id"], sent[0]["resumed_from"], sent[0]["launching"]), ("abc-123", NOW, True))
 
+    def test_the_daemon_keeps_the_link_back(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"OMAORCHESTRA_STATE_DIR": tmp}), \
+                tempfile.TemporaryDirectory() as folder, mock.patch("shutil.which", return_value="/usr/bin/claude"):
+            d = daemon.Daemon(Registry(Path(tmp) / "sessions.json"))
+            launch.resume({**self.RECORD, "cwd": folder}, spawn=lambda *a, **k: None, request=d.handle)
+            self.assertEqual(d.registry.sessions["abc-123"]["resumed_from"], NOW)
+
     def test_a_gone_folder(self):
         with self.assertRaises(launch.LaunchError):
             launch.resume({**self.RECORD, "cwd": "/no/such/folder"}, spawn=lambda *a, **k: None,

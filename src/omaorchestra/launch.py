@@ -81,7 +81,7 @@ def resume(record, spawn=subprocess.Popen, request=client.request, path=None):
 
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None,
-        mcp_profile=None, agent="claude"):
+        mcp_profile=None, agent="claude", session_fields=None):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
@@ -144,7 +144,7 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         request({"cmd": "update", "session_id": session_id, "agent": adapter.name, "status": "working",
                  "cwd": str(workdir), "title": short(task), "task": task, "launching": True,
                  "model": model or None, "provider": provider or None,
-                 "worktree": record["path"] if record else None})
+                 "worktree": record["path"] if record else None, **(session_fields or {})})
     except client.DaemonUnavailable:
         tracked = False
     command = terminal_command(workdir, adapter.command(task, session_id, workdir, model, permission_mode, extra,

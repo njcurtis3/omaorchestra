@@ -320,6 +320,72 @@ it, because the daemon runs under systemd, whose `PATH` usually lacks
 version-manager folders (mise, asdf). Nothing else from that environment is
 kept.
 
+### Chains and recipes
+
+A queued task can wait for another to finish, and then pick up where it
+left off:
+
+```bash
+omaorchestra queue add "fix the flaky login test" --in ~/code/app
+omaorchestra queue add "write a regression test for it" --in ~/code/app --after 3f9a1c2e --same-worktree
+omaorchestra recipe run build-then-review "add pagination to search" --in ~/code/app
+omaorchestra recipe list
+```
+
+`--after` takes a queued task's id (or a running session's). The new task
+waits (**after step 1** in the Queue page, indented under it) until the
+one before has finished: its agent went idle after working, or its session
+ended cleanly. It then starts with a brief of what that step did (its task,
+where git stands, its latest activity) and, with `--same-worktree`, in that
+step's worktree and branch. If the step before stops, crashes, never starts
+or is cancelled, the rest of the chain is **held**, with the reason, and
+never skips ahead: resume it (to run it anyway) or cancel it from the queue.
+
+In the app, **Then…** under the task adds a follow-up step in the same
+worktree, and **Recipe** runs a recipe instead; either way the button
+becomes **Start chain**.
+
+Recipes are named chains. Two are built in:
+
+| Recipe | Steps |
+|---|---|
+| `plan-then-build` | writes a plan to `PLAN.md` without changing code (with edits allowed without asking, so it can write the file), then builds from it and removes the plan |
+| `build-then-review` | builds and commits, then a second agent reviews the changes |
+
+Your own go in `~/.config/omaorchestra/recipes.toml`; each step has a
+prompt (with `{task}` where your task goes) and, if you like, an agent,
+model and permission mode. A recipe with a built-in's name replaces it.
+
+```toml
+[recipes.fix-and-test]
+description = "Fix it, then have Codex write the tests"
+
+[[recipes.fix-and-test.steps]]
+prompt = "{task}\n\nCommit your work when it is done."
+
+[[recipes.fix-and-test.steps]]
+prompt = "Write tests for the fix just made for: {task}. Commit them."
+agent = "codex"
+```
+
+A review step (`review = true`, or `omaorchestra worktree review <branch>`
+on any worktree) is given the diff in its prompt and asked not to use any
+tools, then to end with `Verdict: ready` or `Verdict: needs work`. When it
+finishes, its answer is saved beside the worktree (`<worktree>.review.md`,
+never inside it) and **Worktrees** and `worktree list` show "reviewed:
+ready" or "reviewed: needs work". Merging stays yours.
+
+Guardrails:
+
+- A step that waits for you (a permission prompt, a question) holds the
+  chain until you answer; the next step starts only after it finishes.
+- A chain has at most `tasks.max_chain_steps` steps (5).
+- Every step is a queued task like any other: the daily budget, usage
+  limits, the parallel limit and a held queue all apply.
+- Nothing is merged or approved for you. Each step runs with its own
+  permission mode, which a recipe can set (as plan-then-build's first step
+  does); set yours in `recipes.toml`.
+
 ## Worktrees
 
 In a git repository, each task started from omaorchestra gets its own git
