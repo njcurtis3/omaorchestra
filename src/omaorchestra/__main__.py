@@ -125,8 +125,13 @@ def cmd_watch(args):
             elif message["event"] == "session":
                 s = message["session"]
                 print(f"{time.strftime('%H:%M:%S')}  {s['id'][:8]}  {s['status']:<12} {s.get('cwd', '')}", flush=True)
-            else:
+            elif message["event"] == "removed":
                 print(f"{time.strftime('%H:%M:%S')}  {message['id'][:8]}  ended ({message.get('reason')})", flush=True)
+            elif message["event"] == "fleet":
+                print(f"{time.strftime('%H:%M:%S')}  fleet {message['run']}: {message['status']}"
+                      + (f" ({message['reason']})" if message.get("reason") else ""), flush=True)
+            else:  # away mode, remote approvals: not shown here (--json has them)
+                continue
     except KeyboardInterrupt:
         pass
     return 0

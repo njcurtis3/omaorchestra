@@ -7,8 +7,9 @@ STATUSES = ("idle", "working", "needs-input")
 
 
 # What a session carries of how it was started (resumed, a chain's step, a
-# review, a role); the daemon keeps them and the history record copies them.
-CARRIED = ("resumed_from", "chain", "step", "review", "role")
+# review, a role, a fleet run's node); the daemon keeps them and the history
+# record copies them.
+CARRIED = ("resumed_from", "chain", "step", "review", "role", "fleet", "node")
 
 
 class Registry:

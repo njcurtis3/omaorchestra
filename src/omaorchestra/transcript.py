@@ -120,8 +120,18 @@ def model_name(model):
 
 
 def last_reply(path, tail_bytes=512 * 1024):
-    """The agent's last reply in full (its text blocks, joined), or ""."""
+    """The agent's last reply in full (its text blocks, joined), or "".
+    Reads Claude Code's transcript and Codex's rollout file."""
     for entry in reversed(_tail_entries(path, tail_bytes)):
+        payload = entry.get("payload")
+        if entry.get("type") == "response_item" and isinstance(payload, dict):
+            if payload.get("type") == "message" and payload.get("role") == "assistant" \
+                    and isinstance(payload.get("content"), list):
+                text = "\n".join(b.get("text", "") for b in payload["content"]
+                                 if isinstance(b, dict) and b.get("type") == "output_text")
+                if text.strip():
+                    return text.strip()
+            continue
         message = entry.get("message")
         if entry.get("isSidechain") or entry.get("type") != "assistant" or not isinstance(message, dict):
             continue

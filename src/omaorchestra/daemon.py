@@ -10,8 +10,8 @@ from pathlib import Path
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, chain, config, costs, history, launch, notify, paths, procs, remote, taskqueue, transcript,
-               usage, windows)
+from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, history, launch, notify, paths, procs, remote,
+               taskqueue, transcript, usage, windows)
 from .log import event
 from .registry import CARRIED, Registry
 
@@ -531,6 +531,79 @@ class Daemon:
         except RuntimeError:
             write()
 
+    # ---------------------------------------------------------------- fleets
+
+    def fleet_activity(self, previous, session, reason=None):
+        """A fleet node's session changed: one line in its run's activity."""
+        current = session or previous
+        if not current or not current.get("fleet") or not current.get("node"):
+            return
+        if session is None:
+            entry = {"event": "ended", "reason": reason}
+        elif previous is None or previous.get("status") != session.get("status"):
+            entry = {"event": session.get("status")}
+        else:
+            return
+        try:
+            fleet.activity(current["fleet"], {**entry, "node": current["node"], "session": current["id"]})
+        except (fleet.RunError, OSError) as e:
+            event(logging.WARNING, "fleet activity not recorded", run=current["fleet"], error=str(e))
+
+    def fleet_node_ended(self, session, finished, outcome=None):
+        """A fleet node's session finished its work (its reply is read, off
+        the event loop, then checked and stored) or ended without finishing
+        (the node fails and the run holds)."""
+        run_id, nid = session.get("fleet"), session.get("node")
+        if not run_id or not nid:
+            return
+        try:
+            state = fleet.load(run_id)
+            n = fleet.node(state, nid)
+        except fleet.RunError as e:
+            event(logging.WARNING, "fleet node not found", run=run_id, node=nid, error=str(e))
+            return
+        if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
+            return  # another attempt's session, or a node already settled
+        if not finished:
+            fleet.node_failed(state, nid, outcome or "ended")
+            self.fleet_saved(state, f"{nid} failed: its session {outcome}")
+            return
+        if n["status"] == "held" and not (n.get("error") or "").startswith("its reply"):
+            return
+
+        def read():
+            return fleet.read_reply(session), fleet.git_facts(session)
+
+        def record(text, git):
+            try:
+                state = fleet.load(run_id)
+                n = fleet.node(state, nid)
+            except fleet.RunError:
+                return
+            if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
+                return
+            n = fleet.record_reply(state, nid, text, git=git)
+            self.fleet_saved(state, f"{nid} " + ("finished" if n["status"] == "done" else f"held: {n['error']}"))
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            record(*read())
+            return
+
+        async def later():
+            record(*await asyncio.to_thread(read))
+        loop.create_task(later())
+
+    def fleet_saved(self, state, what):
+        try:
+            fleet.save(state)
+        except OSError as e:
+            event(logging.WARNING, "fleet run not saved", run=state["id"], error=str(e))
+            return
+        event(logging.INFO, "fleet node", run=state["id"], what=what)
+        self.publish({"event": "fleet", "run": state["id"], "status": state["status"], "reason": state.get("reason")})
+
     def dispatch(self):
         """Start pending tasks while there are free slots."""
         if self._dispatching or self.queue.held:
@@ -641,12 +714,15 @@ class Daemon:
         # session gone: its remote requests are over.
         if previous and (session or {}).get("status") != "needs-input":
             self.approvals.settle_session(previous["id"], "answered at the terminal" if session else "session ended")
+        self.fleet_activity(previous, session, reason)
         if session is None and previous and reason != "adopted":
             self.record_history(previous, reason)
             outcome = history.outcome(previous, reason)
             self.step_ended(previous, outcome == "finished", outcome)
+            self.fleet_node_ended(previous, outcome == "finished", outcome)
         elif previous and session and previous.get("status") == "working" and session.get("status") == "idle":
             self.step_ended(session, finished=True)  # idle after working: this step is done
+            self.fleet_node_ended(session, finished=True)
         if self.notifier:
             self.notifier.changed(previous, session)
         if self.pusher:

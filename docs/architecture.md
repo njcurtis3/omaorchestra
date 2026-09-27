@@ -69,6 +69,7 @@ either side closes it:
     {"event": "queue", "queue": {...}}                      # the queue, or the busy count, changed
     {"event": "away", "away": {...}}                        # away mode, or whether you are away, changed
     {"event": "approvals", "approvals": [...]}              # permission prompts waiting for a remote answer
+    {"event": "fleet", "run": "...", "status": "...", "reason": ...}  # a fleet run's node finished, held or failed
 
 Every update is streamed, including ones that only move `updated`. The
 snapshot and the subscription are taken together, so nothing is missed in
@@ -81,6 +82,15 @@ beside it (the bar widget watches both). When a session ends the daemon
 appends a record to `history.jsonl` (`history.py`), off the event loop: what
 it did, its time per status, cost, the commits between its start (the
 folder's HEAD when it first reported) and its end, and its outcome.
+
+A fleet run (`fleet.py`) keeps its state in
+`$XDG_STATE_HOME/omaorchestra/fleets/<run-id>/state.json`, with one line
+per event in `activity.jsonl` beside it. A session started as one of its
+nodes carries `fleet` and `node`; when it goes idle after working, the
+daemon reads its final reply (Claude's or Codex's transcript, opencode's
+`export`), checks the JSON block it ends with against the node's role
+(`fleet_reply.py`), and writes it under that node, or holds the run with the
+reason. Nodes never write the state themselves.
 
 A second daemon refuses to start while one is answering on the socket; a stale
 socket file is replaced.
