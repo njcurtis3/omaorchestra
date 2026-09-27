@@ -7,9 +7,11 @@ the queue and away mode come live from the daemon's subscription, as in the
 app.
 
 Only what makes sense from afar is here: answer a permission prompt (in
-away mode, approvals.py), dismiss, stop (after a yes), hand off, and the
-queue (add, pause, resume, cancel, hold, release). Focusing a
-window would happen on a desk nobody is at.
+away mode, approvals.py), dismiss, stop (after a yes), hand off, the
+queue (add, pause, resume, cancel, hold, release), and fleet runs: read a
+plan and answer its gate (approve, send back with a note, drop a slice,
+choose the shape, cancel). Focusing a window would happen on a desk
+nobody is at.
 
 The screen is drawn from plain data (`Top.render` returns text, styles and
 tap targets), so it is tested without a terminal; `run` is the curses part.
@@ -22,7 +24,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import approvals, client, config, control, launch, recent
+from . import approvals, client, config, control, fleet, launch, recent
 from .app import present
 
 AWAY_NEXT = {"auto": "on", "on": "off", "off": "auto"}
@@ -30,6 +32,11 @@ STATUS_WORD = {"needs-input": "waiting", "working": "working", "idle": "idle"}
 STATUS_STYLE = {"needs-input": "urgent", "working": "work", "idle": "dim"}
 TASK_WORD = {"pending": "waiting its turn", "paused": "paused", "failed": "failed"}
 TASK_STYLE = {"pending": "", "paused": "dim", "failed": "urgent"}
+RUN_WORD = {"running": "running", "at-gate": "waiting for you", "held": "held", "done": "done",
+            "cancelled": "cancelled"}
+RUN_STYLE = {"running": "work", "at-gate": "urgent", "held": "urgent", "done": "dim", "cancelled": "dim"}
+RUN_ORDER = {"at-gate": 0, "held": 0, "running": 1, "done": 2, "cancelled": 2}
+TABS = ("sessions", "queue", "fleets")
 MIN_WIDTH, MIN_HEIGHT = 30, 10
 NOTE_SECONDS = 6
 ROW_HEIGHT = 2  # every list row: a headline and a quieter second line (a bigger tap target)
@@ -100,12 +107,14 @@ class Top:
         self.queue = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
         self.away = None
         self.approvals = []  # permission prompts waiting for a remote answer
+        self.fleets = {}  # run id -> its state
         self.connected = False
         self.lost = False  # the daemon failed to answer (until then: still connecting)
         self.tab = "sessions"
-        self.index = {"sessions": 0, "queue": 0}
-        self.offset = {"sessions": 0, "queue": 0}
+        self.index = {tab: 0 for tab in TABS}
+        self.offset = {tab: 0 for tab in TABS}
         self.detail = False
+        self.scroll = 0  # lines scrolled in a fleet run's details
         self.ask = None  # a question on screen: a confirm, a choice, or the new-task form
         self.note = ("", "", 0)  # text, style, shown until
         self.hits = []
@@ -120,6 +129,7 @@ class Top:
             self.queue = message.get("queue") or self.queue
             self.away = message.get("away")
             self.approvals = message.get("approvals") or []
+            self.fleets = {s["id"]: s for s in message.get("fleets") or []}
             self.connected = True
             return
         kind = message.get("event")
@@ -133,11 +143,15 @@ class Top:
             self.away = message["away"]
         elif kind == "approvals":
             self.approvals = message["approvals"]
+        elif kind == "fleet" and message.get("state"):
+            self.fleets[message["run"]] = message["state"]
         elif kind == "lost":
             self.connected, self.lost = False, True
 
     def rows(self, tab=None):
         tab = tab or self.tab
+        if tab == "fleets":
+            return sorted(self.fleets.values(), key=lambda s: (RUN_ORDER.get(s["status"], 3), -s.get("updated", 0)))
         return present.ordered(self.sessions.values()) if tab == "sessions" else list(self.queue.get("tasks") or [])
 
     def selected(self):
@@ -186,19 +200,22 @@ class Top:
                 self.switch(value)
             elif what == "row":
                 if self.index[self.tab] == value:
-                    self.detail = not self.detail
+                    self.detail, self.scroll = not self.detail, 0
                 self.index[self.tab] = value
             return
         rows = self.rows()
         if key == "q":
             self.running = False
         elif key in ("tab", "left", "right"):
-            self.switch("queue" if self.tab == "sessions" else "sessions")
+            step = -1 if key == "left" else 1
+            self.switch(TABS[(TABS.index(self.tab) + step) % len(TABS)])
+        elif key in ("up", "k", "down", "j", "pgup", "pgdn") and self.detail and self.tab == "fleets":
+            self.scroll = max(0, self.scroll + {"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -5, "pgdn": 5}[key])
         elif key in ("up", "k", "down", "j", "pgup", "pgdn") and rows:
             step = {"up": -1, "k": -1, "down": 1, "j": 1, "pgup": -5, "pgdn": 5}[key]
             self.index[self.tab] = max(0, min(len(rows) - 1, self.index[self.tab] + step))
         elif key == "enter" and rows:
-            self.detail = not self.detail
+            self.detail, self.scroll = not self.detail, 0
         elif key == "esc":
             self.detail = False
         elif key == "a" and self.away:
@@ -207,11 +224,13 @@ class Top:
             self.new_task()
         elif self.tab == "sessions":
             self.session_key(key)
+        elif self.tab == "fleets":
+            self.fleet_key(key)
         else:
             self.queue_key(key)
 
     def switch(self, tab):
-        self.tab, self.detail = tab, False
+        self.tab, self.detail, self.scroll = tab, False, 0
 
     def session_key(self, key):
         session = self.selected()
@@ -256,10 +275,55 @@ class Top:
         elif key == "x":
             self.ask = {"kind": "confirm", "question": f"Cancel \"{title}\"?", "then": lambda: self.cancel(task)}
 
+    def fleet_key(self, key):
+        run = self.selected()
+        if run is None or key not in ("y", "b", "d", "l", "x"):
+            return
+        gate = run.get("gate") if run["status"] == "at-gate" else None
+        title = clip(one_line(run["goal"]), 30)
+        if key == "x" and run["status"] not in ("done", "cancelled"):
+            self.ask = {"kind": "confirm", "question": f"Cancel the run \"{title}\"?",
+                        "then": lambda: self.fleet_send({"cmd": "fleet-cancel", "run": run["id"]}, "cancelled " + title)}
+        elif key == "y" and gate:
+            self.detail = True  # the plan on screen before saying yes
+            question = "Approve this plan? Builders start" if gate == "plan" else "Approve merging the slices?"
+            self.ask = {"kind": "confirm", "question": question,
+                        "then": lambda: self.fleet_send({"cmd": "fleet-approve", "run": run["id"], "gate": gate},
+                                                        f"approved the {gate}")}
+        elif key == "b" and gate == "plan":
+            self.ask = {"kind": "note", "question": "What should change", "value": "",
+                        "then": lambda note: self.fleet_send({"cmd": "fleet-send-back", "run": run["id"], "note": note},
+                                                             "sent the plan back")}
+        elif key == "d" and gate == "plan":
+            slices = [s["id"] for s in (fleet.live_plan(run) or {}).get("slices") or []]
+            self.ask = {"kind": "choice", "question": "Drop slice", "options": slices,
+                        "then": lambda sid: self.fleet_send({"cmd": "fleet-drop", "run": run["id"], "slice": sid},
+                                                            f"dropped {sid}")}
+        elif key == "l" and gate == "plan":
+            self.ask = {"kind": "choice", "question": "Run it as", "options": ["single-loop", "diamond"],
+                        "then": lambda shape: self.fleet_send({"cmd": "fleet-shape", "run": run["id"], "shape": shape},
+                                                              f"shape: {shape}")}
+
+    def fleet_send(self, payload, done):
+        response = self.send(payload, timeout=30)
+        if response:
+            self.fleets[response["run"]["id"]] = response["run"]
+            note = response["run"].get("shape_note") if payload["cmd"] == "fleet-shape" else None
+            self.tell(note or done)
+
     def answer(self, key):
         ask = self.ask
         if key == "esc" or (ask["kind"] == "confirm" and key == "n"):
             self.ask = None
+            return
+        if ask["kind"] == "note":
+            if key == "enter" and ask["value"].strip():
+                self.ask = None
+                ask["then"](ask["value"].strip())
+            elif key == "backspace":
+                ask["value"] = ask["value"][:-1]
+            elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+                ask["value"] += key
             return
         if ask["kind"] == "confirm":
             if key in ("y", "enter"):
@@ -381,6 +445,8 @@ class Top:
             self.details(screen, body)
         elif self.tab == "sessions":
             self.session_list(screen, body)
+        elif self.tab == "fleets":
+            self.fleet_list(screen, body)
         else:
             self.queue_list(screen, body)
         while len(screen.lines) < height - len(footer.lines):
@@ -393,15 +459,25 @@ class Top:
 
     def header(self, screen):
         waiting = sum(1 for s in self.sessions.values() if s.get("status") == "needs-input")
-        count = f" {len(self.sessions)}" + (f" ({waiting}!)" if waiting else "")
-        tabs = [(" Sessions" + count + " ", "tab-on" if self.tab == "sessions" else "tab", ("tab", "sessions")),
-                (" ", ""),
-                (f" Queue {len(self.queue.get('tasks') or [])} ", "tab-on" if self.tab == "queue" else "tab",
-                 ("tab", "queue"))]
+        needing = sum(1 for s in self.fleets.values() if s["status"] in ("at-gate", "held"))
+        queued = len(self.queue.get("tasks") or [])
         right = None
         if self.away_active():
             right = (" away " if self.away["away"] else " here ", "urgent" if self.away["away"] else "dim", "a")
-        screen.line(*tabs, right=right)
+        fleets = f" {needing}!" if needing else f" {len(self.fleets)}"
+        # The full labels, then a short Fleets tab, then short labels all round, whichever fits a phone.
+        for labels in ((" Sessions" + f" {len(self.sessions)}" + (f" ({waiting}!)" if waiting else "") + " ",
+                        f" Queue {queued} ", " Fleets" + fleets + " "),
+                       (" Sessions" + f" {len(self.sessions)}" + (f" ({waiting}!)" if waiting else "") + " ",
+                        f" Queue {queued} ", " F" + fleets + " "),
+                       (f" S {len(self.sessions)}" + (f" {waiting}!" if waiting else "") + " ", f" Q {queued} ",
+                        " F" + fleets + " ")):
+            if sum(len(t) for t in labels) + 2 + len(right[0] if right else "") + 1 <= screen.width:
+                break
+        tabs = []
+        for tab, label in zip(TABS, labels):
+            tabs += [(label, "tab-on" if self.tab == tab else "tab", ("tab", tab)), (" ", "")]
+        screen.line(*tabs[:-1], right=right)
         screen.line(("─" * screen.width, "dim"))
 
     def visible(self, count, room):
@@ -475,9 +551,86 @@ class Top:
                         (word, TASK_STYLE.get(t["state"], "dim") or "dim"))
             screen.row_hit(("row", i))
 
+    def fleet_list(self, screen, room):
+        rows = self.rows()
+        if not rows:
+            screen.line(("No fleet runs.", "dim"))
+            return
+        self.selected()
+        first, fit = self.visible(len(rows), room)
+        width = screen.width
+        for i in range(first, min(len(rows), first + fit)):
+            run = rows[i]
+            chosen = i == self.index["fleets"]
+            word = RUN_WORD.get(run["status"], run["status"])
+            if run["status"] == "at-gate":
+                word = f"{run.get('gate')} gate"
+            tail = f" {word} "
+            screen.line((("▸ " if chosen else "  ") + clip(one_line(run["goal"]), width - len(tail) - 2),
+                         "chosen" if chosen else "bold"), right=(tail, RUN_STYLE.get(run["status"], "")))
+            screen.row_hit(("row", i))
+            done = sum(1 for n in run["nodes"].values() if n["status"] == "done")
+            second = run.get("reason") if run["status"] == "held" else \
+                f"{present.project(run.get('folder'))} · {run.get('shape') or run.get('fleet')} · {done} steps done"
+            screen.line(("  " + clip(one_line(second or ""), width - 2), "urgent" if run["status"] == "held" else "dim"))
+            screen.row_hit(("row", i))
+
+    def fleet_lines(self, run, width):
+        """A run's details: its plan when at the plan gate, else where each node stands."""
+        lines = []
+
+        def field(label, value, style=""):
+            if value:
+                for n, text in enumerate(textwrap.wrap(one_line(str(value)), width - 2) or [""]):
+                    lines.append(((label + ": " if n == 0 else "  ") + text if label else text, style))
+
+        field("", run["goal"], "bold")
+        state = RUN_WORD.get(run["status"], run["status"])
+        if run["status"] == "at-gate":
+            state = f"waiting at the {run.get('gate')} gate"
+        field("", state, RUN_STYLE.get(run["status"], ""))
+        field("held", run.get("reason") if run["status"] == "held" else None, "urgent")
+        field("in", present.place(run.get("folder")))
+        plan = fleet.live_plan(run)
+        if plan:
+            field("shape", run.get("shape"))
+            field("", run.get("shape_note"), "work")
+            if run.get("gate") == "plan":
+                field("why", plan.get("rationale"), "dim")
+            for s in plan["slices"]:
+                lines.append(("", ""))
+                field(s["id"], s["intent"], "bold")
+                field("files", ", ".join(s["files"]))
+                field("done when", s["done_when"])
+                field("risk", f"{s['risk']}: {s['risk_why']}", "urgent" if s["risk"] == "high" else "dim")
+                for role in ("builder", "reviewer"):
+                    n = fleet.latest(run, role, s["id"])
+                    if n:
+                        verdict = n["result"]["verdict"] if role == "reviewer" and n["result"] else n["status"]
+                        field(role, f"{verdict} (try {n['attempt']})", "dim")
+            if run.get("dropped"):
+                field("dropped", ", ".join(run["dropped"]), "dim")
+            if run.get("gate") == "plan":
+                lines.append(("", ""))
+                field("not doing", "; ".join(plan.get("not_doing") or []) or "(nothing named)")
+                field("approve", plan.get("approve"), "bold")
+                field("", "y approves (builders start), b sends it back with a note, d drops a slice, l picks the "
+                          "shape, x cancels.", "dim")
+        else:
+            for n in run["nodes"].values():
+                field(n["id"], n["status"] + (f": {n['error']}" if n.get("error") else ""), "dim")
+        field("id", run["id"])
+        return lines
+
     def details(self, screen, room):
         item = self.selected()
         width = screen.width
+        if self.tab == "fleets":
+            lines = self.fleet_lines(item, width)
+            self.scroll = max(0, min(self.scroll, len(lines) - room))
+            for text, style in lines[self.scroll:self.scroll + room]:
+                screen.line((text, style))
+            return
         lines = []  # (text, style)
 
         def field(label, value, style=""):
@@ -519,6 +672,8 @@ class Top:
                 return [("y Yes", "y"), ("n No", "n")]
             if ask["kind"] == "choice":
                 return [(f"{i} {o}", ("choose", i - 1)) for i, o in enumerate(ask["options"], 1)] + [("esc", "esc")]
+            if ask["kind"] == "note":
+                return [("⏎ Send", "enter"), ("esc Cancel", "esc")]
             return [("⏎ " + ("Next" if ask["field"] == "task" else "Queue it"), "enter"), ("esc Cancel", "esc")]
         items = []
         if self.selected():
@@ -527,6 +682,15 @@ class Top:
             if self.pending(self.selected()):
                 items += [("y Allow…", "y"), ("x Deny", "x")]
             items += [("d Dismiss", "d"), ("s Stop", "s"), ("h Hand off", "h")]
+        if self.tab == "fleets" and self.selected():
+            run = self.selected()
+            gate = run.get("gate") if run["status"] == "at-gate" else None
+            if gate:
+                items.append(("y Approve…", "y"))
+            if gate == "plan":
+                items += [("b Send back", "b"), ("d Drop slice", "d"), ("l Shape", "l")]
+            if run["status"] not in ("done", "cancelled"):
+                items.append(("x Cancel run", "x"))
         if self.tab == "queue":
             task = self.selected()
             if task:
@@ -548,7 +712,7 @@ class Top:
         if ask and noted:  # e.g. why the form did not go on
             foot.line((text, style))
         if ask:
-            if ask["kind"] == "text":
+            if ask["kind"] in ("text", "note"):
                 label = ask["question"] + ": "
                 room = width - len(label) - 1
                 value = ask["value"] if len(ask["value"]) <= room else "…" + ask["value"][-(room - 1):]

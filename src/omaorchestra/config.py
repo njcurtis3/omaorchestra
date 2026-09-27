@@ -45,7 +45,7 @@ def _agents(value):
         return f"unknown agent {', '.join(unknown)} (known: {', '.join(KNOWN_AGENTS)})"
 
 
-REMOTE_EVENTS = ("needs-you", "finished", "failed", "usage-limit", "queue-blocked")
+REMOTE_EVENTS = ("needs-you", "finished", "failed", "usage-limit", "queue-blocked", "fleet")
 CONTENT_LEVELS = ("minimal", "summary", "full")
 
 
@@ -178,7 +178,8 @@ METADATA = {
                                                      "leave the machine only with full."),
             "events": ("Push when", "needs-you: an agent waits for you; finished: long work ended; failed: a "
                                     "task did not start; usage-limit: a busy agent hit its limit; queue-blocked: "
-                                    "the queue is held back."),
+                                    "the queue is held back; fleet: a fleet run waits at a gate, is held, "
+                                    "or finished."),
             "away_after": ("Away after (minutes)", "In away mode auto (`omaorchestra away`), you count as away "
                                                    "once the screen is locked or after this long without input; "
                                                    "nothing is pushed while you are at the desk."),

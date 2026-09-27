@@ -30,6 +30,7 @@ STYLE = {
     "failed": (4, "x"),
     "usage-limit": (3, "hourglass"),
     "queue-blocked": (3, "pause_button"),
+    "fleet": (4, "clipboard"),
 }
 
 
@@ -81,6 +82,32 @@ def limit_message(block):
 
 def blocked_message(block):
     return "Queue is waiting", (block.get("text") or usage.describe(block)).capitalize()
+
+
+def fleet_message(state, level):
+    """(title, body) for a fleet run at a gate, held, or finished."""
+    name = notify.project({"cwd": state.get("folder")})
+    status, gate = state["status"], state.get("gate")
+    if status == "at-gate" and gate == "plan":
+        title, body = f"{name}: a plan is ready for you", "Approve, send back or cancel it (omaorchestra top)"
+    elif status == "at-gate":
+        title, body = f"{name}: slices ready to merge", "Approve the merge or cancel (omaorchestra top)"
+    elif status == "held":
+        title, body = f"{name}: a fleet run is held", "It needs you (omaorchestra top)"
+    else:
+        title, body = f"{name}: a fleet run finished", "Its work is on its branch"
+    if level in ("summary", "full"):
+        body = f"{state['goal'][:120]}\n{body}"
+    if level == "full":
+        plan = None
+        if status == "at-gate":
+            from .fleet import live_plan
+            plan = live_plan(state)
+        if plan:
+            body += "\n" + f"{state.get('shape')}: " + "; ".join(s["intent"][:80] for s in plan["slices"])
+        elif status == "held" and state.get("reason"):
+            body += "\n" + state["reason"]
+    return title, body
 
 
 def payload(topic, kind, title, body):
@@ -156,6 +183,10 @@ class Pusher:
     def queue_blocked(self, block):
         if self.wants("queue-blocked"):
             self.push("queue-blocked", *blocked_message(block))
+
+    def fleet(self, state):
+        if self.wants("fleet"):
+            self.push("fleet", *fleet_message(state, self.settings["content"]))
 
     def push(self, kind, title, body):
         settings = dict(self.settings)

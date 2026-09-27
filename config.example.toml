@@ -53,8 +53,9 @@ server = "https://ntfy.sh"
 content = "minimal"
 # Which events push: needs-you, finished (after notifications.finished_after),
 # failed (a task did not start), usage-limit (a busy agent hit its limit),
-# queue-blocked (the queue is held back by a limit or the budget)
-events = ["needs-you", "finished", "failed", "usage-limit", "queue-blocked"]
+# queue-blocked (the queue is held back by a limit or the budget), fleet (a
+# fleet run waits at a gate for you, is held, or finished)
+events = ["needs-you", "finished", "failed", "usage-limit", "queue-blocked", "fleet"]
 # Pushes go out only while you are away. With `omaorchestra away auto` (the
 # default) that is once the screen is locked, or after this many minutes
 # without input; `away on` and `away off` set it by hand

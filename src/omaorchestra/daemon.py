@@ -56,6 +56,9 @@ CONFIG_ERROR_EXIT = 2
 ALREADY_RUNNING_EXIT = 3
 
 
+# A person's answers at a fleet run's gates: refused from inside an agent.
+FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape")
+
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
                  settings=None, force_verbose=False, pusher=None):
@@ -69,6 +72,7 @@ class Daemon:
         self.force_verbose = force_verbose  # --verbose on the command line wins over the config
         self.pruner = None
         self.queue = taskqueue.TaskQueue(registry.path.parent / "queue.json")
+        self.fleet_seen = {}  # run id -> (status, gate, reason) last told about
         self.spawn = subprocess.Popen  # how queued agents are started (tests replace it)
         self._dispatching = False
         self.usage_check = usage.blocking  # tests replace it
@@ -597,7 +601,13 @@ class Daemon:
             record(*await asyncio.to_thread(read))
         loop.create_task(later())
 
-    def handle_fleet(self, cmd, request):
+    def handle_fleet(self, cmd, request, peer=None):
+        if cmd in FLEET_GATE_COMMANDS:
+            agent = self.from_agent(peer)
+            if agent:
+                event(logging.WARNING, "fleet answer refused", run=request.get("run"), reason=f"sent from inside {agent}")
+                return {"ok": False, "error": f"refused: this answer came from inside an agent ({agent}). Answer from "
+                                              "your own terminal, or from omaorchestra top."}
         if cmd == "fleet-start":
             template = fleet_graph.get(request.get("fleet") or "auto")
             state = fleet.create(request.get("goal") or "", request.get("folder") or "", template,
@@ -616,6 +626,18 @@ class Daemon:
             if gate == "plan":
                 self.fleet_prepare(state)
             self.fleet_advance(state, f"{gate} approved")
+            return {"ok": True, "run": state}
+        if cmd == "fleet-send-back":
+            nid = fleet_graph.send_back(state, request.get("note"))
+            self.fleet_enqueue(state, nid)
+            self.fleet_advance(state, "plan sent back", queued=[nid])
+            return {"ok": True, "run": state}
+        if cmd in ("fleet-drop", "fleet-shape"):
+            if cmd == "fleet-drop":
+                fleet_graph.drop(state, request.get("slice"))
+            else:
+                fleet_graph.choose_shape(state, request.get("shape"))
+            self.fleet_saved(state, f"{cmd[6:]} at the plan gate")
             return {"ok": True, "run": state}
         if cmd == "fleet-cancel":
             waiting = {n["id"] for n in fleet_graph.cancel(state)}
@@ -653,7 +675,7 @@ class Daemon:
         slice_id = n["slice"]
         record = state["slice_worktrees"].get(slice_id)
         if record is None:
-            depends = fleet_graph.depends_on(fleet.plan(state), slice_id)
+            depends = fleet_graph.depends_on(fleet.live_plan(state), slice_id)
             start = state["slice_worktrees"][depends[0]]["branch"] if depends else own["branch"]
             made = worktrees.create(state["folder"], state["goal"], None, name=f"fleet-{state['id']}-{slice_id}",
                                     start=start, extra={"fleet": state["id"], "slice": slice_id,
@@ -680,9 +702,9 @@ class Daemon:
         n.update(runs_as=role_name, agent=role.agent, queued=item["id"])
         fleet.activity(state["id"], {"event": "queued", "node": nid, "task": item["id"]})
 
-    def fleet_advance(self, state, what):
+    def fleet_advance(self, state, what, queued=()):
         """Move a run on (fleet_graph.advance), queue the nodes it is ready
-        for, save it, and let the queue start them."""
+        for, save it, and let the queue start them (and any `queued` already)."""
         try:
             ready = fleet_graph.advance(state)
         except fleet.RunError as e:
@@ -691,7 +713,7 @@ class Daemon:
         for nid in ready:
             self.fleet_enqueue(state, nid)
         self.fleet_saved(state, what)
-        if ready:
+        if ready or queued:
             self.publish_queue()
             self.dispatch()
 
@@ -723,8 +745,23 @@ class Daemon:
         except OSError as e:
             event(logging.WARNING, "fleet run not saved", run=state["id"], error=str(e))
             return
-        event(logging.INFO, "fleet node", run=state["id"], what=what)
-        self.publish({"event": "fleet", "run": state["id"], "status": state["status"], "reason": state.get("reason")})
+        event(logging.INFO, "fleet run", run=state["id"], what=what)
+        self.publish({"event": "fleet", "run": state["id"], "status": state["status"], "reason": state.get("reason"),
+                      "state": state})
+        seen = (state["status"], state.get("gate"), state.get("reason"))
+        if self.fleet_seen.get(state["id"]) != seen:
+            self.fleet_seen[state["id"]] = seen
+            if state["status"] in ("at-gate", "held", "done"):
+                self.fleet_tell(state)
+
+    def fleet_tell(self, state):
+        """A run reached a gate, held, or finished: a notification here, and a
+        push when you are away."""
+        if self.notifier:
+            title, body = remote.fleet_message(state, "summary")
+            self.notifier.tell(title, body, "critical" if state["status"] == "held" else "normal")
+        if self.pusher:
+            self.pusher.fleet(state)
 
     def dispatch(self):
         """Start pending tasks while there are free slots."""
@@ -899,7 +936,8 @@ class Daemon:
         # change can fall between them.
         self.subscribers.add(queue)
         snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot(),
-                    "away": self.away.state(), "approvals": self.approvals.public()}
+                    "away": self.away.state(), "approvals": self.approvals.public(),
+                    "fleets": fleet.current(fleet.runs())}
         event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
         client_gone = asyncio.ensure_future(reader.read())  # EOF when the client disconnects
         try:
@@ -1095,6 +1133,14 @@ class Daemon:
                         event(logging.DEBUG, "request", cmd="subscribe")
                         await self.stream(reader, writer)
                         return
+                    if isinstance(request, dict) and request.get("cmd") in FLEET_GATE_COMMANDS:
+                        try:
+                            response = self.handle_fleet(request["cmd"], request, self.peer_pid(writer))
+                        except (fleet.RunError, fleet_graph.FleetError) as e:
+                            response = {"ok": False, "error": str(e)}
+                        writer.write(json.dumps(response).encode() + b"\n")
+                        await writer.drain()
+                        continue
                     if isinstance(request, dict) and request.get("cmd") == "approval-answer":
                         response = self.answer_approval(request, self.peer_pid(writer))
                         writer.write(json.dumps(response).encode() + b"\n")

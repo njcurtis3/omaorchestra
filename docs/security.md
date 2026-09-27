@@ -68,6 +68,7 @@ depends on `remote.content`:
 | failed | "website: task failed to start" | the task's title | the error |
 | usage limit | "Claude Code reached its usage limit" / which limit, and how full | | |
 | queue blocked | "Queue is waiting" / the limit, or today's provider spend against your budget | | |
+| fleet | "website: a plan is ready for you" (or: slices ready to merge, a fleet run is held, finished) | the run's goal | the plan's slices, or why it is held |
 
 So even `minimal` names your project folders and, for a blocked queue,
 your daily provider spend. Prompts and code leave the machine only at
@@ -168,8 +169,9 @@ A prompt injection (in a web page, an issue, a file) can make an agent act
 for someone else. omaorchestra cannot contain an agent; its permission mode
 and sandbox do. What omaorchestra adds:
 
-- no way to approve permission prompts in passing (refused from inside an
-  agent), and no way to start work through its MCP server
+- no way to approve permission prompts, or a fleet run's plan or merge, in
+  passing (refused from inside an agent), and no way to start work through
+  its MCP server
 - every remote answer recorded in `approvals.jsonl`, with where it came
   from (`omaorchestra permissions`)
 

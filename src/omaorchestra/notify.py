@@ -144,6 +144,17 @@ class Notifier:
             await proc.wait()
         self._start(run())
 
+    def tell(self, summary, body, urgency="normal"):
+        """A one-off notification, nothing to click."""
+        async def run():
+            try:
+                proc = await self.spawn("notify-send", "--app-name=omaorchestra", f"--urgency={urgency}", summary, body,
+                                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            except FileNotFoundError:
+                return
+            await proc.wait()
+        self._start(run())
+
     async def clear(self, sid):
         shown = self.shown.pop(sid, None)
         if shown is not None:

@@ -128,9 +128,10 @@ from Termius or Blink it is the way to check on agents while you are away.
 [From your phone](remote.md) sets that up safely: over Tailscale, with a key
 that can run `top` and nothing else.
 
-- Two tabs, **Sessions** (waiting ones first, with what they are asking) and
-  **Queue**. Tab or ←/→ switches; ↑/↓ (or j/k) picks; Enter shows everything
-  about the picked one.
+- Three tabs, **Sessions** (waiting ones first, with what they are asking),
+  **Queue**, and **Fleets** (runs waiting for you first; on a narrow screen
+  the tab bar shortens to S, Q, F). Tab or ←/→ switches; ↑/↓ (or j/k)
+  picks; Enter shows everything about the picked one.
 - On a session asking for permission while you are away: **y** allows that
   one request (after showing it in full and a yes), **x** refuses it.
 - On sessions: **d** dismisses, **s** stops the agent (after a yes), **h**
@@ -138,6 +139,13 @@ that can run `top` and nothing else.
 - On the queue: **p** pauses or resumes a task (resume also retries a failed
   one), **x** cancels it (after a yes), **H** holds or releases the whole
   queue.
+- On a fleet run waiting at its plan gate, Enter shows the plan (↑/↓
+  scroll it): the shape, each slice with its files, "done when" and risk,
+  and what is not being done. **y** approves it (after a yes) and the
+  builders start, **b** sends it back to the architect with a note, **d**
+  drops a slice, **l** runs it as a single loop or a diamond (still
+  checked), **x** cancels the run. At the merge gate **y** approves the
+  merge. Answers from inside an agent are refused.
 - **n** queues a new task: type it, then the folder (the picked session's, or
   the last one you used), then pick the agent.
 - **a** switches [away mode](#away-mode); the top right
@@ -183,14 +191,15 @@ stand.
 
 Pushes go out when an agent needs you, when long work finishes (after
 `notifications.finished_after`), when a queued task fails to start, when a
-busy agent reaches its usage limit, and when the queue is held back; pick
-which with `remote.events`. What they say is `remote.content`:
+busy agent reaches its usage limit, when the queue is held back, and when a
+fleet run waits at a gate for you, is held, or finishes; pick which with
+`remote.events`. What they say is `remote.content`:
 
 | Level | A push carries |
 |---|---|
 | `minimal` (default) | the project folder's name and what happened |
-| `summary` | also the task's title |
-| `full` | also the agent's question, which can quote commands and code |
+| `summary` | also the task's title (a fleet run's goal) |
+| `full` | also the agent's question, which can quote commands and code (a fleet plan's slices, or why a run is held) |
 
 Prompts and code leave the machine only at `full`.
 

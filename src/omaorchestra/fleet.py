@@ -217,6 +217,24 @@ def slice_of(state, slice_id):
     return next((s for s in (plan(state) or {}).get("slices") or [] if s["id"] == slice_id), None)
 
 
+def live_plan(state):
+    """The plan the run carries out: the architect's, less the slices you
+    dropped at the gate (the architect's own result is never changed)."""
+    p = plan(state)
+    if p is None:
+        return None
+    dropped = set(state.get("dropped") or [])
+    return {**p, "slices": [s for s in p["slices"] if s["id"] not in dropped],
+            "edges": [e for e in p.get("edges") or [] if e["from"] not in dropped and e["to"] not in dropped]}
+
+
+def current(runs_found, now=None, days=7):
+    """The runs worth showing: every one not over, and those that ended in
+    the last `days`."""
+    now = now or time.time()
+    return [s for s in runs_found if s["status"] not in ("done", "cancelled") or now - s["updated"] < days * 86400]
+
+
 def node_started(state, nid, session_id, agent, now=None):
     n = node(state, nid)
     now = now or time.time()
@@ -316,6 +334,13 @@ def _bullets(items, fmt=str):
     return [f"- {fmt(item)}" for item in items] or ["- (none)"]
 
 
+def _dropped_part(state):
+    dropped = [s for s in (plan(state) or {}).get("slices") or [] if s["id"] in (state.get("dropped") or [])]
+    if not dropped:
+        return []
+    return ["## Dropped from the plan (not to be done)", ""] + [f"- {s['id']}: {s['intent']}" for s in dropped] + [""]
+
+
 def _scout_part(state):
     scout = latest(state, "scout", done=True)
     if not scout:
@@ -383,10 +408,11 @@ def brief(state, nid):
         if s is None:
             raise RunError(f"the plan has no slice {slice_id}")
         lines += _slice_part(s, "## Your slice" if role == "builder" else "## The slice under review")
-        others = [o for o in plan(state)["slices"] if o["id"] != slice_id]
+        others = [o for o in live_plan(state)["slices"] if o["id"] != slice_id]
         if others:
             lines += ["## The other slices (not yours)", ""]
             lines += [f"- {o['id']}: {o['intent']} ({', '.join(o['files'])})" for o in others] + [""]
+        lines += _dropped_part(state)
         lines += _scout_part(state)
         reviews = sorted((r for r in state["nodes"].values() if r["role"] == "reviewer"
                           and r.get("slice") == slice_id and r["status"] == "done"), key=lambda r: r["attempt"])
@@ -403,7 +429,7 @@ def brief(state, nid):
                     lines += _review_part(r)
     elif role == "integrator":
         lines += ["## The slices", ""]
-        for s in (plan(state) or {}).get("slices") or []:
+        for s in (live_plan(state) or {}).get("slices") or []:
             built = latest(state, "builder", s["id"], done=True)
             review = latest(state, "reviewer", s["id"], done=True)
             branch = ((built or {}).get("git") or {}).get("branch")
@@ -412,6 +438,7 @@ def brief(state, nid):
         if state.get("branch"):
             lines += ["", f"Merge the slices that passed into branch {state['branch']}."]
         lines.append("")
+        lines += _dropped_part(state)
     else:
         done = [d for d in state["nodes"].values() if d["status"] == "done" and d["id"] != nid]
         if done:

@@ -160,10 +160,11 @@ def diamond_problem(plan, in_repo):
 
 
 def decide_shape(state):
-    """The shape the run follows once the plan is in: the fleet's, else the
-    architect's, made a single loop when a diamond cannot be carried out."""
-    plan = fleet.plan(state)
-    wanted = state["template"]["shape"]
+    """The shape the run follows once the plan is in: yours (chosen at the
+    gate), else the fleet's, else the architect's; made a single loop when a
+    diamond cannot be carried out."""
+    plan = fleet.live_plan(state)
+    wanted = state.get("shape_choice") or state["template"]["shape"]
     shape = plan["shape"] if wanted == "auto" else wanted
     note = None
     if shape == "diamond":
@@ -239,7 +240,7 @@ def advance(state, now=None):
         decide_shape(state)
         at_gate(state, "plan", now)
         return []
-    plan = fleet.plan(state)
+    plan = fleet.live_plan(state)
     started = []
     for slice_id in order(plan):
         if not all(passed(state, d) for d in depends_on(plan, slice_id)):
@@ -276,10 +277,55 @@ def advance(state, now=None):
     return []
 
 
-def approve(state, gate, note=None, now=None):
-    """You approved the gate the run waits at."""
+def _at(state, gate):
     if state["status"] != "at-gate" or state.get("gate") != gate:
         raise fleet.RunError(f"run {state['id']} is not waiting at the {gate} gate")
+
+
+def send_back(state, note, now=None):
+    """The plan goes back to a new architect, with your note (and the plan
+    before) in its brief; returns the new architect's node id."""
+    _at(state, "plan")
+    note = " ".join((note or "").split())
+    if not note:
+        raise fleet.RunError("say what to change: the note goes to the architect")
+    state.update(status="running", gate=None, dropped=[], shape_choice=None)
+    nid = fleet.add_node(state, "architect", feedback=[note])["id"]
+    fleet.activity(state["id"], {"event": "sent-back", "node": nid, "note": note}, now)
+    return nid
+
+
+def drop(state, slice_id, now=None):
+    """Leave a slice out of the plan before approving it."""
+    _at(state, "plan")
+    plan = fleet.live_plan(state)
+    ids = [s["id"] for s in plan["slices"]]
+    if slice_id not in ids:
+        raise fleet.RunError(f"the plan has no slice {slice_id} to drop")
+    if len(ids) == 1:
+        raise fleet.RunError("that is the only slice left; cancel the run instead")
+    needing = [e["to"] for e in plan["edges"] if e["from"] == slice_id]
+    if needing:
+        raise fleet.RunError(f"{', '.join(needing)} depend{'s' if len(needing) == 1 else ''} on {slice_id}; "
+                             "drop those first")
+    state.setdefault("dropped", []).append(slice_id)
+    decide_shape(state)
+    fleet.activity(state["id"], {"event": "dropped", "slice": slice_id}, now)
+
+
+def choose_shape(state, shape, now=None):
+    """Run the plan as a single loop, or as a diamond (still checked)."""
+    _at(state, "plan")
+    if shape not in ("single-loop", "diamond"):
+        raise fleet.RunError("the shape is single-loop or diamond")
+    state["shape_choice"] = shape
+    decide_shape(state)
+    fleet.activity(state["id"], {"event": "shape", "shape": state["shape"], "note": state.get("shape_note")}, now)
+
+
+def approve(state, gate, note=None, now=None):
+    """You approved the gate the run waits at."""
+    _at(state, gate)
     state["approved"][gate] = {"at": now or time.time(), "note": note or None}
     state.update(status="running", gate=None)
     fleet.activity(state["id"], {"event": "approved", "gate": gate}, now)
