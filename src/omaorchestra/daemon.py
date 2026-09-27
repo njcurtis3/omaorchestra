@@ -13,7 +13,7 @@ import subprocess
 from . import (__version__, adapters, approvals, away, chain, config, costs, history, launch, notify, paths, procs, remote, taskqueue, transcript,
                usage, windows)
 from .log import event
-from .registry import Registry
+from .registry import CARRIED, Registry
 
 
 class AlreadyRunning(Exception):
@@ -416,7 +416,7 @@ class Daemon:
                 extra=(item.get("extra") or ()) if agent == own else (),
                 worktree=item.get("worktree"), agent_bin=item.get("agent_bin") if agent == own else None,
                 path=item.get("path") or self.user_path, provider=item.get("provider"),
-                mcp_profile=item.get("mcp_profile"), agent=agent,
+                mcp_profile=item.get("mcp_profile"), agent=agent, role=item.get("role"),
                 spawn=self.spawn, request=self.handle, session_fields=self.chain_fields(item),
             )
         except launch.LaunchError as e:
@@ -738,7 +738,7 @@ class Daemon:
         same-status updates cost nothing."""
         # An agent adapter may report these itself; that wins over the transcript.
         given = {k: request[k] for k in ("model", "branch", "title", "task", "launching", "worktree", "provider",
-                                         "resumed_from", "chain", "step", "review")
+                                         *CARRIED)
                  if request.get(k)}
         path = request.get("transcript_path") or (before or {}).get("transcript_path")
         if not path or (before and before.get("status") == request.get("status") and before.get("model")):

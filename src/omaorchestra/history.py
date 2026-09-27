@@ -19,7 +19,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import paths
+from . import paths, registry
 
 VERSION = 1
 TASK_LIMIT = 2000
@@ -120,7 +120,7 @@ def build(session, reason, ended=None, cost_fn=None, git_fn=git, titles=True):
         "reason": reason, "outcome": outcome(session, reason),
         "transcript": session.get("transcript_path"),
     }
-    for key in ("resumed_from", "chain", "step", "review"):
+    for key in registry.CARRIED:
         if session.get(key):
             record[key] = session[key]
     if titles:

@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import adapters, client, config, modeldefaults, providers, recent, routing, worktrees
+from . import adapters, client, config, modeldefaults, providers, recent, roles, routing, worktrees
 
 LAUNCH_VARIABLE = "OMAORCHESTRA_LAUNCH_ID"
 
@@ -81,7 +81,7 @@ def resume(record, spawn=subprocess.Popen, request=client.request, path=None):
 
 def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         spawn=subprocess.Popen, request=client.request, agent_bin=None, path=None, provider=None,
-        mcp_profile=None, agent="claude", session_fields=None):
+        mcp_profile=None, agent="claude", session_fields=None, role=None):
     """Launch the agent. Returns {"id", "tracked", "worktree", "note"}:
     `tracked` is False when the daemon was not running to register it;
     `worktree` is the worktree record when the task got one.
@@ -90,7 +90,8 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     folder outside a git repository never gets one. `provider` (an id) runs
     the agent through that API provider instead of its subscription; its
     key is read from the keyring now and passed only in the agent's
-    environment.
+    environment. `role` (a name, roles.py) runs the agent as that role:
+    its prompt and tools, and its model and permission mode unless given.
     """
     try:
         adapter = adapters.get(agent)
@@ -110,6 +111,17 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
         raise LaunchError(f"{agent_bin} is not installed")
     if worktree is None:
         worktree = config.load_or_defaults()["tasks"]["isolate_with_worktrees"]
+    role_env = {}
+    if role:
+        try:
+            spec = roles.launch_args(roles.get(role, cwd), adapter.name, os.environ)
+        except roles.RoleError as e:
+            raise LaunchError(str(e)) from e
+        # A provider has its own model ids, so a role's Claude model is left out.
+        model = model or (None if provider else spec["model"])
+        permission_mode = permission_mode or spec["permission_mode"]
+        extra, role_env = [*spec["extra"], *extra], spec["env"]
+        session_fields = {**(session_fields or {}), "role": role}
     route_env = {}
     if provider:
         try:
@@ -151,7 +163,7 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
                                                         agent_bin))
     # The launch id travels in the agent's environment: its hooks inherit it
     # and report it, which ties the agent's own session id to this placeholder.
-    env = {**os.environ, **({"PATH": path} if path else {}), **route_env, LAUNCH_VARIABLE: session_id}
+    env = {**os.environ, **({"PATH": path} if path else {}), **route_env, **role_env, LAUNCH_VARIABLE: session_id}
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True, env=env)

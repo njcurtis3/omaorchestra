@@ -2,8 +2,10 @@
 
 Each step is a queued task that follows the one before (chain.py), in the
 same worktree, with a brief of what it did. A step has a prompt template
-({task} is the task you give), and optionally an agent, model and
-permission mode; `review = true` makes it a review of the work so far.
+({task} is the task you give), and optionally a role (roles.py: its prompt,
+tools, agent, model and permission mode), an agent, model and permission
+mode (these win over the role's); `review = true` makes it a review of the
+work so far.
 
 Built in: plan-then-build and build-then-review. Your own go in
 ~/.config/omaorchestra/recipes.toml, and one with a built-in's name
@@ -18,11 +20,12 @@ replaces it:
     [[recipes.fix-and-test.steps]]
     prompt = "Write tests for the fix just made for: {task}. Commit them."
     agent = "codex"
+    role = "builder"
 """
 
 import tomllib
 
-from . import adapters, config
+from . import adapters, config, roles
 
 BUILTIN = {
     "plan-then-build": {
@@ -46,7 +49,7 @@ BUILTIN = {
         ],
     },
 }
-STEP_KEYS = ("prompt", "agent", "model", "permission_mode", "review", "same_worktree")
+STEP_KEYS = ("prompt", "agent", "model", "permission_mode", "review", "same_worktree", "role")
 
 
 class RecipeError(Exception):
@@ -67,6 +70,8 @@ def _check(name, recipe):
         unknown = set(step) - set(STEP_KEYS)
         if unknown:
             raise RecipeError(f"recipe {name}, step {n}: unknown {', '.join(sorted(unknown))}")
+        if "role" in step and not (isinstance(step["role"], str) and roles.NAME.match(step["role"])):
+            raise RecipeError(f"recipe {name}, step {n}: role must be a role's name")
         if step.get("agent") and step["agent"] not in adapters.ADAPTERS:
             raise RecipeError(f"recipe {name}, step {n}: unknown agent {step['agent']}")
         if n == 1 and step.get("review"):
@@ -108,9 +113,19 @@ def items(name, task, cwd, base=None, target=None):
     recipe = get(name, target)
     steps = []
     for n, step in enumerate(recipe["steps"], 1):
+        role = None
+        if step.get("role"):
+            try:
+                role = roles.get(step["role"], cwd)
+            except roles.RoleError as e:
+                raise RecipeError(f"recipe {name}, step {n}: {e}") from None
+        agent = step.get("agent") or (role.agent if role else None) or (base or {}).get("agent") or "claude"
         item = {**(base or {}), "task": step["prompt"].replace("{task}", task.strip()), "cwd": cwd,
-                "agent": step.get("agent") or (base or {}).get("agent") or "claude", "recipe": name,
-                "review": bool(step.get("review")), "extra": []}
+                "agent": agent, "recipe": name, "review": bool(step.get("review")), "extra": []}
+        if role:
+            item["role"] = role.name
+            if role.model and not step.get("model"):
+                item.pop("model", None)  # the role names one; `--model` is for steps that name none
         if step.get("model"):
             item["model"] = step["model"]
         if step.get("permission_mode"):

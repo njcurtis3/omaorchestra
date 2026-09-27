@@ -30,6 +30,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`models`](#omaorchestra-models) | models from Claude Code and your providers |
 | [`worktree`](#omaorchestra-worktree) | task worktrees: list, review, merge, remove |
 | [`recipe`](#omaorchestra-recipe) | named multi-step chains: plan-then-build, build-then-review, your own |
+| [`role`](#omaorchestra-role) | roles an agent can run as: scout, architect, builder, reviewer, integrator, yours |
 | [`stop`](#omaorchestra-stop) | stop a session's agent process (asks first) |
 | [`dismiss`](#omaorchestra-dismiss) | remove a session from the list (it returns if the agent reports again) |
 | [`hook`](#omaorchestra-hook) | receive an agent hook event on stdin |
@@ -134,6 +135,7 @@ Start an agent on a task in a new terminal window.
 omaorchestra run [--in DIR] [--model MODEL] [--permission-mode PERMISSION_MODE]
                  [--worktree] [--no-worktree] [--provider PROVIDER]
                  [--mcp-profile MCP_PROFILE] [--agent {claude,codex,opencode}]
+                 [--role ROLE]
                  task
 ```
 
@@ -147,7 +149,8 @@ omaorchestra run [--in DIR] [--model MODEL] [--permission-mode PERMISSION_MODE]
 | `--no-worktree` | work in the folder itself |
 | `--provider PROVIDER` | run through this API provider instead of the subscription |
 | `--mcp-profile MCP_PROFILE` | only this profile's MCP servers ('none' for none) |
-| `--agent AGENT` | which agent (default claude); one of `claude`, `codex`, `opencode` |
+| `--agent AGENT` | which agent (default: the role's, else claude); one of `claude`, `codex`, `opencode` |
+| `--role ROLE` | run as this role: its prompt, tools, model and permission mode (see `role list`) |
 
 ## `omaorchestra queue`
 
@@ -173,7 +176,7 @@ Queue a task (anything after -- goes to the agent).
 omaorchestra queue add [--in DIR] [--model MODEL] [--permission-mode PERMISSION_MODE]
                        [--worktree] [--no-worktree] [--paused] [--provider PROVIDER]
                        [--mcp-profile MCP_PROFILE] [--agent {claude,codex,opencode}]
-                       [--after AFTER] [--same-worktree] [--no-brief]
+                       [--role ROLE] [--after AFTER] [--same-worktree] [--no-brief]
                        task
 ```
 
@@ -188,7 +191,8 @@ omaorchestra queue add [--in DIR] [--model MODEL] [--permission-mode PERMISSION_
 | `--paused` | add it paused |
 | `--provider PROVIDER` | run through this API provider instead of the subscription |
 | `--mcp-profile MCP_PROFILE` | only this profile's MCP servers ('none' for none) |
-| `--agent AGENT` | which agent (default claude); one of `claude`, `codex`, `opencode` |
+| `--agent AGENT` | which agent (default: the role's, else claude); one of `claude`, `codex`, `opencode` |
+| `--role ROLE` | run as this role: its prompt, tools, model and permission mode (see `role list`) |
 | `--after AFTER` | start only once this queued task (or running session) finishes; id or prefix |
 | `--same-worktree` | with --after: work in that task's worktree and branch, not a new one |
 | `--no-brief` | with --after: do not add a brief of what that task did |
@@ -725,6 +729,53 @@ omaorchestra recipe run [--in DIR] [--model MODEL] [--provider PROVIDER] [--work
 | `--worktree` | work in a separate git worktree (default: tasks.isolate_with_worktrees) |
 | `--no-worktree` | work in the folder itself |
 | `--paused` | add its first step paused |
+
+## `omaorchestra role`
+
+Roles an agent can run as: scout, architect, builder, reviewer, integrator, yours.
+
+```
+omaorchestra role <command> ...
+```
+
+### `omaorchestra role list`
+
+Every role, and where it comes from.
+
+```
+omaorchestra role list [--in DIR] [--json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--in DIR` | include this folder's project roles (default: here) |
+| `--json` | machine-readable output |
+
+### `omaorchestra role show`
+
+A role's settings and prompt.
+
+```
+omaorchestra role show [--in DIR] [--json] name
+```
+
+| Argument | Meaning |
+|---|---|
+| `name` | the role |
+| `--in DIR` | look in this folder's project roles too (default: here) |
+| `--json` | machine-readable output |
+
+### `omaorchestra role check`
+
+Report role files that cannot be used.
+
+```
+omaorchestra role check [--in DIR]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--in DIR` | check this folder's project roles too (default: here) |
 
 ## `omaorchestra stop`
 

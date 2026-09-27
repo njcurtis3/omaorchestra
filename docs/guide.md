@@ -353,8 +353,9 @@ Recipes are named chains. Two are built in:
 | `build-then-review` | builds and commits, then a second agent reviews the changes |
 
 Your own go in `~/.config/omaorchestra/recipes.toml`; each step has a
-prompt (with `{task}` where your task goes) and, if you like, an agent,
-model and permission mode. A recipe with a built-in's name replaces it.
+prompt (with `{task}` where your task goes) and, if you like, a
+[role](#roles), an agent, model and permission mode (these win over the
+role's). A recipe with a built-in's name replaces it.
 
 ```toml
 [recipes.fix-and-test]
@@ -366,6 +367,7 @@ prompt = "{task}\n\nCommit your work when it is done."
 [[recipes.fix-and-test.steps]]
 prompt = "Write tests for the fix just made for: {task}. Commit them."
 agent = "codex"
+role = "builder"
 ```
 
 A review step (`review = true`, or `omaorchestra worktree review <branch>`
@@ -385,6 +387,64 @@ Guardrails:
 - Nothing is merged or approved for you. Each step runs with its own
   permission mode, which a recipe can set (as plan-then-build's first step
   does); set yours in `recipes.toml`.
+
+## Roles
+
+A role is an agent with a part to play: its own instructions, the tools it
+may use, and a model. Five are built in, the parts of a fleet (Milestone 12
+builds fleets on them); you can use any of them on its own now:
+
+| Role | Does | Tools | Model |
+|---|---|---|---|
+| `scout` | establishes facts, each with its `file:line`, and changes nothing | read-only, web | haiku |
+| `architect` | turns a goal into a plan of slices and picks its shape | read-only | opus |
+| `builder` | implements one slice, inside its files, and commits | all | sonnet |
+| `reviewer` | reviews one slice and may reject it, with a concrete failure | read-only | opus |
+| `integrator` | merges the slices that passed and runs the whole suite | all | opus |
+
+```bash
+omaorchestra role list                 # every role, and where it comes from
+omaorchestra role show reviewer        # its settings and instructions
+omaorchestra run "review the auth changes" --role reviewer
+omaorchestra queue add "look around before we plan" --role scout
+omaorchestra role check                # role files that cannot be used
+```
+
+A role file is the same as a Claude Code subagent file: Markdown with
+`name`, `description`, `tools`, `disallowedTools`, `model`, `permissionMode`
+and `effort` at the top, and the instructions below. One more field is
+omaorchestra's, and Claude ignores it: `agent` (claude, codex or opencode),
+the agent that runs the role. `--agent` overrides it, and `--model` and
+`--permission-mode` override the role's. The first role with a name wins,
+looking in:
+
+1. the project: `.claude/agents/` in the folder and each folder above it up
+   to the repository's root, closest first, so a project's own Claude
+   subagents are roles too;
+2. yours: `~/.config/omaorchestra/roles/*.md`;
+3. the built-ins. To change one, copy it from `role show` into yours.
+
+`role list` says when one hides another ("yours, over built-in").
+
+How each agent takes on a role:
+
+- **Claude Code** runs as it (`--agents` and `--agent`): the role's
+  instructions, tools and model become the session's.
+- **Codex** gets the instructions as developer instructions, and a
+  read-only role runs in Codex's read-only sandbox.
+- **opencode** gets the role as an agent of its own (`omaorchestra-<name>`,
+  passed in `OPENCODE_CONFIG_CONTENT`, never written to its config), with
+  editing, shell and web tools denied when the role does not have them.
+
+Claude's model names (`opus`, `claude-…`) and permission modes apply only
+when Claude runs the role; Codex and opencode keep their own defaults.
+Read-only is a promise for Claude (its tools) and a guarantee for Codex (its
+sandbox). A role's `Bash` can still run a command that writes, so the
+built-ins also tell read-only roles to change nothing.
+
+The built-in roles are adapted from
+[graph_agents](https://github.com/njcurtis3/graph_agents), whose own role
+files load unchanged as a project's roles.
 
 ## Worktrees
 

@@ -6,6 +6,11 @@ from pathlib import Path
 STATUSES = ("idle", "working", "needs-input")
 
 
+# What a session carries of how it was started (resumed, a chain's step, a
+# review, a role); the daemon keeps them and the history record copies them.
+CARRIED = ("resumed_from", "chain", "step", "review", "role")
+
+
 class Registry:
     """Known agent sessions, keyed by session id and persisted as JSON."""
 
@@ -20,7 +25,7 @@ class Registry:
 
     # Optional facts a session may carry; None leaves the stored value alone.
     EXTRA = ("transcript_path", "model", "branch", "title", "task", "launching", "worktree", "provider", "cost",
-             "resumed_from", "chain", "step", "review")
+             *CARRIED)
     # Only reported by agents that are not Claude; Claude's come from its transcript.
     # A session registered by `omaorchestra run` that no agent has claimed
     # (reported a process for) by then is dropped: the launch failed.

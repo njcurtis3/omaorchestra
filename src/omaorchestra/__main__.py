@@ -9,7 +9,8 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
-               history, modeldefaults, procs, providers, recipes, remote, remote_access, service, setup, windows, worktrees)
+               history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, service, setup, windows,
+               worktrees)
 from .mcp import registry as mcp_registry
 
 
@@ -144,10 +145,20 @@ def cmd_app(args):
     return app_main.run(check=args.check, session=args.session or "")
 
 
+def role_agent(args):
+    """The agent to run: --agent, else the role's own, else Claude. Checks
+    the role exists now rather than when the task starts."""
+    if not args.role:
+        return args.agent or "claude"
+    role = roles.get(args.role, launch.Path(args.dir).expanduser().resolve())
+    return args.agent or role.agent
+
+
 def cmd_run(args):
+    agent = role_agent(args)
     result = launch.run(args.task, args.dir, permission_mode=args.permission_mode, model=args.model,
                         extra=args.agent_args, worktree=args.worktree, provider=args.provider,
-                        mcp_profile=args.mcp_profile, agent=args.agent)
+                        mcp_profile=args.mcp_profile, agent=agent, role=args.role)
     record = result["worktree"]
     where = record["workdir"] if record else launch.Path(args.dir).expanduser().resolve()
     print(f"started {result['id'][:8]} in {where}" + (f", through {args.provider}" if args.provider else ""))
@@ -188,7 +199,8 @@ def print_queue(q):
         elif t.get("error"):
             note = f"   ({'held' if t['state'] == 'held' else 'failed'}: {t['error']})"
         step = f"step {t['step']}" + (f" of {t['recipe']}" if t.get("recipe") else "") + ", " if t.get("step") else ""
-        print(f"             {step}{t['cwd']}{note}")
+        role = f"as {t['role']}, " if t.get("role") else ""
+        print(f"             {step}{role}{t['cwd']}{note}")
 
 
 def cmd_queue_list(args):
@@ -206,9 +218,10 @@ def cmd_queue_add(args):
     if args.mcp_profile and args.mcp_profile != mcp_registry.NONE_PROFILE \
             and args.mcp_profile not in mcp_registry.profiles():
         raise mcp_registry.McpError(f"no profile {args.mcp_profile}")
+    agent = role_agent(args)
     item = {"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
             "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
-            "mcp_profile": args.mcp_profile, "agent": args.agent, **launch.agent_environment(args.agent)}
+            "mcp_profile": args.mcp_profile, "agent": agent, "role": args.role, **launch.agent_environment(agent)}
     if args.after:
         item.update(after=args.after, same_worktree=args.same_worktree, brief=not args.no_brief)
     response = queue_request({"cmd": "queue-add", "item": item, "paused": args.paused})
@@ -769,7 +782,7 @@ def cmd_history_show(args):
     ended = time.strftime("%H:%M", time.localtime(record.get("ended")))
     print(f"{record['id']}  {record.get('agent')}  {record.get('outcome')} ({record.get('reason')})")
     for label, value in (("task", record.get("title") or record.get("task")),
-                         ("folder", present.place(record.get("cwd"))),
+                         ("folder", present.place(record.get("cwd"))), ("role", record.get("role")),
                          ("when", f"{started} to {ended}, {present.duration(history.length(record))}"),
                          ("time", ", ".join(f"{present.duration(v)} {k}" for k, v in (record.get("seconds") or {}).items())),
                          ("model", " via ".join(x for x in (record.get("model"), record.get("provider")) if x)),
@@ -855,7 +868,8 @@ def cmd_recipe_show(args):
     recipe = recipes.get(args.name)
     print(f"{args.name}: {recipe.get('description', '')}")
     for n, step in enumerate(recipe["steps"], 1):
-        how = ", ".join(x for x in (step.get("agent"), step.get("model"), step.get("permission_mode"),
+        how = ", ".join(x for x in (step.get("role") and f"as {step['role']}", step.get("agent"), step.get("model"),
+                                    step.get("permission_mode"),
                                     "a review" if step.get("review") else "") if x)
         print(f"\nstep {n}" + (f" ({how})" if how else ""))
         for line in step["prompt"].splitlines():
@@ -880,6 +894,54 @@ def cmd_recipe_run(args):
     print("each step starts once the one before finishes; a step that stops or fails holds the rest")
     print_queue(response["queue"])
     return 0
+
+
+def cmd_role_list(args):
+    found, problems = roles.load(args.dir)
+    if args.json:
+        print(json.dumps({"roles": [r.summary() for r in found.values()], "problems": problems}, indent=2))
+        return 0
+    for name in sorted(found, key=lambda n: (n not in roles.FLEET_ROLES, roles.FLEET_ROLES.index(n)
+                                                if n in roles.FLEET_ROLES else 0, n)):
+        role = found[name]
+        how = " · ".join(x for x in (role.agent, role.model, "read-only" if role.read_only else "") if x)
+        over = f", over {' and '.join(role.shadows)}" if role.shadows else ""
+        print(f"{name:<14} {how:<28} ({role.source}{over})")
+        if role.description:
+            print(f"               {launch.short(role.description, 64)}")
+    for problem in problems:
+        print(f"! {problem}", file=sys.stderr)
+    print(f"\nyour own go in {roles.user_dir()}; a project's in its .claude/agents")
+    return 0
+
+
+def cmd_role_show(args):
+    role = roles.get(args.name, args.dir)
+    if args.json:
+        print(json.dumps({**role.summary(), "prompt": role.prompt}, indent=2))
+        return 0
+    print(f"{role.name}: {role.description}" if role.description else role.name)
+    tools = ", ".join(role.tools) if role.tools is not None else "all"
+    for label, value in (("agent", role.agent), ("model", role.model or "the agent's default"),
+                         ("permissions", role.permission_mode or "the agent's own setting"),
+                         ("effort", role.effort), ("tools", tools + (" (read-only)" if role.read_only else "")),
+                         ("not", ", ".join(role.disallowed_tools)),
+                         ("from", f"{role.source}" + (f", {role.path}" if role.source != "built-in" else "")),
+                         ("hides", " and ".join(role.shadows))):
+        if value:
+            print(f"  {label + ':':<13} {value}")
+    print()
+    print(role.prompt.rstrip())
+    return 0
+
+
+def cmd_role_check(args):
+    found, problems = roles.load(args.dir)
+    for problem in problems:
+        print(problem)
+    if not problems:
+        print(f"{len(found)} roles, no problems")
+    return 1 if problems else 0
 
 
 def cmd_approvals(args):
@@ -1213,7 +1275,9 @@ def build_parser():
     run_p.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     run_p.add_argument("--provider", help="run through this API provider instead of the subscription")
     run_p.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
-    run_p.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="which agent (default claude)")
+    run_p.add_argument("--agent", choices=list(adapters.ADAPTERS),
+                       help="which agent (default: the role's, else claude)")
+    run_p.add_argument("--role", help="run as this role: its prompt, tools, model and permission mode (see `role list`)")
     run_p.set_defaults(func=cmd_run, agent_args=[])
     run_p.epilog = "Anything after -- is passed to the agent as is."
     qp = sub.add_parser("queue", help="tasks waiting for a free agent slot")
@@ -1231,7 +1295,8 @@ def build_parser():
     qa.add_argument("--paused", action="store_true", help="add it paused")
     qa.add_argument("--provider", help="run through this API provider instead of the subscription")
     qa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
-    qa.add_argument("--agent", default="claude", choices=list(adapters.ADAPTERS), help="which agent (default claude)")
+    qa.add_argument("--agent", choices=list(adapters.ADAPTERS), help="which agent (default: the role's, else claude)")
+    qa.add_argument("--role", help="run as this role: its prompt, tools, model and permission mode (see `role list`)")
     qa.add_argument("--after", help="start only once this queued task (or running session) finishes; id or prefix")
     qa.add_argument("--same-worktree", action="store_true",
                     help="with --after: work in that task's worktree and branch, not a new one")
@@ -1380,6 +1445,21 @@ def build_parser():
     rr.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     rr.add_argument("--paused", action="store_true", help="add its first step paused")
     rr.set_defaults(func=cmd_recipe_run)
+    role_p = sub.add_parser("role", help="roles an agent can run as: scout, architect, builder, reviewer, integrator, "
+                                         "yours")
+    role_sub = role_p.add_subparsers(dest="role_command", required=True)
+    rl = role_sub.add_parser("list", help="every role, and where it comes from")
+    rl.add_argument("--in", dest="dir", default=".", help="include this folder's project roles (default: here)")
+    rl.add_argument("--json", action="store_true", help="machine-readable output")
+    rl.set_defaults(func=cmd_role_list)
+    rsh = role_sub.add_parser("show", help="a role's settings and prompt")
+    rsh.add_argument("name", help="the role")
+    rsh.add_argument("--in", dest="dir", default=".", help="look in this folder's project roles too (default: here)")
+    rsh.add_argument("--json", action="store_true", help="machine-readable output")
+    rsh.set_defaults(func=cmd_role_show)
+    rc = role_sub.add_parser("check", help="report role files that cannot be used")
+    rc.add_argument("--in", dest="dir", default=".", help="check this folder's project roles too (default: here)")
+    rc.set_defaults(func=cmd_role_check)
     stop_p = sub.add_parser("stop", help="stop a session's agent process (asks first)")
     stop_p.add_argument("session", help="session id or prefix")
     stop_p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
@@ -1537,7 +1617,7 @@ def run_command(args, parser=None):
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
             keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
-            remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError) as e:
+            remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError, roles.RoleError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

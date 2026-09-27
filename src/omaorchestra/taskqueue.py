@@ -21,7 +21,7 @@ STATES = ("pending", "paused", "failed", "waiting", "held")
 # user asked, in the user's environment. Only PATH is kept from that
 # environment: the rest could hold secrets and is not needed.
 FIELDS = ("task", "cwd", "model", "permission_mode", "worktree", "extra", "agent_bin", "path", "provider",
-          "mcp_profile", "agent",
+          "mcp_profile", "agent", "role",
           # chains: the task it follows, whether it runs in that task's worktree,
           # gets a brief of it, or reviews it; and where it stands in the chain
           "after", "parent_session", "same_worktree", "brief", "review", "chain", "step", "recipe", "worktree_path")

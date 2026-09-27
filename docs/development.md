@@ -23,6 +23,7 @@ See [docs/architecture.md](architecture.md).
 |---|---|
 | `src/omaorchestra/` | daemon and CLI (Python, standard library only) |
 | `src/omaorchestra/app/` | desktop app (PySide6 + QML) |
+| `src/omaorchestra/builtin_roles/` | the built-in roles, in Claude Code's subagent format |
 | `bin/` | entry-point scripts |
 | `plugin/` | Omarchy shell bar widget and panel (QML) |
 | `scripts/` | dev install, screenshots, the commands page, the logo, AUR publishing |
