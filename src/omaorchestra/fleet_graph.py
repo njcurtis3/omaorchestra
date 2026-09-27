@@ -51,6 +51,17 @@ BUILTIN = {
 }
 KEYS = ("description", "shape", "scout", "tries", "roles", "budget", "max_steps", "stall_minutes")
 MIN_DIAMOND = 3
+EXAMPLE = """[fleets.careful]
+description = "Single loop, reviewed by my security reviewer"
+shape = "single-loop"        # auto (the architect's call), single-loop, diamond
+scout = true                 # false: straight to the architect
+tries = 2                    # builds of a slice before a REJECT holds the run
+budget = 5                   # US$ the run may spend (API-equivalent); 0: no budget
+max_steps = 30               # agents the run may start in all
+stall_minutes = 20           # working this long with no sign of life is flagged
+[fleets.careful.roles]       # the role (roles.py) that plays each stage
+reviewer = "security-reviewer"
+"""
 
 
 class FleetError(Exception):
@@ -267,7 +278,7 @@ def _slice_step(state, slice_id):
 
 
 def at_gate(state, gate, now=None):
-    state.update(status="at-gate", gate=gate)
+    state.update(status="at-gate", gate=gate, since=now or time.time())
     fleet.activity(state["id"], {"event": "gate", "gate": gate}, now)
 
 
@@ -363,7 +374,7 @@ def send_back(state, note, now=None):
     note = " ".join((note or "").split())
     if not note:
         raise fleet.RunError("say what to change: the note goes to the architect")
-    state.update(status="running", gate=None, dropped=[], shape_choice=None)
+    state.update(status="running", gate=None, since=None, dropped=[], shape_choice=None)
     nid = fleet.add_node(state, "architect", feedback=[note])["id"]
     fleet.activity(state["id"], {"event": "sent-back", "node": nid, "note": note}, now)
     return nid
@@ -445,6 +456,8 @@ def retry(state, note=None, now=None):
     held = state.get("held_by")
     if held == "limits":
         raise fleet.RunError("it is held by its limits: raise them instead")
+    if held == "paused":
+        raise fleet.RunError("it is paused: resume it instead")
     feedback = [" ".join(note.split())] if note and note.strip() else None
     n = state["nodes"].get(held) if held else None
     if n and n["role"] == "builder" and (n.get("scope") or {}).get("extra") and not n["scope"].get("accepted"):
@@ -461,6 +474,19 @@ def retry(state, note=None, now=None):
     fleet.activity(state["id"], {"event": "retry", "held_by": held, "next": new, "note": note or None}, now)
     fleet.release(state, now)
     return new
+
+
+def pause(state, now=None):
+    """Hold a running run: nothing new starts (nodes already working go on)."""
+    if state["status"] != "running":
+        raise fleet.RunError(f"run {state['id']} is not running")
+    fleet.hold(state, "paused by you", by="paused", now=now)
+
+
+def resume(state, now=None):
+    if state["status"] != "held" or state.get("held_by") != "paused":
+        raise fleet.RunError(f"run {state['id']} is not paused")
+    fleet.release(state, now)
 
 
 def set_limits(state, budget=None, max_steps=None, now=None):
@@ -484,7 +510,7 @@ def approve(state, gate, note=None, now=None):
     """You approved the gate the run waits at."""
     _at(state, gate)
     state["approved"][gate] = {"at": now or time.time(), "note": note or None}
-    state.update(status="running", gate=None)
+    state.update(status="running", gate=None, since=None)
     fleet.activity(state["id"], {"event": "approved", "gate": gate}, now)
 
 

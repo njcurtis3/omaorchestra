@@ -102,15 +102,17 @@ class QtTest(unittest.TestCase):
         from omaorchestra.app import instance
         name = f"omaorchestra-test-{os.getpid()}"
         activated = []
-        server = instance.listen(activated.append, name=name)
+        server = instance.listen(lambda session, fleet: activated.append((session, fleet)), name=name)
         try:
             self.assertTrue(instance.ask_running_instance(name))
             self.assertTrue(wait_for(lambda: activated))
             self.assertTrue(instance.ask_running_instance(name, session="a808f7f3"))
             self.assertTrue(wait_for(lambda: len(activated) == 2))
+            self.assertTrue(instance.ask_running_instance(name, fleet="2026-09-27-make-it"))
+            self.assertTrue(wait_for(lambda: len(activated) == 3))
         finally:
             server.close()
-        self.assertEqual(activated, ["", "a808f7f3"])
+        self.assertEqual(activated, [("", ""), ("a808f7f3", ""), ("", "2026-09-27-make-it")])
         self.assertFalse(instance.ask_running_instance(name))
 
 

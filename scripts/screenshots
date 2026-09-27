@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tests"))  # fleet_fixtures: fleet runs at every stage
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 SESSIONS = [
@@ -85,6 +86,8 @@ def main():
             # No session bus: the real keyring stays out of the pictures.
             "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + str(tmp / "no-bus"),
         })
+        import fleet_fixtures
+        fleets = fleet_fixtures.write_all(str(home / "code" / "website"))
         env = {k: v for k, v in os.environ.items() if k != "JOURNAL_STREAM"}
         daemon = subprocess.Popen([str(ROOT / "bin" / "omaorchestra"), "daemon"], env=env, stderr=subprocess.DEVNULL)
         try:
@@ -92,7 +95,7 @@ def main():
                 if (tmp / "o.sock").exists():
                     break
                 time.sleep(0.05)
-            render(home, out)
+            render(home, out, fleets)
         finally:
             daemon.terminate()
             daemon.wait(timeout=5)
@@ -130,7 +133,7 @@ def seed_history(state, home):
                 "transcript": None, "title": title, "task": title}) + "\n")
 
 
-def render(home, out):
+def render(home, out, fleets):
     from PySide6.QtCore import QEventLoop, QTimer, QUrl
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
@@ -165,8 +168,9 @@ def render(home, out):
     objects = {"theme": backend.Theme(), "sessions": sessions, "settings": backend.Settings(),
                "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "awayMode": backend.Away(sessions), "sessionHistory": backend.History(sessions),
                "providerList": backend.Providers(),
-               "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions),
-               "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": ""}
+               "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions), "fleets": backend.Fleets(sessions),
+               "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": "",
+               "initialFleet": ""}
     engine = QQmlApplicationEngine()
     for name, value in objects.items():
         engine.rootContext().setContextProperty(name, value)
@@ -179,6 +183,31 @@ def render(home, out):
     for page, name in PAGES:
         window.setProperty("page", page)
         spin(600)
+        window.grabWindow().save(str(out / name))
+        print(out / name)
+
+    def find(item, name):
+        if item.objectName() == name:
+            return item
+        for child in item.childItems():
+            found = find(child, name)
+            if found:
+                return found
+        return None
+
+    # omafleet, a little wider: a plan at its gate, then a diamond's graph, and a board.
+    window.setWidth(1280)
+    window.setHeight(800)
+    for run, mode, name in (("plan", "graph", "omafleet-plan.png"), ("merge", "graph", "omafleet-graph.png"),
+                            ("running", "board", "omafleet-board.png")):
+        window.showFleet(fleets[run])
+        spin(400)
+        view = find(window.property("contentItem"), "run-view")
+        view.setProperty("mode", mode)
+        view.setProperty("contentY", 0)
+        if name == "omafleet-graph.png":
+            view.property("contentItem").setProperty("contentY", 330)  # past the merge card, to the graph
+        spin(700)
         window.grabWindow().save(str(out / name))
         print(out / name)
     app.quit()

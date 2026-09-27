@@ -9,6 +9,8 @@ ColumnLayout {
   id: page
   property real now: Date.now() / 1000
   property string statusFilter: ""
+  property bool hideFleet: false
+  signal openFleet(string runId)
   property bool grid: false
   // The session shown in detail, or "" for the list.
   property string selectedId: ""
@@ -18,8 +20,10 @@ ColumnLayout {
   // Re-read whenever the sessions change (sessions.rows notifies) or a filter does.
   readonly property var shown: {
     sessions.rows
-    return sessions.filtered(statusFilter, search.text)
+    const rows = sessions.filtered(statusFilter, search.text)
+    return hideFleet ? rows.filter(r => !r.fleet) : rows
   }
+  readonly property int fleetCount: { sessions.rows; return sessions.rows.filter(r => !!r.fleet).length }
 
   function statusColor(status) {
     return status === "needs-input" ? theme.urgent : status === "working" ? theme.accent : theme.muted
@@ -80,6 +84,16 @@ ColumnLayout {
       color: theme.foreground
       selectionColor: theme.selection
       background: Rectangle { radius: 4; color: theme.surface; border.color: search.activeFocus ? theme.accent : theme.selection }
+    }
+
+    Button {
+      objectName: "filter-fleet"
+      visible: page.fleetCount > 0
+      text: (page.hideFleet ? "Show" : "Hide") + " fleet sessions  " + page.fleetCount
+      flat: true
+      onClicked: page.hideFleet = !page.hideFleet
+      contentItem: Label { text: parent.text; color: theme.muted; horizontalAlignment: Text.AlignHCenter }
+      background: Rectangle { radius: 4; color: parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"; border.color: theme.selection }
     }
 
     IconButton {
@@ -157,6 +171,16 @@ ColumnLayout {
               visible: !!listRow.modelData.modelName
               text: listRow.modelData.modelName
               color: theme.muted
+            }
+            Label {
+              objectName: "fleet-chip-" + listRow.modelData.id
+              visible: !!listRow.modelData.fleet
+              text: "omafleet · " + (listRow.modelData.node || "").replace(/\./g, " ")
+              color: theme.accent
+              font.pixelSize: 12
+              leftPadding: 6; rightPadding: 6; topPadding: 1; bottomPadding: 1
+              background: Rectangle { radius: 8; color: "transparent"; border.color: theme.accent }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openFleet(listRow.modelData.fleet) }
             }
           }
           Label {

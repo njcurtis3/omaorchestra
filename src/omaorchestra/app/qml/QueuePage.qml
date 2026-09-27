@@ -8,6 +8,7 @@ import QtQuick.Layouts
 ColumnLayout {
   id: page
   spacing: 12
+  signal openFleet(string runId)
 
   property string message: ""
 
@@ -73,7 +74,7 @@ ColumnLayout {
     Layout.fillHeight: true
     clip: true
     spacing: 6
-    model: queue.tasks
+    model: queue.rows
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: ScrollBar {}
 
@@ -81,9 +82,10 @@ ColumnLayout {
       id: row
       required property var modelData
       required property int index
-      objectName: "queued-" + index
+      objectName: modelData.fleetRow ? "queued-fleet-" + modelData.fleet : "queued-" + index
+      readonly property int taskIndex: modelData.index
       width: ListView.view.width
-      height: rowContent.implicitHeight + 20
+      height: (modelData.fleetRow ? fleetContent.implicitHeight : rowContent.implicitHeight) + 20
       radius: 6
       readonly property bool chained: !!(modelData.after || modelData.parent_session)
       readonly property bool waiting: modelData.state === "waiting"
@@ -91,22 +93,45 @@ ColumnLayout {
       border.color: modelData.state === "failed" || modelData.state === "held" ? theme.urgent : "transparent"
       opacity: modelData.state === "paused" || waiting ? 0.7 : 1
 
+      // A fleet run's nodes waiting to start: one row, opening the run.
+      RowLayout {
+        id: fleetContent
+        visible: !!row.modelData.fleetRow
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+        spacing: 14
+        Label { text: "󰡉"; color: theme.accent }
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 3
+          Label { Layout.fillWidth: true; text: "omafleet: " + (row.modelData.fleet || ""); color: theme.foreground; elide: Text.ElideRight }
+          Label {
+            Layout.fillWidth: true
+            text: (row.modelData.nodes || []).length + " to go: " + (row.modelData.nodes || []).join(", ") + "   ·   " + (row.modelData.place || "")
+            color: theme.muted
+            font.pixelSize: 12
+            elide: Text.ElideRight
+          }
+        }
+        FleetButton { objectName: "queued-open-fleet"; text: "Open run"; onClicked: page.openFleet(row.modelData.fleet) }
+      }
+
       RowLayout {
         id: rowContent
+        visible: !row.modelData.fleetRow
         anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14
                   leftMargin: row.chained ? 40 : 14 }
         spacing: 14
 
         Label {
           Layout.alignment: Qt.AlignTop
-          text: row.chained ? "↳" : (row.index + 1) + "."
+          text: row.chained ? "↳" : (row.taskIndex + 1) + "."
           color: theme.muted
         }
 
         ColumnLayout {
           Layout.fillWidth: true
           spacing: 3
-          Label { Layout.fillWidth: true; text: (row.modelData.base_task || row.modelData.task).split("\n")[0]; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
+          Label { Layout.fillWidth: true; text: (row.modelData.base_task || row.modelData.task || "").split("\n")[0]; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
           Label {
             Layout.fillWidth: true
             text: [row.modelData.step ? "step " + row.modelData.step + (row.modelData.recipe ? " of " + row.modelData.recipe : "") : "",
@@ -139,8 +164,8 @@ ColumnLayout {
         Row {
           Layout.alignment: Qt.AlignTop
           spacing: 12
-          IconButton { glyph: "󰁝"; tip: "Move up"; visible: row.index > 0; onActivated: page.act(queue.move(row.modelData.id, row.index - 1)) }
-          IconButton { glyph: "󰁅"; tip: "Move down"; visible: row.index < queue.tasks.length - 1; onActivated: page.act(queue.move(row.modelData.id, row.index + 1)) }
+          IconButton { glyph: "󰁝"; tip: "Move up"; visible: row.taskIndex > 0; onActivated: page.act(queue.move(row.modelData.id, row.taskIndex - 1)) }
+          IconButton { glyph: "󰁅"; tip: "Move down"; visible: row.taskIndex < queue.tasks.length - 1; onActivated: page.act(queue.move(row.modelData.id, row.taskIndex + 1)) }
           IconButton {
             objectName: "queued-pause-" + row.index
             visible: !row.waiting

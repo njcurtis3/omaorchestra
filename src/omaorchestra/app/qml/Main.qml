@@ -3,8 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // The app shell: navigation on the left, a page on the right, and the daemon
-// connection in the header. `theme`, `sessions`, `settings`, `fontFamily`,
-// `appVersion` and `initialSession` come from Python (app/main.py).
+// connection in the header. `theme`, `sessions`, `fleets`, `settings`,
+// `fontFamily`, `appVersion`, `initialSession` and `initialFleet` come from
+// Python (app/main.py).
 ApplicationWindow {
   id: window
   title: "omaorchestra"
@@ -41,7 +42,19 @@ ApplicationWindow {
     window.page = "sessions"
     sessionsPage.selectedId = match ? match.id : id
   }
-  Component.onCompleted: if (initialSession) showSession(initialSession)
+  // `app --fleet <id>`, a notification or the bar: open omafleet on a run.
+  function showFleet(id) {
+    window.page = "fleets"
+    fleetsPage.show(id)
+  }
+  function showHistory(sessionId) {
+    window.page = "history"
+    historyPage.selectedKey = sessionHistory.keyFor(sessionId)
+  }
+  Component.onCompleted: {
+    if (initialSession) showSession(initialSession)
+    if (initialFleet) showFleet(initialFleet)
+  }
   Shortcut { sequence: "Ctrl+N"; onActivated: window.page = "new" }
   Connections {
     // At startup the session list has not arrived yet, so a prefix cannot be
@@ -61,6 +74,7 @@ ApplicationWindow {
   readonly property var pages: [
     { id: "sessions", glyph: "󰚩", label: "Sessions" },
     { id: "new", glyph: "󰐕", label: "New task" },
+    { id: "fleets", glyph: "󰡉", label: "omafleet" },
     { id: "queue", glyph: "󰒲", label: "Queue" },
     { id: "history", glyph: "󰋚", label: "History" },
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
@@ -104,9 +118,23 @@ ApplicationWindow {
             highlighted: window.page === modelData.id
             onClicked: window.page = modelData.id
 
-            contentItem: Label {
-              text: modelData.glyph + "  " + modelData.label
-              color: parent.highlighted ? theme.foreground : theme.muted
+            contentItem: RowLayout {
+              Label {
+                Layout.fillWidth: true
+                text: modelData.glyph + "  " + modelData.label
+                color: parent.parent.highlighted ? theme.foreground : theme.muted
+              }
+              // Runs that need you: at a gate, held, or a node waiting.
+              Label {
+                objectName: "nav-badge-" + modelData.id
+                visible: modelData.id === "fleets" && fleets.needing > 0
+                text: String(fleets.needing)
+                color: theme.background
+                font.pixelSize: 11
+                font.bold: true
+                leftPadding: 6; rightPadding: 6
+                background: Rectangle { radius: 8; color: theme.urgent }
+              }
             }
             background: Rectangle {
               radius: 4
@@ -214,7 +242,7 @@ ApplicationWindow {
 
       // Sessions
       Label {
-        visible: window.page === "sessions" && !sessions.connected
+        visible: (window.page === "sessions" || window.page === "fleets") && !sessions.connected
         Layout.fillWidth: true
         wrapMode: Text.Wrap
         color: theme.muted
@@ -223,6 +251,7 @@ ApplicationWindow {
 
       SessionsPage {
         id: sessionsPage
+        onOpenFleet: id => window.showFleet(id)
         visible: window.page === "sessions" && sessions.connected
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -244,11 +273,24 @@ ApplicationWindow {
           width: newTaskScroll.availableWidth
           onLaunched: id => window.showSession(id)
           onQueued: window.page = "queue"
+          onAsFleet: (goal, folder) => { window.page = "fleets"; fleetsPage.newRun(goal, folder) }
         }
+      }
+
+      // omafleet
+      FleetsPage {
+        id: fleetsPage
+        visible: window.page === "fleets" && sessions.connected
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        now: window.now
+        onOpenSession: id => window.showSession(id)
+        onOpenHistory: id => window.showHistory(id)
       }
 
       // Queue
       QueuePage {
+        onOpenFleet: id => window.showFleet(id)
         visible: window.page === "queue"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -256,6 +298,8 @@ ApplicationWindow {
 
       // History
       HistoryPage {
+        id: historyPage
+        onOpenFleet: id => window.showFleet(id)
         visible: window.page === "history"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -263,6 +307,7 @@ ApplicationWindow {
 
       // Worktrees
       WorktreesPage {
+        onOpenFleet: id => window.showFleet(id)
         visible: window.page === "worktrees"
         Layout.fillWidth: true
         Layout.fillHeight: true

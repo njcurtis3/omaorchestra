@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs"
 // Format.js is a QML ".pragma library"; strip the pragma and load it as a script.
 const src = readFileSync(new URL("../../plugin/omaorchestra.sessions/Format.js", import.meta.url), "utf8")
 const F = new Function(src.replace(/^\.pragma library\s*$/m, "") +
-  "\nreturn { projectName, ago, modelName, statusLabel, sessionList, sorted, counts, barLabel, tooltip, awayText }")()
+  "\nreturn { projectName, ago, modelName, statusLabel, sessionList, sorted, counts, barLabel, tooltip, awayText, " +
+  "fleetList, sortedFleets, fleetNeeding, fleetStatus }")()
 
 test("projectName uses the last path component", () => {
   assert.equal(F.projectName("/home/u/Work/proj"), "proj")
@@ -68,4 +69,29 @@ test("away mode shows while pushes or remote answers are on", () => {
   assert.equal(F.awayText({ active: true, away: false, mode: "auto" }), "At the desk")
   assert.equal(F.awayText({ active: true, away: false, mode: "off" }), "At the desk (until you switch)")
   assert.equal(F.awayText({ push: true, away: true, reason: "on", mode: "on" }), "Away: pushing to your phone")
+})
+
+test("fleet runs: the list, needing you first, and what each is doing", () => {
+  const runs = F.fleetList([{ id: "a", status: "running", updated: 5, nodes: 4, done: 2 },
+                            { id: "b", status: "at-gate", gate: "plan", needsYou: true, updated: 1 },
+                            null, { goal: "no id" }])
+  assert.deepEqual(F.sortedFleets(runs).map(r => r.id), ["b", "a"])
+  assert.deepEqual(F.fleetList({ a: 1 }), [])
+  assert.equal(F.fleetNeeding(runs), 1)
+  assert.equal(F.fleetStatus(runs[0]), "Running · 2 of 4 steps done")
+  assert.equal(F.fleetStatus(runs[1]), "Plan waits for your approval")
+  assert.equal(F.fleetStatus({ status: "at-gate", gate: "merge" }), "Merge waits for your approval")
+  assert.equal(F.fleetStatus({ status: "held", reason: "scout: its session crashed" }), "Held: scout: its session crashed")
+  assert.equal(F.fleetStatus({ status: "running", needsYou: true }), "An agent waits for you")
+  assert.equal(F.fleetStatus({ status: "done" }), "Finished: check it and close it")
+})
+
+test("the bar counts fleet runs that need you", () => {
+  const c = { total: 1, waiting: 0, working: 1, idle: 0 }
+  const runs = [{ id: "b", needsYou: true }, { id: "c" }]
+  assert.equal(F.barLabel("G", c, null, runs), "G 1 󰡉 1")
+  assert.equal(F.barLabel("G", c, null, []), "G 1")
+  assert.equal(F.barLabel("G", c, null), "G 1")
+  assert.equal(F.tooltip(c, null, runs), "omaorchestra: 1 working\n2 fleet runs, 1 needing you")
+  assert.equal(F.tooltip(c, null, []), "omaorchestra: 1 working")
 })

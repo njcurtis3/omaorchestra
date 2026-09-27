@@ -7,6 +7,7 @@ import QtQuick.Layouts
 // page. `worktrees`, `sessions` and `theme` come from Python.
 ColumnLayout {
   id: page
+  signal openFleet(string runId)
   spacing: 12
 
   property string reviewing: ""   // path of the worktree whose changes are shown
@@ -109,6 +110,14 @@ ColumnLayout {
             spacing: 10
             Label { text: item.modelData.task; color: theme.foreground; font.bold: true; elide: Text.ElideRight; Layout.maximumWidth: 420 }
             Label { visible: item.live; text: "agent running"; color: theme.accent; font.pixelSize: 12 }
+            Label {
+              objectName: "worktree-fleet-" + item.modelData.branch
+              visible: !!item.modelData.fleet
+              text: "omafleet " + (item.modelData.slice ? "slice " + item.modelData.slice : "run") + " ›"
+              color: theme.accent
+              font.pixelSize: 12
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openFleet(item.modelData.fleet) }
+            }
           }
           Label {
             text: " " + item.modelData.branch + "  →  " + (item.modelData.base_branch || item.modelData.base.slice(0, 8))
@@ -176,7 +185,8 @@ ColumnLayout {
             tip: "Remove the worktree"
             onActivated: {
               const losing = item.modelData.exists && (item.modelData.dirty || (item.modelData.commitCount > 0 && !item.modelData.merged))
-              page.pending = { action: "remove", path: item.modelData.path, force: losing, task: item.modelData.task }
+              page.pending = { action: "remove", path: item.modelData.path, force: losing, task: item.modelData.task,
+                               fleet: item.modelData.fleet || "" }
               confirm.open()
             }
           }
@@ -209,9 +219,10 @@ ColumnLayout {
         if (!p) return ""
         if (p.action === "merge")
           return "Merge \"" + p.task + "\" into " + p.target + " in the main checkout. It must be clean and on " + p.target + "; a conflicting merge is undone."
+        const fleet = p.fleet ? " It belongs to fleet run " + p.fleet + ": closing the run removes its slices' worktrees once their work is on the run's branch, so removing it by hand can hold or break the run." : ""
         if (p.force)
-          return "\"" + p.task + "\" has work that is not merged. Removing it deletes that work and its branch for good."
-        return "Remove the worktree for \"" + p.task + "\" (its branch goes too once merged)."
+          return "\"" + p.task + "\" has work that is not merged. Removing it deletes that work and its branch for good." + fleet
+        return "Remove the worktree for \"" + p.task + "\" (its branch goes too once merged)." + fleet
       }
     }
   }

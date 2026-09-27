@@ -5,12 +5,13 @@ import subprocess
 import threading
 import time
 
-from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import (Property, QAbstractListModel, QFileSystemWatcher, QModelIndex, QObject, Qt, QTimer, QUrl,
+                            Signal, Slot)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import (adapters, catalog, changes, client, config, control, history, keys, launch, modeldefaults,
-               providers, recent, transcript, windows, worktrees)
-from . import present
+from .. import (adapters, catalog, changes, client, config, control, fleet, fleet_graph, history, keys, launch,
+               modeldefaults, providers, recent, roles, transcript, windows, worktrees)
+from . import present, present_fleet
 from . import theme as theme_file
 
 RECONNECT_SECONDS = 2
@@ -405,6 +406,13 @@ class History(QObject):
         found = next((r for r in self._records if self.key(r) == key), None)
         return self._row(found) if found else {}
 
+    @Slot(str, result=str)
+    def keyFor(self, session_id):
+        """The key of a session's latest record, or ""."""
+        self.reload()
+        found = next((r for r in self._records if r["id"] == session_id), None)
+        return self.key(found) if found else ""
+
     @Slot(str, result="QVariantList")
     def activity(self, key):
         path = self.record(key).get("transcript")
@@ -511,13 +519,32 @@ class Queue(QObject):
     def __init__(self, sessions, parent=None):
         super().__init__(parent)
         self._state = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
+        self._rows = []
         sessions.queueUpdated.connect(self._update)
 
     @Slot("QVariantMap")
     def _update(self, snapshot):
         self._state = dict(snapshot)
         self._state["tasks"] = [{**t, "place": present.place(t.get("cwd"))} for t in snapshot.get("tasks") or []]
+        self._rows = self._grouped(self._state["tasks"])
         self.changed.emit()
+
+    @staticmethod
+    def _grouped(tasks):
+        """The tasks for the page, with a fleet run's nodes as one row per run
+        (where its first one is). `index` is each task's place in the queue."""
+        rows, runs = [], {}
+        for i, t in enumerate(tasks):
+            if not t.get("fleet"):
+                rows.append({**t, "index": i})
+                continue
+            run = runs.get(t["fleet"])
+            if run is None:
+                run = runs[t["fleet"]] = {"fleetRow": True, "id": "fleet:" + t["fleet"], "fleet": t["fleet"], "nodes": [],
+                                          "place": t.get("place"), "state": t.get("state"), "index": i}
+                rows.append(run)
+            run["nodes"].append(t.get("node") or "")
+        return rows
 
     def _send(self, payload):
         try:
@@ -609,6 +636,7 @@ class Queue(QObject):
         return self._send({"cmd": "queue-hold" if held else "queue-release"})
 
     tasks = Property("QVariantList", lambda self: self._state["tasks"], notify=changed)
+    rows = Property("QVariantList", lambda self: self._rows, notify=changed)
     held = Property(bool, lambda self: self._state["held"], notify=changed)
     busy = Property(int, lambda self: self._state["busy"], notify=changed)
     limit = Property(int, lambda self: self._state["limit"], notify=changed)
@@ -680,6 +708,8 @@ class Sessions(QObject):
     changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
     queueUpdated = Signal("QVariantMap")  # taskqueue snapshot, from the same subscription
     awayUpdated = Signal("QVariantMap")  # away mode (away.Away.state()), likewise
+    fleetsUpdated = Signal(list)  # current fleet runs, from the snapshot
+    fleetUpdated = Signal(dict)  # one run changed (a fleet event's state)
     ended = Signal()  # a session went away (its history record follows)
     _snapshot = Signal(list)
     _event = Signal(dict)
@@ -708,6 +738,8 @@ class Sessions(QObject):
                     self.queueUpdated.emit(snapshot["queue"])
                 if "away" in snapshot:
                     self.awayUpdated.emit(snapshot["away"])
+                if "fleets" in snapshot:
+                    self.fleetsUpdated.emit(snapshot["fleets"])
                 for message in stream:
                     self._event.emit(message)
             except (client.DaemonUnavailable, StopIteration, OSError, ValueError):
@@ -728,6 +760,10 @@ class Sessions(QObject):
             return
         if message.get("event") == "away":
             self.awayUpdated.emit(message["away"])
+            return
+        if message.get("event") == "fleet":
+            if message.get("state"):
+                self.fleetUpdated.emit(message["state"])
             return
         if message.get("event") == "session":
             self.by_id[message["session"]["id"]] = message["session"]
@@ -948,3 +984,349 @@ class Sessions(QObject):
     working = _count("working")
     idle = _count("idle")
     del _count
+
+
+class KeyedListModel(QAbstractListModel):
+    """A list for QML whose rows change in place: set_items() matches rows by
+    `key`, so a row that is still there is updated (not rebuilt), and its
+    delegate keeps its state (a selection, an open detail, an animation).
+    Roles: `key`, `item` (the row's dict), `group` (for ListView sections)."""
+
+    KEY, ITEM, GROUP = Qt.UserRole + 1, Qt.UserRole + 2, Qt.UserRole + 3
+    countChanged = Signal()
+
+    def __init__(self, key="id", parent=None):
+        super().__init__(parent)
+        self._key = key
+        self._items = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._items)
+
+    def roleNames(self):
+        return {self.KEY: b"key", self.ITEM: b"item", self.GROUP: b"group"}
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or not 0 <= index.row() < len(self._items):
+            return None
+        item = self._items[index.row()]
+        if role == self.KEY:
+            return str(item[self._key])
+        if role == self.ITEM:
+            return item
+        if role == self.GROUP:
+            return item.get("groupLabel") or item.get("group") or ""
+        return None
+
+    def set_items(self, items):
+        before = len(self._items)
+        wanted = [str(i[self._key]) for i in items]
+        for row in reversed(range(len(self._items))):
+            if str(self._items[row][self._key]) not in wanted:
+                self.beginRemoveRows(QModelIndex(), row, row)
+                del self._items[row]
+                self.endRemoveRows()
+        for target, item in enumerate(items):
+            keys = [str(i[self._key]) for i in self._items]
+            key = str(item[self._key])
+            if key not in keys:
+                self.beginInsertRows(QModelIndex(), target, target)
+                self._items.insert(target, item)
+                self.endInsertRows()
+                continue
+            now = keys.index(key)
+            if now != target:  # rows before `target` are already in place, so it moves up
+                self.beginMoveRows(QModelIndex(), now, now, QModelIndex(), target)
+                self._items.insert(target, self._items.pop(now))
+                self.endMoveRows()
+            if self._items[target] != item:
+                self._items[target] = item
+                self.dataChanged.emit(self.index(target), self.index(target), [self.ITEM, self.GROUP])
+        if len(self._items) != before:
+            self.countChanged.emit()
+
+    def items(self):
+        return list(self._items)
+
+    count = Property(int, lambda self: len(self._items), notify=countChanged)
+
+    @Slot(int, result="QVariantMap")
+    def get(self, row):
+        return self._items[row] if 0 <= row < len(self._items) else {}
+
+
+class Fleets(QObject):
+    """Fleet runs for the omafleet tab, kept current from the subscription
+    (the snapshot's current runs, then each run as it changes). What the tab
+    draws comes from present_fleet; what it asks goes to the daemon."""
+
+    changed = Signal()  # the run list or its counts
+    runChanged = Signal(str)  # one run's state (its id)
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self.sessions = sessions
+        self.by_id = {}
+        self._revision = 0  # goes up on every change: QML bindings read it to re-run
+        self._runs = KeyedListModel("id", self)
+        self._boards, self._graphs = {}, {}  # run id -> KeyedListModel
+        sessions.fleetsUpdated.connect(self._set_all)
+        sessions.fleetUpdated.connect(self._set_one)
+
+    # ------------------------------------------------------------ data
+
+    @Slot(list)
+    def _set_all(self, states):
+        self.by_id = {s["id"]: s for s in states}
+        self._publish()
+        for run_id in self.by_id:
+            self.runChanged.emit(run_id)
+
+    @Slot(dict)
+    def _set_one(self, state):
+        # An answer's reply and the subscription's events can arrive out of
+        # order: never let an older state replace a newer one.
+        known = self.by_id.get(state["id"])
+        if known and known.get("updated", 0) > state.get("updated", 0):
+            return
+        self.by_id[state["id"]] = state
+        self._publish()
+        self.runChanged.emit(state["id"])
+
+    def _publish(self):
+        self._runs.set_items(present_fleet.rows(fleet.current(list(self.by_id.values()))))
+        for run_id, model in self._boards.items():
+            if run_id in self.by_id:
+                model.set_items(fleet.board(self.by_id[run_id]))
+        for run_id, model in self._graphs.items():
+            if run_id in self.by_id:
+                model.set_items(present_fleet.graph(self.by_id[run_id])["nodes"])
+        self._revision += 1
+        self.changed.emit()
+
+    @Slot()
+    def refresh(self):
+        response = self._send({"cmd": "fleet-list"})
+        if "runs" in response:
+            self._set_all(fleet.current(response["runs"]))
+
+    runs = Property(QObject, lambda self: self._runs, constant=True)
+    revision = Property(int, lambda self: self._revision, notify=changed)
+    needing = Property(int, lambda self: sum(1 for s in self.by_id.values()
+                                             if present_fleet.group(s) == "needs-you"), notify=changed)
+    count = Property(int, lambda self: len(self.by_id), notify=changed)
+
+    @Slot(str, result="QVariantMap")
+    def row(self, run_id):
+        state = self.by_id.get(run_id)
+        return present_fleet.row(state) if state else {}
+
+    @Slot(str, result="QVariantMap")
+    def state(self, run_id):
+        return self.by_id.get(run_id) or {}
+
+    @Slot(str, result="QVariantList")
+    def cards(self, run_id):
+        state = self.by_id.get(run_id)
+        return present_fleet.cards(state) if state else []
+
+    @Slot(str, result=QObject)
+    def board(self, run_id):
+        """The run's board rows, as a model that updates in place."""
+        if run_id not in self._boards:
+            self._boards[run_id] = KeyedListModel("slice", self)
+        if run_id in self.by_id:
+            self._boards[run_id].set_items(fleet.board(self.by_id[run_id]))
+        return self._boards[run_id]
+
+    @Slot(str, result=QObject)
+    def graphNodes(self, run_id):
+        if run_id not in self._graphs:
+            self._graphs[run_id] = KeyedListModel("key", self)
+        if run_id in self.by_id:
+            self._graphs[run_id].set_items(present_fleet.graph(self.by_id[run_id])["nodes"])
+        return self._graphs[run_id]
+
+    @Slot(str, result="QVariantMap")
+    def graph(self, run_id):
+        state = self.by_id.get(run_id)
+        return present_fleet.graph(state) if state else {"nodes": [], "edges": [], "columns": 0, "lanes": 0}
+
+    @Slot(str, result="QVariantMap")
+    def timeline(self, run_id):
+        response = self._send({"cmd": "fleet-show", "run": run_id}, update=False)
+        if "run" not in response:
+            return {"lanes": [], "gates": [], "length": ""}
+        return present_fleet.timeline(response["run"], response.get("activity") or [])
+
+    @Slot(str, str, result="QVariantMap")
+    def node(self, run_id, node_id):
+        state = self.by_id.get(run_id)
+        if not state or node_id not in state["nodes"]:
+            return {}
+        detail = present_fleet.node_detail(state, node_id)
+        detail["live"] = detail["session"] in self.sessions.by_id
+        return detail
+
+    @Slot(str, str, result=str)
+    def lastReply(self, run_id, node_id):
+        """A node's last reply, as its agent recorded it (for a reply that
+        could not be read)."""
+        n = (self.by_id.get(run_id) or {}).get("nodes", {}).get(node_id) or {}
+        session = self.sessions.by_id.get(n.get("session")) or {}
+        return fleet.read_reply(session) if session else ""
+
+    @Slot(str, result=str)
+    def stopRuleHint(self, goal):
+        return present_fleet.stop_rule_hint(goal)
+
+    # ------------------------------------------------------------ actions
+
+    def _send(self, payload, timeout=30, update=True):
+        """A daemon request; a run in the answer replaces ours (not for a
+        read, which must not look like a change: the timeline re-reads on
+        every change)."""
+        try:
+            response = client.request(payload, timeout=timeout)
+        except client.DaemonUnavailable:
+            return {"error": "omaorchestrad is not running"}
+        if not response.get("ok"):
+            return {"error": response.get("error") or "the daemon refused"}
+        if update and response.get("run"):
+            # Just after the caller returns: a card whose button asked for
+            # this goes away with the change, and must finish its handler first.
+            run = response["run"]
+            QTimer.singleShot(0, lambda: self._set_one(run))
+        return response
+
+    def _act(self, payload, done):
+        response = self._send(payload)
+        if "error" in response:
+            return {"error": response["error"]}
+        return {"message": done, "id": (response.get("run") or {}).get("id", "")}
+
+    @Slot(str, str, str, float, str, result="QVariantMap")
+    def start(self, goal, folder, fleet_name, budget, shape):
+        """Start a run; `budget` below 0 keeps the fleet's."""
+        response = self._send({"cmd": "fleet-start", "goal": goal, "folder": os.path.expanduser(folder),
+                               "fleet": fleet_name or "auto", "shape": shape or None,
+                               "budget": budget if budget >= 0 else None, "path": os.environ.get("PATH")})
+        if "error" in response:
+            return {"error": response["error"]}
+        return {"id": response["run"]["id"]}
+
+    @Slot(str, str, str, result="QVariantMap")
+    def approve(self, run_id, gate, note):
+        return self._act({"cmd": "fleet-approve", "run": run_id, "gate": gate or None, "note": note or None},
+                         "approved")
+
+    @Slot(str, str, result="QVariantMap")
+    def sendBack(self, run_id, note):
+        return self._act({"cmd": "fleet-send-back", "run": run_id, "note": note}, "sent back to the architect")
+
+    @Slot(str, str, result="QVariantMap")
+    def drop(self, run_id, slice_id):
+        return self._act({"cmd": "fleet-drop", "run": run_id, "slice": slice_id}, f"dropped {slice_id}")
+
+    @Slot(str, str, result="QVariantMap")
+    def shape(self, run_id, shape):
+        return self._act({"cmd": "fleet-shape", "run": run_id, "shape": shape}, f"shape: {shape}")
+
+    @Slot(str, str, str, result="QVariantMap")
+    def acceptFiles(self, run_id, node_id, reason):
+        return self._act({"cmd": "fleet-accept-scope", "run": run_id, "node": node_id, "reason": reason},
+                         "accepted; on to review")
+
+    @Slot(str, str, result="QVariantMap")
+    def undoFiles(self, run_id, node_id):
+        return self._act({"cmd": "fleet-scope-back", "run": run_id, "node": node_id},
+                         "sent to a new builder to undo them")
+
+    @Slot(str, str, result="QVariantMap")
+    def retry(self, run_id, note):
+        return self._act({"cmd": "fleet-retry", "run": run_id, "note": note or None}, "trying again")
+
+    @Slot(str, float, int, result="QVariantMap")
+    def limits(self, run_id, budget, steps):
+        return self._act({"cmd": "fleet-limits", "run": run_id, "budget": budget, "max_steps": steps},
+                         "limits changed")
+
+    @Slot(str, bool, result="QVariantMap")
+    def pause(self, run_id, paused):
+        return self._act({"cmd": "fleet-pause" if paused else "fleet-resume", "run": run_id},
+                         "paused: nothing new starts" if paused else "resumed")
+
+    @Slot(str, result="QVariantMap")
+    def cancel(self, run_id):
+        return self._act({"cmd": "fleet-cancel", "run": run_id}, "cancelled: nothing more starts")
+
+    @Slot(str, result="QVariantMap")
+    def closeCheck(self, run_id):
+        response = self._send({"cmd": "fleet-close", "run": run_id, "check": True}, update=False)
+        if "error" in response:
+            return {"error": response["error"]}
+        checks = [{"ok": ok, "text": what} for ok, what in response["checks"]]
+        return {"checks": checks, "ready": all(c["ok"] for c in checks)}
+
+    @Slot(str, result="QVariantMap")
+    def close(self, run_id):
+        response = self._send({"cmd": "fleet-close", "run": run_id})
+        if "error" in response:
+            return {"error": response["error"]}
+        return {"message": "closed", "notes": response.get("notes") or []}
+
+    @Slot(str)
+    def takeOver(self, session_id):
+        """Work in a node's session yourself: its window, brought forward."""
+        self.sessions.focus(session_id)
+
+    # ------------------------------------------------------------ roles and fleets
+
+    @Slot(str, result="QVariantMap")
+    def roles(self, folder):
+        found, problems = roles.load(os.path.expanduser(folder) if folder else None)
+        order = {name: i for i, name in enumerate(roles.FLEET_ROLES)}
+        listed = sorted(found.values(), key=lambda r: (order.get(r.name, 99), r.name))
+        return {"roles": [{**r.summary(), "prompt": r.prompt} for r in listed], "problems": problems,
+                "dir": str(roles.user_dir())}
+
+    @Slot(str, str, result="QVariantMap")
+    def copyRole(self, name, folder):
+        """Copy a role to yours, to change it there."""
+        try:
+            role = roles.get(name, os.path.expanduser(folder) if folder else None)
+        except roles.RoleError as e:
+            return {"error": str(e)}
+        target = roles.user_dir() / f"{name}.md"
+        if target.exists():
+            return {"error": f"you already have {target}"}
+        source = role.path if role.source != "built-in" else str(roles.BUILTIN_DIR / f"{name}.md")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(open(source).read())
+        except OSError as e:
+            return {"error": str(e)}
+        return {"message": f"copied to {target}", "path": str(target)}
+
+    @Slot(result="QVariantMap")
+    def templates(self):
+        try:
+            found = fleet_graph.load()
+        except fleet_graph.FleetError as e:
+            return {"templates": [], "error": str(e), "path": str(fleet_graph.path())}
+        return {"templates": [{**spec, "drawing": present_fleet.template_shape(spec)}
+                              for _, spec in sorted(found.items())], "error": "", "path": str(fleet_graph.path())}
+
+    @Slot(str)
+    def openInEditor(self, path):
+        """Open a role file, or fleets.toml (made, commented, if missing)."""
+        if not path:
+            target = fleet_graph.path()
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# Your fleets for omaorchestra (`omaorchestra fleet templates` lists them).\n"
+                                  "# Uncomment and change this one, or add your own:\n#\n"
+                                  + "".join(f"# {line}\n" for line in fleet_graph.EXAMPLE.splitlines()))
+            path = str(target)
+        subprocess.Popen(["omarchy-launch-editor", path], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

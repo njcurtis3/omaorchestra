@@ -28,6 +28,7 @@ Panel {
 
   readonly property var sessions: hostWidget ? hostWidget.sessions : []
   readonly property var away: hostWidget ? hostWidget.away : null
+  readonly property var fleets: hostWidget ? hostWidget.fleets : []
   readonly property real now: hostWidget ? hostWidget.now : Date.now() / 1000
 
   readonly property int cardWidth: Style.space(340)
@@ -148,6 +149,54 @@ Panel {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: Quickshell.execDetached(["omaorchestra", "away", parent.modelData])
               }
+            }
+          }
+        }
+      }
+
+      // Fleet runs not over; one needing you (a gate, a hold) comes first.
+      // A click opens it in the app's omafleet tab.
+      PanelSectionHeader {
+        visible: root.fleets.length > 0
+        text: "Fleet runs"
+      }
+      Repeater {
+        model: root.fleets
+
+        Item {
+          id: fleetRow
+          required property var modelData
+          width: content.width
+          height: fleetText.implicitHeight
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              Quickshell.execDetached(["omaorchestra", "app", "--fleet", fleetRow.modelData.id])
+              root.close()
+            }
+          }
+
+          Column {
+            id: fleetText
+            width: parent.width
+            spacing: Style.space(2)
+            Text {
+              width: parent.width
+              text: "󰡉  " + fleetRow.modelData.goal
+              color: Color.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              elide: Text.ElideRight
+            }
+            Text {
+              width: parent.width
+              text: Format.projectName(fleetRow.modelData.folder || "") + " · " + Format.fleetStatus(fleetRow.modelData)
+              color: fleetRow.modelData.needsYou ? Color.urgent : Color.muted
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+              elide: Text.ElideRight
             }
           }
         }

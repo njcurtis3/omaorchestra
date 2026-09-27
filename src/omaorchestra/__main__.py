@@ -148,7 +148,7 @@ def cmd_top(args):
 
 def cmd_app(args):
     from .app import main as app_main
-    return app_main.run(check=args.check, session=args.session or "")
+    return app_main.run(check=args.check, session=args.session or "", fleet=args.fleet or "")
 
 
 def role_agent(args):
@@ -1125,6 +1125,11 @@ def cmd_fleet_limits(args):
     return 0
 
 
+def cmd_fleet_pause(args):
+    return fleet_answer({"cmd": f"fleet-{args.fleet_command}", "run": args.run},
+                        "paused: nothing new starts" if args.fleet_command == "pause" else "resumed")
+
+
 def cmd_fleet_cancel(args):
     fleet_request({"cmd": "fleet-cancel", "run": args.run})
     print("cancelled: nothing more starts (agents already working are left for you to stop)")
@@ -1475,6 +1480,7 @@ def build_parser():
     app_p.add_argument("--check", action="store_true",
                        help="load the app offscreen, report whether it reaches the daemon, and exit")
     app_p.add_argument("--session", help="open on this session's details (id or prefix)")
+    app_p.add_argument("--fleet", help="open omafleet on this fleet run (id or prefix)")
     app_p.set_defaults(func=cmd_app)
     watch_p = sub.add_parser("watch", help="print session changes as they happen")
     watch_p.add_argument("--json", action="store_true", help="raw protocol messages, one per line")
@@ -1716,6 +1722,11 @@ def build_parser():
     flm.add_argument("--budget", type=float, help="US$ (0: no budget)")
     flm.add_argument("--steps", type=int, help="nodes the run may start in all")
     flm.set_defaults(func=cmd_fleet_limits)
+    for name, text in (("pause", "hold a run: nothing new starts (agents already working go on)"),
+                       ("resume", "let a paused run go on")):
+        p = fsub.add_parser(name, help=text)
+        p.add_argument("run", help="run id or prefix")
+        p.set_defaults(func=cmd_fleet_pause)
     fc = fsub.add_parser("cancel", help="stop a run: nothing more starts")
     fc.add_argument("run", help="run id or prefix")
     fc.set_defaults(func=cmd_fleet_cancel)

@@ -100,13 +100,14 @@ omaorchestra focus [--notify] [session]
 Open the omaorchestra app window.
 
 ```
-omaorchestra app [--check] [--session SESSION]
+omaorchestra app [--check] [--session SESSION] [--fleet FLEET]
 ```
 
 | Argument | Meaning |
 |---|---|
 | `--check` | load the app offscreen, report whether it reaches the daemon, and exit |
 | `--session SESSION` | open on this session's details (id or prefix) |
+| `--fleet FLEET` | open omafleet on this fleet run (id or prefix) |
 
 ## `omaorchestra watch`
 
@@ -890,6 +891,30 @@ omaorchestra fleet limits [--budget BUDGET] [--steps STEPS] run
 | `run` | run id or prefix |
 | `--budget BUDGET` | US$ (0: no budget) |
 | `--steps STEPS` | nodes the run may start in all |
+
+### `omaorchestra fleet pause`
+
+Hold a run: nothing new starts (agents already working go on).
+
+```
+omaorchestra fleet pause run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+
+### `omaorchestra fleet resume`
+
+Let a paused run go on.
+
+```
+omaorchestra fleet resume run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
 
 ### `omaorchestra fleet cancel`
 

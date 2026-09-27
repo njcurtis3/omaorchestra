@@ -80,10 +80,40 @@ function awayNow(away) {
   return awayActive(away) && !!away.away
 }
 
-function barLabel(glyph, c, away) {
+var FLEET = "󰡉"
+
+// fleets.json (written by the daemon): fleet runs not over, in brief.
+function fleetList(json) {
+  return Array.isArray(json) ? json.filter(function(r) { return r && typeof r === "object" && r.id }) : []
+}
+
+// Runs that need you (at a gate, held, or a node waiting for you) first.
+function sortedFleets(runs) {
+  return runs.slice().sort(function(a, b) {
+    if (!!a.needsYou !== !!b.needsYou) return a.needsYou ? -1 : 1
+    return (Number(b.updated) || 0) - (Number(a.updated) || 0)
+  })
+}
+
+function fleetNeeding(runs) {
+  return (runs || []).filter(function(r) { return r.needsYou }).length
+}
+
+// What a run is doing, in a few words.
+function fleetStatus(run) {
+  if (run.status === "at-gate") return (run.gate === "merge" ? "Merge" : "Plan") + " waits for your approval"
+  if (run.status === "held") return "Held" + (run.reason ? ": " + run.reason : "")
+  if (run.status === "done") return "Finished: check it and close it"
+  if (run.needsYou) return "An agent waits for you"
+  return "Running · " + (run.done || 0) + " of " + (run.nodes || 0) + " steps done"
+}
+
+function barLabel(glyph, c, away, fleets) {
   var label = glyph
   if (c.waiting > 0) label = glyph + " " + c.waiting + " waiting"
   else if (c.working > 0) label = glyph + " " + c.working
+  var needing = fleetNeeding(fleets)
+  if (needing > 0) label += " " + FLEET + " " + needing
   return awayNow(away) ? label + " " + PHONE : label
 }
 
@@ -97,9 +127,12 @@ function awayText(away) {
   return away.mode === "off" ? "At the desk (until you switch)" : "At the desk"
 }
 
-function tooltip(c, away) {
+function tooltip(c, away, fleets) {
   var line = awayText(away)
-  return sessionsTooltip(c) + (line ? "\n" + line : "")
+  var needing = fleetNeeding(fleets)
+  var runs = (fleets || []).length
+  var fleetLine = runs ? runs + " fleet run" + (runs === 1 ? "" : "s") + (needing ? ", " + needing + " needing you" : "") : ""
+  return sessionsTooltip(c) + (fleetLine ? "\n" + fleetLine : "") + (line ? "\n" + line : "")
 }
 
 function sessionsTooltip(c) {

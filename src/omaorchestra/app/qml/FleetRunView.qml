@@ -1,0 +1,211 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+// One fleet run: its header (goal, folder, branch, shape, spend against its
+// budget, and what can be done), the decisions it waits on you for, then
+// the run as a graph, a board or a timeline, and the picked node's detail.
+// Below a set width it is the board only. `fleets`, `sessions` and `theme`
+// come from Python.
+ScrollView {
+  id: view
+  property string runId: ""
+  property real now: Date.now() / 1000
+  signal openSession(string sessionId)
+  signal openHistory(string sessionId)
+
+  property string mode: "graph"  // graph, board, timeline
+  property string nodeId: ""
+  property string message: ""
+  property bool messageBad: false
+  readonly property bool narrow: availableWidth < 480
+  readonly property string shownMode: narrow && mode === "graph" ? "board" : mode
+
+  // Re-read whenever a run changes (fleets.revision goes up).
+  readonly property var r: { fleets.revision; return runId ? fleets.row(runId) : ({}) }
+  readonly property var cardList: { fleets.revision; return runId ? fleets.cards(runId) : [] }
+  onRunIdChanged: { nodeId = ""; message = "" }
+
+  function say(text, bad) { message = text; messageBad = bad }
+  property bool cancelArmed: false
+  Timer { id: disarm; interval: 4000; onTriggered: view.cancelArmed = false }
+
+  clip: true
+  contentWidth: availableWidth
+
+  ColumnLayout {
+    width: view.availableWidth
+    spacing: 12
+
+    // ------------------------------------------------------ header
+    ColumnLayout {
+      objectName: "run-header"
+      Layout.fillWidth: true
+      spacing: 4
+      Label {
+        Layout.fillWidth: true
+        text: view.r.goal || ""
+        color: theme.foreground
+        font.pixelSize: 18
+        font.bold: true
+        wrapMode: Text.Wrap
+      }
+      Label {
+        objectName: "run-status"
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        text: (view.r.statusText || "") + (view.r.reason && view.r.status === "held" ? ": " + view.r.reason : "")
+        color: view.r.group === "needs-you" ? theme.urgent : view.r.status === "running" ? theme.accent : theme.muted
+      }
+      Label {
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        color: theme.muted
+        font.pixelSize: 12
+        text: [view.r.place, view.r.fleet ? view.r.fleet + " fleet" : "", view.r.shape, view.r.branch ? " " + view.r.branch : "",
+               view.r.elapsed].filter(Boolean).join("   ·   ")
+      }
+      // Spend against the budget.
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: 8
+        Label {
+          text: "$" + (view.r.spent || 0).toFixed(2) + (view.r.budget ? " of $" + view.r.budget : " spent (no budget)")
+          color: theme.muted
+          font.pixelSize: 12
+        }
+        Rectangle {
+          visible: !!view.r.budget
+          Layout.preferredWidth: 160
+          height: 6
+          radius: 3
+          color: theme.surface
+          Rectangle {
+            width: parent.width * Math.min(1, (view.r.spent || 0) / Math.max(0.01, view.r.budget || 1))
+            height: parent.height
+            radius: 3
+            color: (view.r.spent || 0) >= (view.r.budget || 0) ? theme.urgent : theme.accent
+          }
+        }
+        Item { Layout.fillWidth: true }
+        IconButton { glyph: "󰉋"; tip: "Open its folder"; visible: !!view.r.place; onActivated: sessions.openFolder(view.r.folder) }
+        IconButton { glyph: "󰆏"; tip: "Copy its branch"; visible: !!view.r.branch; onActivated: sessions.copyPath(view.r.branch) }
+        FleetButton {
+          objectName: "run-pause"
+          visible: view.r.status === "running" || (view.r.status === "held" && view.r.heldBy === "paused")
+          text: view.r.status === "running" ? "Pause" : "Resume"
+          onClicked: {
+            const result = fleets.pause(view.runId, view.r.status === "running")
+            view.say(result.error || result.message, !!result.error)
+          }
+        }
+        FleetButton {
+          objectName: "run-cancel"
+          visible: view.r.status === "running"
+          danger: true
+          text: view.cancelArmed ? "Really cancel?" : "Cancel run"
+          onClicked: {
+            if (!view.cancelArmed) { view.cancelArmed = true; disarm.restart(); return }
+            view.cancelArmed = false
+            const result = fleets.cancel(view.runId)
+            view.say(result.error || result.message, !!result.error)
+          }
+        }
+      }
+    }
+
+    Label {
+      objectName: "run-message"
+      visible: !!view.message
+      Layout.fillWidth: true
+      wrapMode: Text.Wrap
+      text: view.message
+      color: view.messageBad ? theme.urgent : theme.accent
+    }
+
+    // ------------------------------------------------------ decisions
+    Repeater {
+      model: view.cardList
+      delegate: FleetCard {
+        required property var modelData
+        Layout.fillWidth: true
+        card_: modelData
+        runId: view.runId
+        now: view.now
+        onSaid: (text, bad) => view.say(text, bad)
+        onOpenSession: id => view.openSession(id)
+      }
+    }
+
+    // ------------------------------------------------------ graph, board, timeline
+    RowLayout {
+      Layout.fillWidth: true
+      spacing: 6
+      Repeater {
+        model: [{ id: "graph", label: "Graph" }, { id: "board", label: "Board" }, { id: "timeline", label: "Timeline" }]
+        delegate: Button {
+          required property var modelData
+          objectName: "run-view-" + modelData.id
+          visible: !(view.narrow && modelData.id === "graph")
+          text: modelData.label
+          flat: true
+          onClicked: view.mode = modelData.id
+          contentItem: Label { text: parent.text; color: view.shownMode === modelData.id ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
+          background: Rectangle { radius: 4; implicitWidth: 80; color: view.shownMode === modelData.id ? theme.selection : "transparent"; border.color: theme.selection }
+        }
+      }
+      Item { Layout.fillWidth: true }
+      Label {
+        visible: view.narrow
+        text: "(the graph needs a wider window)"
+        color: theme.muted
+        font.pixelSize: 12
+      }
+    }
+
+    FleetGraph {
+      objectName: "run-graph"
+      visible: view.shownMode === "graph"
+      Layout.fillWidth: true
+      runId: view.runId
+      chosen: view.nodeId
+      onPick: key => {
+        const box = graph.nodes.find(n => n.key === key)
+        view.nodeId = box && box.node ? box.node : ""
+      }
+      readonly property var graph: layout
+    }
+
+    FleetBoard {
+      objectName: "run-board"
+      visible: view.shownMode === "board"
+      Layout.fillWidth: true
+      runId: view.runId
+      chosen: view.nodeId.split(".")[1] || ""
+      onPick: sliceId => {
+        const g = fleets.graph(view.runId)
+        const box = g.nodes.find(n => n.key === "builder." + sliceId)
+        view.nodeId = box && box.node ? box.node : ""
+      }
+    }
+
+    FleetTimeline {
+      objectName: "run-timeline"
+      visible: view.shownMode === "timeline"
+      Layout.fillWidth: true
+      runId: view.runId
+    }
+
+    FleetNode {
+      visible: view.nodeId !== ""
+      Layout.fillWidth: true
+      runId: view.runId
+      nodeId: view.nodeId
+      onClosed: view.nodeId = ""
+      onOpenSession: id => view.openSession(id)
+      onOpenHistory: id => view.openHistory(id)
+    }
+
+    Item { Layout.preferredHeight: 12 }
+  }
+}

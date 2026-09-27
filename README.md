@@ -71,6 +71,12 @@ open port.
 </p>
 
 <p align="center">
+  <img width="49%" src="docs/screenshots/omafleet-plan.png" alt="omafleet: a fleet run's plan, waiting for approval"/>
+&nbsp;
+  <img width="49%" src="docs/screenshots/omafleet-graph.png" alt="omafleet: a diamond's work graph, at its merge gate"/>
+</p>
+
+<p align="center">
   <img width="49%" src="docs/screenshots/usage.png" alt="Usage: subscription limits and what each session costs"/>
 &nbsp;
   <img width="49%" src="docs/screenshots/mcp.png" alt="MCP: every agent's servers in one list"/>
@@ -92,6 +98,9 @@ open port.
   <tr>
     <td><b>From your phone</b><br>Optional ntfy pushes when an agent needs you or a task finishes or fails, only while you are away from the desk; <code>omaorchestra top</code> over SSH to answer permission prompts, check on sessions and run the queue.</td>
     <td><b>Local and private</b><br>A user service behind a Unix socket, no open port, keys in the system keyring, and a native Qt app, not a web page.</td>
+  </tr>
+  <tr>
+    <td colspan="2"><b>Fleets (omafleet)</b><br>Put a scout, an architect, builders and reviewers on one goal. You approve the plan before anything is built, builders work in parallel worktrees when the slices allow it, a reviewer who never saw the code written can send it back, and closing a run is checked against git. Any role can be Claude Code, Codex or opencode.</td>
   </tr>
 </table>
 

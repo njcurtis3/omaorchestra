@@ -232,6 +232,33 @@ def live_plan(state):
             "edges": [e for e in p.get("edges") or [] if e["from"] not in dropped and e["to"] not in dropped]}
 
 
+def needs_you(state):
+    """At a gate, held, or a node's session waiting for you."""
+    return state["status"] in ("at-gate", "held") or any(
+        n.get("waiting") and n["status"] == "running" for n in state["nodes"].values())
+
+
+def summary_path():
+    return paths.state_dir() / "fleets.json"
+
+
+def write_summary():
+    """fleets.json beside sessions.json: the runs not over, in brief, for the
+    bar widget (which reads files, never the socket). Written whole, via a
+    rename, like the registry."""
+    runs_now = [s for s in current(runs()) if s["status"] != "cancelled" and not s.get("closed")]
+    out = [{"id": s["id"], "goal": s["goal"], "folder": s.get("folder"), "status": s["status"],
+            "gate": s.get("gate"), "reason": s.get("reason"), "needsYou": needs_you(s), "updated": s["updated"],
+            "nodes": len(s["nodes"]), "done": sum(1 for n in s["nodes"].values() if n["status"] == "done")}
+           for s in runs_now]
+    target = summary_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(out))
+    os.replace(temporary, target)
+    return out
+
+
 def current(runs_found, now=None, days=7):
     """The runs worth showing: every one not over, and those that ended in
     the last `days`."""
@@ -250,7 +277,7 @@ def node_started(state, nid, session_id, agent, now=None):
 
 
 def hold(state, reason, by=None, now=None):
-    state.update(status="held", reason=reason, held_by=by)
+    state.update(status="held", reason=reason, held_by=by, since=now or time.time())
     activity(state["id"], {"event": "held", "node": by, "reason": reason}, now)
 
 
@@ -258,7 +285,7 @@ def release(state, now=None):
     """Clear a hold, back to running."""
     if state["status"] == "held":
         activity(state["id"], {"event": "released", "node": state.get("held_by")}, now)
-        state.update(status="running", reason=None, held_by=None)
+        state.update(status="running", reason=None, held_by=None, since=None)
 
 
 def spent(state):

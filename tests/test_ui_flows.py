@@ -76,11 +76,13 @@ class UiFlowTest(unittest.TestCase):
         self.providers = backend.Providers()
         self.spend = backend.Spend(self.sessions)
         self.mcp = backend.Mcp(self.sessions)
+        self.fleets = backend.Fleets(self.sessions)
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("sessionHistory", self.history), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp),
-                            ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", "")):
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("sessionHistory", self.history), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp), ("fleets", self.fleets),
+                            ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", ""),
+                            ("initialFleet", "")):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
         self.window = self.engine.rootObjects()[0]
@@ -358,6 +360,95 @@ class UiFlowTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: len(self.queue.tasks) == 4), "the recipe was not queued")
         self.assertEqual([t.get("recipe") for t in self.queue.tasks[2:]], ["build-then-review"] * 2)
         self.assertTrue(self.queue.tasks[3]["review"])
+        self.assertEqual(self.warnings, [])
+
+    def test_the_omafleet_tab(self):
+        import fleet_fixtures
+        from omaorchestra import adapters, fleet, procs
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        for args in (["init", "-q"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+                                      "-m", "init"]):
+            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+        ids = fleet_fixtures.write_all(str(repo))
+        # Answers at a gate are refused from inside an agent, and this test
+        # may run inside one (the app is this process): then it checks the
+        # refusal; outside (CI), it answers.
+        inside = procs.under_agent(os.getpid(), {n for a in adapters.ADAPTERS.values() for n in a.process_names})
+        self.client.request({"cmd": "queue-hold"})  # nothing actually starts
+        self.window.setProperty("height", 1000)
+        spin()
+        self.click("nav-fleets")
+        self.assertTrue(wait_for(lambda: self.fleets.count == len(ids)), "the runs did not load")
+        self.assertTrue(self.shown("nav-badge-fleets"))
+        self.assertTrue(wait_for(lambda: self.shown("fleet-run-" + ids["plan"])))
+
+        # The plan gate: drop a slice, then approve.
+        self.window.showFleet(ids["plan"][:16])
+        self.assertTrue(wait_for(lambda: self.shown("card-plan")), "no plan card")
+        self.assertTrue(wait_for(lambda: self.shown("graph-scout")), "no graph")
+        self.click("plan-drop-s3")
+        if inside:
+            self.assertTrue(wait_for(lambda: "inside an agent" in self.find("run-message").property("text")))
+            self.assertIsNone(fleet.load(ids["plan"]).get("dropped"))
+        else:
+            self.assertTrue(wait_for(lambda: fleet.load(ids["plan"]).get("dropped") == ["s3"]), "not dropped")
+            self.click("card-approve")
+            self.assertTrue(wait_for(lambda: fleet.load(ids["plan"])["status"] == "running"), "not approved")
+            self.assertTrue(wait_for(lambda: not self.shown("card-plan")), "the card stayed")
+
+            # Files outside a slice: accept them, with a reason.
+            self.window.showFleet(ids["scope"])
+            self.assertTrue(wait_for(lambda: self.shown("card-scope")), "no scope card")
+            self.assertFalse(self.find("card-accept").property("enabled"), "accepted without a reason")
+            self.find("card-note").setProperty("text", "the changelog goes with it")
+            spin()
+            self.click("card-accept")
+            self.assertTrue(wait_for(lambda: fleet.load(ids["scope"])["nodes"]["builder.s1"]["scope"]["accepted"]))
+            self.assertTrue(wait_for(lambda: "reviewer.s1" in fleet.load(ids["scope"])["nodes"]), "no reviewer next")
+
+        # The board, and a node's detail.
+        self.window.showFleet(ids["merge"])
+        self.assertTrue(wait_for(lambda: self.shown("card-merge")))
+        self.click("run-view-board")
+        self.assertTrue(wait_for(lambda: self.shown("board-s2")), "no board")
+        self.click("board-s2")
+        self.assertTrue(wait_for(lambda: self.shown("node-detail")), "no node detail")
+        self.assertEqual(self.find("run-view").property("nodeId"), "builder.s2.2")
+
+        # A fleet node in Sessions carries a chip that opens its run.
+        self.add_session("fleet-node-1", "working", str(repo), fleet=ids["running"], node="builder.s2")
+        self.click("nav-sessions")
+        self.assertTrue(wait_for(lambda: self.shown("fleet-chip-fleet-node-1")), "no fleet chip")
+        self.click("filter-fleet")
+        self.assertTrue(wait_for(lambda: not self.shown("fleet-chip-fleet-node-1")), "fleet sessions not hidden")
+        self.click("filter-fleet")
+        self.assertTrue(wait_for(lambda: self.shown("fleet-chip-fleet-node-1")))
+        self.click("fleet-chip-fleet-node-1")
+        self.assertEqual(self.window.property("page"), "fleets")
+
+        # A task that grew moves to a fleet run, text and folder carried over; then starts.
+        QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+        self.assertTrue(wait_for(lambda: self.shown("task-prompt")))
+        self.find("task-prompt").setProperty("text", "Move billing to the new provider")
+        self.find("task-folder").setProperty("text", str(repo))
+        spin()
+        self.click("task-as-fleet")
+        self.assertTrue(wait_for(lambda: self.shown("fleet-goal")), "no fleet form")
+        self.assertEqual(self.find("fleet-goal").property("text"), "Move billing to the new provider")
+        self.assertEqual(self.find("fleet-folder").property("text"), str(repo))
+        self.assertTrue(self.shown("fleet-hint"), "no word about the stop rule for a short goal")
+        before = self.fleets.count
+        self.click("fleet-start")
+        self.assertTrue(wait_for(lambda: self.fleets.count == before + 1), "the run did not start")
+        self.assertTrue(wait_for(lambda: self.shown("run-view")))
+        new_run = next(r for r in fleet.runs() if r["goal"] == "Move billing to the new provider")
+
+        # The queue shows a run's nodes as one row that opens it.
+        self.click("nav-queue")
+        self.assertTrue(wait_for(lambda: self.shown("queued-fleet-" + new_run["id"])), "no fleet row in the queue")
+        self.click("queued-open-fleet")
+        self.assertEqual(self.window.property("page"), "fleets")
         self.assertEqual(self.warnings, [])
 
     def test_queue_from_the_form_then_pause_resume_cancel(self):

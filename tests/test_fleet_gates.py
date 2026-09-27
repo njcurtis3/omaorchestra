@@ -126,7 +126,8 @@ class DaemonGateTest(StateDir):
         self.d.usage_check = lambda agent, threshold: None
         self.d.usage_refresh = lambda agent: None
         self.told, self.pushed = [], []
-        self.d.notifier = mock.Mock(tell=lambda *a: self.told.append(a))
+        self.d.notifier = mock.Mock(offer=lambda title, body, label, action, urgency="normal":
+                                    self.told.append((title, body, urgency, label)))
         self.d.pusher = mock.Mock(fleet=lambda state: self.pushed.append(state["status"]))
 
     def test_answers_from_inside_an_agent_are_refused(self):
@@ -164,6 +165,7 @@ class DaemonGateTest(StateDir):
         self.d.fleet_saved(state, "still at the gate")
         self.assertEqual(self.pushed, ["at-gate"])
         self.assertIn("a plan is ready for you", self.told[0][0])
+        self.assertEqual(self.told[0][3], "Open")  # opens the run in omafleet
         fleet.hold(state, "builder.s1: its session crashed", by="builder.s1")
         self.d.fleet_saved(state, "held")
         self.assertEqual(self.pushed, ["at-gate", "held"])

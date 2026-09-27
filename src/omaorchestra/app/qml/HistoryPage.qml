@@ -7,6 +7,7 @@ import QtQuick.Layouts
 // come from Python.
 ColumnLayout {
   id: page
+  signal openFleet(string runId)
   property string outcomeFilter: ""
   // The record shown in detail, or "" for the list.
   property string selectedKey: ""
@@ -63,6 +64,12 @@ ColumnLayout {
         elide: Text.ElideRight
       }
       Button {
+        objectName: "history-fleet"
+        visible: !!page.r.fleet
+        text: "Its fleet run"
+        onClicked: page.openFleet(page.r.fleet)
+      }
+      Button {
         objectName: "history-resume"
         text: "Resume"
         onClicked: page.actionError = sessionHistory.resume(page.selectedKey)
@@ -89,7 +96,8 @@ ColumnLayout {
           ["Cost", page.r.costText ? page.r.costText + (page.r.cost && !page.r.cost.real ? " (what it would cost on the API)" : "") : ""],
           ["Commits", page.r.commitsText || ""],
           ["Waited", page.r.waits ? page.r.waits + " time" + (page.r.waits === 1 ? "" : "s") + " for you" : ""],
-          ["Resumed", page.r.resumed_from ? "from an earlier session" : ""]
+          ["Resumed", page.r.resumed_from ? "from an earlier session" : ""],
+          ["Fleet", page.r.fleet ? page.r.node + (page.r.role && page.r.role !== (page.r.node || "").split(".")[0] ? " as " + page.r.role : "") + " in " + page.r.fleet : ""]
         ].filter(row => !!row[1])
 
         delegate: RowLayout {

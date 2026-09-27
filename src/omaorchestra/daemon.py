@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import signal
 import socket
 import struct
@@ -60,7 +61,8 @@ ALREADY_RUNNING_EXIT = 3
 
 # A person's answers at a fleet run's gates: refused from inside an agent.
 FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape", "fleet-close",
-                       "fleet-accept-scope", "fleet-scope-back", "fleet-limits", "fleet-retry")
+                       "fleet-accept-scope", "fleet-scope-back", "fleet-limits", "fleet-retry", "fleet-pause",
+                       "fleet-resume")
 
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
@@ -713,6 +715,10 @@ class Daemon:
                 self.fleet_enqueue(state, nid)
             self.fleet_advance(state, f"retried: {nid or 'going on'}", queued=[nid] if nid else [])
             return {"ok": True, "run": state, "node": nid}
+        if cmd in ("fleet-pause", "fleet-resume"):
+            (fleet_graph.pause if cmd == "fleet-pause" else fleet_graph.resume)(state)
+            self.fleet_advance(state, cmd[6:] + "d")
+            return {"ok": True, "run": state}
         if cmd == "fleet-limits":
             fleet_graph.set_limits(state, request.get("budget"), request.get("max_steps"))
             self.fleet_advance(state, "limits changed")
@@ -832,6 +838,7 @@ class Daemon:
             event(logging.WARNING, "fleet run not saved", run=state["id"], error=str(e))
             return
         event(logging.INFO, "fleet run", run=state["id"], what=what)
+        self.fleet_summary()
         self.publish({"event": "fleet", "run": state["id"], "status": state["status"], "reason": state.get("reason"),
                       "state": state})
         seen = (state["status"], state.get("gate"), state.get("reason"))
@@ -840,12 +847,28 @@ class Daemon:
             if state["status"] in ("at-gate", "held", "done"):
                 self.fleet_tell(state)
 
+    def fleet_summary(self):
+        try:
+            fleet.write_summary()
+        except OSError as e:
+            event(logging.WARNING, "fleets.json not written", error=str(e))
+
     def fleet_tell(self, state):
-        """A run reached a gate, held, or finished: a notification here, and a
-        push when you are away."""
+        """A run reached a gate, held, or finished: a notification here (Open
+        shows it in omafleet), and a push when you are away."""
         if self.notifier:
             title, body = remote.fleet_message(state, "summary")
-            self.notifier.tell(title, body, "critical" if state["status"] == "held" else "normal")
+            run_id = state["id"]
+
+            async def open_app():
+                command = os.environ.get("OMAORCHESTRA_BIN") or shutil.which("omaorchestra") or "omaorchestra"
+                try:
+                    await asyncio.create_subprocess_exec(command, "app", "--fleet", run_id,
+                                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except OSError as e:
+                    event(logging.WARNING, "could not open the app", error=str(e))
+            self.notifier.offer(title, body, "Open", open_app,
+                                urgency="critical" if state["status"] == "held" else "normal")
         if self.pusher:
             self.pusher.fleet(state)
 
@@ -1267,8 +1290,9 @@ async def serve(sock_path, registry, daemon=None):
     daemon = daemon or Daemon(registry)
     claim_socket(sock_path)
     # Write the registry up front so file watchers (the bar widget) see it
-    # exist from the moment the daemon runs.
+    # exist from the moment the daemon runs; fleets.json likewise.
     registry.save()
+    daemon.fleet_summary()
     sock_path.parent.mkdir(parents=True, exist_ok=True)
     old_umask = os.umask(0o177)
     try:

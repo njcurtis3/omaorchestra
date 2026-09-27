@@ -104,7 +104,9 @@ git lists the files it changed (committed, uncommitted, new) and those
 outside its slice hold the slice before review (the scope check; no hook
 blocks it while it works). Each node's cost is recorded when it ends and
 counts against the run's budget, and the daemon flags a node working with
-no sign of life for the run's `stall_minutes`.
+no sign of life for the run's `stall_minutes`. For the bar widget, which
+reads files and never the socket, the daemon keeps `fleets.json` beside
+`sessions.json`: the runs not over, in brief, whether each needs you.
 
 The run then moves on (`fleet_graph.advance`): each node it is ready for is
 queued like any task (so the parallel limit, budget and usage limits apply)

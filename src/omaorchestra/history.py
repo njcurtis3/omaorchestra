@@ -177,7 +177,8 @@ def since_seconds(text, now=None):
 
 def haystack(record):
     return " ".join(str(record.get(k) or "") for k in
-                    ("id", "project", "cwd", "title", "task", "model", "provider", "branch", "agent", "outcome"))
+                    ("id", "project", "cwd", "title", "task", "model", "provider", "branch", "agent", "outcome",
+                     "fleet", "node", "role"))
 
 
 def matches(record, project=None, agent=None, since=None, search=None, outcome=None):

@@ -10,6 +10,7 @@ ColumnLayout {
   spacing: 14
   signal launched(string sessionId)
   signal queued()
+  signal asFleet(string goal, string folder)
 
   property string error: ""
   readonly property bool folderOk: sessions.folderExists(folder.text)
@@ -355,6 +356,17 @@ ColumnLayout {
       text: page.chained
         ? "A chain is queued: each step starts once the one before finishes, and one that stops or fails holds the rest. A step that waits for you pauses the chain."
         : "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
+    }
+    Button {
+      objectName: "task-as-fleet"
+      text: "Run as fleet…"
+      flat: true
+      onClicked: page.asFleet(prompt.text, folder.text)
+      ToolTip.visible: hovered
+      ToolTip.delay: 500
+      ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
+      contentItem: Label { text: parent.text; color: theme.accent; horizontalAlignment: Text.AlignHCenter }
+      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.hovered ? theme.selection : "transparent" }
     }
     Button {
       objectName: "task-queue"

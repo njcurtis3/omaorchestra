@@ -84,6 +84,15 @@ or switches the open window to it. The model and branch come from the
 agent's transcript (Claude Code), or from the agent itself when it reports
 them.
 
+The **omafleet** tab holds [fleet runs](#fleets): the runs on the left
+(needing you first), and the picked run on the right with what it waits on
+you for (the plan to approve, files outside a slice, a slice rejected
+twice...), then the run as a graph, a board (a row per slice) or a
+timeline, and any node's detail: what it was told and what it handed back.
+New fleet run starts one; **Roles** and **Fleets** list what runs can use.
+Fleet agents also show in Sessions with a chip that opens their run, and
+`omaorchestra app --fleet <run>` opens the app on a run.
+
 ```bash
 sudo pacman -S pyside6        # the app's one dependency
 omaorchestra app              # open it
@@ -473,6 +482,11 @@ written checks it and may send it back. With three or more slices that
 touch different files, builders can work in parallel, each in a worktree
 of its own, and an integrator merges them once you approve the merge.
 
+![A fleet run's plan, waiting at its gate](screenshots/omafleet-plan.png)
+
+In the app it is the **omafleet** tab (**New fleet run**, or **Run as
+fleet…** on New task to carry a task over); on the command line:
+
 ```bash
 omaorchestra fleet run "add pagination to search" --in ~/code/app
 omaorchestra fleet show <run>          # the plan at its gate, else a row per slice
@@ -516,8 +530,10 @@ when away) when it reaches a gate or needs you:
 
 A builder or integrator that ends on any branch but its own holds the run
 too: a run's work never lands on your branches. A node waiting for you is
-marked, and one with no sign of life for a while is flagged. The Fleets tab
-of `omaorchestra top` does all of this from a phone.
+marked, and one with no sign of life for a while is flagged. The omafleet
+tab answers each of these with a card at the top of the run, and the
+Fleets tab of `omaorchestra top` does it from a phone. The bar counts runs
+that need you, and its panel lists them.
 
 **Closing.** `fleet close` checks git: every slice built and reviewed PASS,
 its commits on the run's branch, nothing uncommitted, every changed file in

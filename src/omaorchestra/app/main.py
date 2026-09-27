@@ -21,7 +21,7 @@ def activate_own_window():
         pass
 
 
-def run(check=False, session=""):
+def run(check=False, session="", fleet=""):
     warnings = []
     if check:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -55,7 +55,7 @@ def run(check=False, session=""):
     QQuickStyle.setStyle("Basic")  # plain controls that take the theme's colours
 
     server = None
-    if not check and instance.ask_running_instance(session=session):
+    if not check and instance.ask_running_instance(session=session, fleet=fleet):
         return 0
 
     theme = backend.Theme()
@@ -68,6 +68,7 @@ def run(check=False, session=""):
     provider_list = backend.Providers()
     spend = backend.Spend(sessions)
     mcp = backend.Mcp(sessions)
+    fleets = backend.Fleets(sessions)
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
     ctx.setContextProperty("theme", theme)
@@ -80,9 +81,11 @@ def run(check=False, session=""):
     ctx.setContextProperty("providerList", provider_list)
     ctx.setContextProperty("spend", spend)
     ctx.setContextProperty("mcp", mcp)
+    ctx.setContextProperty("fleets", fleets)
     ctx.setContextProperty("appVersion", __version__)
     ctx.setContextProperty("fontFamily", backend.monospace_family())
     ctx.setContextProperty("initialSession", session)
+    ctx.setContextProperty("initialFleet", fleet)
     engine.load(QUrl.fromLocalFile(str(Path(__file__).parent / "qml" / "Main.qml")))
     if not engine.rootObjects():
         print("omaorchestra app: the interface failed to load", file=sys.stderr)
@@ -92,9 +95,11 @@ def run(check=False, session=""):
     if not check:
         root = engine.rootObjects()[0]
 
-        def activate(session_id):
+        def activate(session_id, fleet_id=""):
             if session_id:
                 root.showSession(session_id)
+            if fleet_id:
+                root.showFleet(fleet_id)
             activate_own_window()
 
         server = instance.listen(activate)  # noqa: F841 (kept alive by the local)
