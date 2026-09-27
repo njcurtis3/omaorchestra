@@ -283,11 +283,14 @@ def record_reply(state, nid, text, now=None, git=None, changed=None, cost=None):
     try:
         result = fleet_reply.parse(n["role"], text)
     except fleet_reply.ReplyError as e:
-        n.update(status="held", error=f"its reply: {e}", ended=now)
+        said = str(e)
+        n.update(status="held", error=said if said.startswith("its ") else f"its reply: {said}", error_kind="reply",
+                 ended=now)
         activity(state["id"], {"event": "bad-reply", "node": nid, "error": str(e)}, now)
         hold(state, f"{nid}: {n['error']}", nid, now)
         return n
-    n.update(status="done", result=result, written_by=n["role"], error=None, ended=now, git=git or None)
+    n.update(status="done", result=result, written_by=n["role"], error=None, error_kind=None, ended=now,
+             git=git or None)
     activity(state["id"], {"event": "result", "node": nid}, now)
     if state.get("held_by") == nid:
         release(state, now)
@@ -346,6 +349,32 @@ def opencode_reply(session_id, run=subprocess.run):
         if text.strip():
             return text.strip()
     return ""
+
+
+def board(state):
+    """One row per slice of the plan the run carries out: its latest build
+    and review, how many builds, the scope check, its branch and cost.
+    What `fleet show`, `top` and the app draw."""
+    rows = []
+    for s in (live_plan(state) or {}).get("slices") or []:
+        built = latest(state, "builder", s["id"])
+        review = latest(state, "reviewer", s["id"])
+        scope = (built or {}).get("scope") or {}
+        nodes = [n for n in state["nodes"].values() if n.get("slice") == s["id"]]
+        rows.append({
+            "slice": s["id"], "intent": s["intent"], "risk": s["risk"],
+            "build": (built or {}).get("status") or "not started",
+            "blocked": ((built or {}).get("result") or {}).get("blocked"),
+            "verdict": ((review or {}).get("result") or {}).get("verdict") if review and review["status"] == "done"
+            else ((review or {}).get("status") if review else None),
+            "tries": (built or {}).get("attempt") or 0,
+            "extra": scope.get("extra") or [], "accepted": bool(scope.get("accepted")),
+            "branch": ((state.get("slice_worktrees") or {}).get(s["id"]) or {}).get("branch") or state.get("branch"),
+            "cost": round(sum((n.get("cost") or {}).get("usd") or 0 for n in nodes), 4),
+            "waiting": any(n.get("waiting") and n["status"] == "running" for n in nodes),
+            "stalled": any(n.get("stalled") and n["status"] == "running" for n in nodes),
+        })
+    return rows
 
 
 # ---------------------------------------------------------------- briefs

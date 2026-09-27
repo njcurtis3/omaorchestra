@@ -8,7 +8,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, hooks, keys, launch,
+from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, fleet, fleet_graph,
+               hooks, keys, launch,
                history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, service, setup, windows,
                worktrees)
 from .mcp import registry as mcp_registry
@@ -949,6 +950,216 @@ def cmd_role_check(args):
     return 1 if problems else 0
 
 
+# ---------------------------------------------------------------- fleets
+
+RUN_WORDS = {"running": "running", "held": "HELD", "done": "done", "cancelled": "cancelled"}
+
+
+def fleet_request(payload, timeout=30):
+    try:
+        response = client.request(payload, timeout=timeout)  # a start or an approval may make worktrees
+    except client.DaemonUnavailable:
+        raise fleet.RunError("omaorchestrad is not running; fleet runs live in the daemon") from None
+    if not response.get("ok"):
+        raise fleet.RunError(response.get("error") or "the daemon refused")
+    return response
+
+
+def run_word(state):
+    if state["status"] == "at-gate":
+        return f"waiting at the {state.get('gate')} gate"
+    if state["status"] == "done" and state.get("closed"):
+        return "closed"
+    return RUN_WORDS.get(state["status"], state["status"])
+
+
+def print_run_line(state):
+    spent = fleet.spent(state)
+    print(f"{state['id']:<48} {run_word(state):<26} {state.get('shape') or state['fleet']:<11} ${spent:.2f}")
+    if state["status"] == "held" and state.get("reason"):
+        print(f"{'':<48} {state['reason']}")
+
+
+def cmd_fleet_run(args):
+    folder = launch.Path(args.dir).expanduser().resolve()
+    response = fleet_request({"cmd": "fleet-start", "goal": args.goal, "folder": str(folder), "fleet": args.fleet,
+                              "shape": args.shape, "budget": args.budget, "path": os.environ.get("PATH")})
+    state = response["run"]
+    print(f"started {state['id']} ({state['fleet']} fleet) in {state['folder']}")
+    first = next(iter(state["nodes"]), None)
+    if first:
+        print(f"  {first} first; the plan will wait for you at its gate")
+    if state["status"] == "held":
+        print(f"  held: {state['reason']}")
+    print(f"  follow it: omaorchestra fleet show {state['id']}  (or the Fleets tab in omaorchestra top)")
+    return 0
+
+
+def cmd_fleet_list(args):
+    runs = fleet_request({"cmd": "fleet-list"})["runs"]
+    if not args.all:
+        runs = fleet.current(runs)
+    if args.json:
+        print(json.dumps(runs, indent=2))
+        return 0
+    if not runs:
+        print("no fleet runs" + ("" if args.all else " (--all for older ones)"))
+        return 0
+    for state in runs:
+        print_run_line(state)
+    return 0
+
+
+def cmd_fleet_show(args):
+    response = fleet_request({"cmd": "fleet-show", "run": args.run})
+    state, activity = response["run"], response["activity"]
+    if args.json:
+        print(json.dumps(response, indent=2))
+        return 0
+    print(state["goal"])
+    print(f"  {run_word(state)}" + (f": {state['reason']}" if state["status"] == "held" else ""))
+    limits = state.get("limits") or {}
+    for label, value in (("run", state["id"]), ("folder", state["folder"]), ("fleet", state["fleet"]),
+                         ("shape", " ".join(x for x in (state.get("shape"), f"({state['shape_note']})"
+                                                         if state.get("shape_note") else "") if x)),
+                         ("branch", state.get("branch")),
+                         ("spent", f"${fleet.spent(state):.2f}" + (f" of ${limits['budget']}" if limits.get("budget")
+                                                                    else "") + f"; {len(state['nodes'])} of "
+                          f"{limits.get('max_steps') or 30} steps")):
+        if value:
+            print(f"  {label + ':':<8} {value}")
+    for role in ("scout", "architect"):
+        n = fleet.latest(state, role)
+        if n:
+            print(f"  {role + ':':<10} {n['status']}" + (f" (try {n['attempt']})" if n["attempt"] > 1 else "")
+                  + (f": {n['error']}" if n.get("error") else ""))
+    plan = fleet.live_plan(state)
+    if plan and state["status"] == "at-gate" and state.get("gate") == "plan":
+        print(f"\nThe plan ({plan['shape']} proposed): {plan['rationale']}")
+        for s in plan["slices"]:
+            print(f"\n  {s['id']}: {s['intent']}")
+            print(f"      files: {', '.join(s['files'])}")
+            print(f"      done when: {s['done_when']}")
+            print(f"      risk: {s['risk']} ({s['risk_why']})")
+        if plan.get("edges"):
+            print("\n  order: " + "; ".join(f"{e['from']} before {e['to']} ({e['artifact']})" for e in plan["edges"]))
+        print("\n  not doing: " + ("; ".join(plan["not_doing"]) or "(nothing named)"))
+        print(f"  to approve: {plan['approve']}")
+        print(f"\n  omaorchestra fleet approve {state['id']}   (or: send-back, drop, shape, cancel)")
+    elif plan:
+        print(f"\n  {'slice':<7} {'build':<12} {'review':<8} {'tries':<6} {'cost':<8} notes")
+        for row in fleet.board(state):
+            notes = [x for x in ("waits for you" if row["waiting"] else "", "looks stalled" if row["stalled"] else "",
+                                 f"blocked: {row['blocked']}" if row["blocked"] else "",
+                                 ("accepted" if row["accepted"] else "outside its files") + ": " + ", ".join(row["extra"])
+                                 if row["extra"] else "") if x]
+            print(f"  {row['slice']:<7} {row['build']:<12} {row['verdict'] or '-':<8} {row['tries']:<6} "
+                  f"${row['cost']:<7.2f} {'; '.join(notes) or row['intent'][:40]}")
+        integrator = fleet.latest(state, "integrator")
+        if integrator:
+            print(f"  integrator: {integrator['status']}" + (f": {integrator['error']}" if integrator.get("error") else ""))
+        if state.get("dropped"):
+            print(f"  dropped: {', '.join(state['dropped'])}")
+    if args.activity:
+        print()
+        for entry in activity[-args.activity:]:
+            when = time.strftime("%H:%M:%S", time.localtime(entry["at"]))
+            detail = " ".join(f"{k}={v}" for k, v in entry.items() if k not in ("at", "event") and v not in (None, ""))
+            print(f"  {when}  {entry['event']:<14} {detail}")
+    return 0
+
+
+def fleet_answer(payload, done):
+    state = fleet_request(payload)["run"]
+    print(done)
+    if state["status"] == "held":
+        print(f"  held: {state['reason']}")
+    elif state["status"] == "at-gate":
+        print(f"  waiting at the {state['gate']} gate")
+    return 0
+
+
+def cmd_fleet_approve(args):
+    return fleet_answer({"cmd": "fleet-approve", "run": args.run, "gate": args.gate, "note": args.note},
+                        "approved; the run goes on")
+
+
+def cmd_fleet_send_back(args):
+    return fleet_answer({"cmd": "fleet-send-back", "run": args.run, "note": args.note},
+                        "sent back: a new architect plans again with your note")
+
+
+def cmd_fleet_drop(args):
+    return fleet_answer({"cmd": "fleet-drop", "run": args.run, "slice": args.slice}, f"dropped {args.slice}")
+
+
+def cmd_fleet_shape(args):
+    state = fleet_request({"cmd": "fleet-shape", "run": args.run, "shape": args.shape})["run"]
+    print(f"it will run as {state['shape']}" + (f" ({state['shape_note']})" if state.get("shape_note") else ""))
+    return 0
+
+
+def cmd_fleet_accept_files(args):
+    return fleet_answer({"cmd": "fleet-accept-scope", "run": args.run, "node": args.node, "reason": args.reason},
+                        "accepted; the slice goes on to review")
+
+
+def cmd_fleet_undo_files(args):
+    return fleet_answer({"cmd": "fleet-scope-back", "run": args.run, "node": args.node},
+                        "sent to a new builder to undo the extra files")
+
+
+def cmd_fleet_retry(args):
+    response = fleet_request({"cmd": "fleet-retry", "run": args.run, "note": args.note})
+    print(f"trying again: {response['node']}" if response.get("node") else "going on")
+    return 0
+
+
+def cmd_fleet_limits(args):
+    if args.budget is None and args.steps is None:
+        raise fleet.RunError("give --budget, --steps, or both")
+    state = fleet_request({"cmd": "fleet-limits", "run": args.run, "budget": args.budget,
+                           "max_steps": args.steps})["run"]
+    limits = state["limits"]
+    print(f"budget ${limits['budget'] or 0} (0: none), {limits['max_steps']} steps; the run is {run_word(state)}")
+    return 0
+
+
+def cmd_fleet_cancel(args):
+    fleet_request({"cmd": "fleet-cancel", "run": args.run})
+    print("cancelled: nothing more starts (agents already working are left for you to stop)")
+    return 0
+
+
+def cmd_fleet_close(args):
+    response = fleet_request({"cmd": "fleet-close", "run": args.run, "check": True})
+    checks = response["checks"]
+    for ok, what in checks:
+        print(("  ok   " if ok else "  NOT  ") + what)
+    if not all(ok for ok, _ in checks):
+        print("it cannot be closed yet")
+        return 1
+    if args.check:
+        return 0
+    response = fleet_request({"cmd": "fleet-close", "run": args.run})
+    print("closed")
+    for note in response.get("notes") or []:
+        print(f"  {note}")
+    return 0
+
+
+def cmd_fleet_templates(args):
+    for name, spec in sorted(fleet_graph.load().items()):
+        print(f"{name:<14} {spec['shape']:<11} {spec['description']}" + ("" if spec["builtin"] else "  (yours)"))
+        custom = {k: v for k, v in spec["roles"].items() if k != v}
+        extras = [f"no scout" if not spec["scout"] else "", f"budget ${spec['budget']}" if spec["budget"] else "",
+                  ", ".join(f"{k}: {v}" for k, v in custom.items())]
+        if any(extras):
+            print(f"{'':<14} {'; '.join(x for x in extras if x)}")
+    print(f"\nyour own go in {fleet_graph.path()}")
+    return 0
+
+
 def cmd_approvals(args):
     try:
         response = client.request({"cmd": "approvals"})
@@ -1450,6 +1661,70 @@ def build_parser():
     rr.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
     rr.add_argument("--paused", action="store_true", help="add its first step paused")
     rr.set_defaults(func=cmd_recipe_run)
+    fp = sub.add_parser("fleet", help="fleet runs: a scout, an architect, builders and reviewers on one goal, with "
+                                      "gates for you")
+    fsub = fp.add_subparsers(dest="fleet_command", required=True)
+    fr = fsub.add_parser("run", help="start a fleet run on a goal; it waits for you at the plan gate")
+    fr.add_argument("goal", help="what the run should achieve")
+    fr.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
+    fr.add_argument("--fleet", default="auto", help="which fleet (see `fleet templates`; default auto)")
+    fr.add_argument("--shape", choices=["single-loop", "diamond"], help="force the shape, whatever the architect says")
+    fr.add_argument("--budget", type=float, help="US$ this run may spend (API-equivalent); replaces the fleet's")
+    fr.set_defaults(func=cmd_fleet_run)
+    fl = fsub.add_parser("list", help="current runs (not over, or ended this week)")
+    fl.add_argument("--all", action="store_true", help="every run")
+    fl.add_argument("--json", action="store_true", help="machine-readable output")
+    fl.set_defaults(func=cmd_fleet_list)
+    fs = fsub.add_parser("show", help="a run: the plan at its gate, else the board (a row per slice)")
+    fs.add_argument("run", help="run id or prefix")
+    fs.add_argument("--activity", type=int, nargs="?", const=20, default=0, metavar="N",
+                    help="also its last N events (default 20)")
+    fs.add_argument("--json", action="store_true", help="machine-readable output")
+    fs.set_defaults(func=cmd_fleet_show)
+    fa = fsub.add_parser("approve", help="approve the gate the run waits at (the plan, or the merge)")
+    fa.add_argument("run", help="run id or prefix")
+    fa.add_argument("--gate", choices=["plan", "merge"], help="which gate (default: the one it waits at)")
+    fa.add_argument("--note", help="a note kept with the approval")
+    fa.set_defaults(func=cmd_fleet_approve)
+    fb = fsub.add_parser("send-back", help="send the plan back to a new architect, with what to change")
+    fb.add_argument("run", help="run id or prefix")
+    fb.add_argument("note", help="what should change")
+    fb.set_defaults(func=cmd_fleet_send_back)
+    fd = fsub.add_parser("drop", help="leave a slice out of the plan before approving it")
+    fd.add_argument("run", help="run id or prefix")
+    fd.add_argument("slice", help="the slice's id (s1, s2...)")
+    fd.set_defaults(func=cmd_fleet_drop)
+    fsh = fsub.add_parser("shape", help="run the plan as a single loop or a diamond (a diamond is still checked)")
+    fsh.add_argument("run", help="run id or prefix")
+    fsh.add_argument("shape", choices=["single-loop", "diamond"])
+    fsh.set_defaults(func=cmd_fleet_shape)
+    fac = fsub.add_parser("accept-files", help="accept the files a builder changed outside its slice, saying why")
+    fac.add_argument("run", help="run id or prefix")
+    fac.add_argument("node", help="the builder (builder.s1...)")
+    fac.add_argument("reason", help="why they belong (the reviewer is told)")
+    fac.set_defaults(func=cmd_fleet_accept_files)
+    fu = fsub.add_parser("undo-files", help="send the slice to a new builder to undo the files outside it")
+    fu.add_argument("run", help="run id or prefix")
+    fu.add_argument("node", help="the builder (builder.s1...)")
+    fu.set_defaults(func=cmd_fleet_undo_files)
+    frt = fsub.add_parser("retry", help="a held run tries again: a new attempt of what held it")
+    frt.add_argument("run", help="run id or prefix")
+    frt.add_argument("--note", help="what to do differently (goes into its brief)")
+    frt.set_defaults(func=cmd_fleet_retry)
+    flm = fsub.add_parser("limits", help="change a run's budget or step limit (a run held by them goes on)")
+    flm.add_argument("run", help="run id or prefix")
+    flm.add_argument("--budget", type=float, help="US$ (0: no budget)")
+    flm.add_argument("--steps", type=int, help="nodes the run may start in all")
+    flm.set_defaults(func=cmd_fleet_limits)
+    fc = fsub.add_parser("cancel", help="stop a run: nothing more starts")
+    fc.add_argument("run", help="run id or prefix")
+    fc.set_defaults(func=cmd_fleet_cancel)
+    fcl = fsub.add_parser("close", help="check a finished run against git and close it (its branch stays yours to merge)")
+    fcl.add_argument("run", help="run id or prefix")
+    fcl.add_argument("--check", action="store_true", help="only the checks; close nothing")
+    fcl.set_defaults(func=cmd_fleet_close)
+    fsub.add_parser("templates", help="the fleets a run can use: auto, single-loop, diamond, yours").set_defaults(
+        func=cmd_fleet_templates)
     role_p = sub.add_parser("role", help="roles an agent can run as: scout, architect, builder, reviewer, integrator, "
                                          "yours")
     role_sub = role_p.add_subparsers(dest="role_command", required=True)
@@ -1622,7 +1897,8 @@ def run_command(args, parser=None):
     except (claude_settings.SettingsError, service.ServiceError, config.ConfigError, windows.WindowError,
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
             keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
-            remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError, roles.RoleError) as e:
+            remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError, roles.RoleError,
+            fleet.RunError, fleet_graph.FleetError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

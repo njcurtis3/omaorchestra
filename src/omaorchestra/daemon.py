@@ -60,7 +60,7 @@ ALREADY_RUNNING_EXIT = 3
 
 # A person's answers at a fleet run's gates: refused from inside an agent.
 FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape", "fleet-close",
-                       "fleet-accept-scope", "fleet-scope-back", "fleet-limits")
+                       "fleet-accept-scope", "fleet-scope-back", "fleet-limits", "fleet-retry")
 
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
@@ -614,7 +614,7 @@ class Daemon:
             return
         if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
             return  # another attempt's session, or a node already settled
-        if finished and n["status"] == "held" and not (n.get("error") or "").startswith("its reply"):
+        if finished and n["status"] == "held" and n.get("error_kind") != "reply":
             return
         builder = n["role"] == "builder"
 
@@ -665,6 +665,10 @@ class Daemon:
                                               "your own terminal, or from omaorchestra top."}
         if cmd == "fleet-start":
             template = fleet_graph.get(request.get("fleet") or "auto")
+            if request.get("shape"):
+                if request["shape"] not in fleet_graph.SHAPES:
+                    raise fleet.RunError(f"the shape is one of {', '.join(fleet_graph.SHAPES)}")
+                template = {**template, "shape": request["shape"]}
             state = fleet.create(request.get("goal") or "", request.get("folder") or "", template,
                                  path=request.get("path") or self.user_path, budget=request.get("budget"))
             event(logging.INFO, "fleet run started", run=state["id"], fleet=template["name"], folder=state["folder"])
@@ -703,6 +707,12 @@ class Daemon:
             self.fleet_enqueue(state, nid)
             self.fleet_advance(state, f"{request.get('node')} sent back for its extra files", queued=[nid])
             return {"ok": True, "run": state}
+        if cmd == "fleet-retry":
+            nid = fleet_graph.retry(state, request.get("note"))
+            if nid:
+                self.fleet_enqueue(state, nid)
+            self.fleet_advance(state, f"retried: {nid or 'going on'}", queued=[nid] if nid else [])
+            return {"ok": True, "run": state, "node": nid}
         if cmd == "fleet-limits":
             fleet_graph.set_limits(state, request.get("budget"), request.get("max_steps"))
             self.fleet_advance(state, "limits changed")

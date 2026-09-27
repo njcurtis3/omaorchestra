@@ -464,6 +464,83 @@ The built-in roles are adapted from
 [graph_agents](https://github.com/njcurtis3/graph_agents), whose own role
 files load unchanged as a project's roles.
 
+## Fleets
+
+A fleet run puts several agents with [roles](#roles) on one goal: a scout
+establishes the facts, an architect writes a plan of slices, **you approve
+it**, then a builder builds each slice and a reviewer who never saw it
+written checks it and may send it back. With three or more slices that
+touch different files, builders can work in parallel, each in a worktree
+of its own, and an integrator merges them once you approve the merge.
+
+```bash
+omaorchestra fleet run "add pagination to search" --in ~/code/app
+omaorchestra fleet show <run>          # the plan at its gate, else a row per slice
+omaorchestra fleet approve <run>       # the builders start
+omaorchestra fleet close <run>         # checked against git; the branch is yours to merge
+```
+
+It is for work of several parts, or work you would not merge unreviewed.
+One file, one bug, anything you could say in a paragraph: a single task
+(`run`, or New task) is cheaper and as good.
+
+**The plan gate.** Nothing is built before you approve. `fleet show` prints
+the plan: its shape, each slice with the files it may touch, how to check
+it is done, and its risk, and what is not being done. Then:
+
+| Command | Does |
+|---|---|
+| `fleet approve <run>` | the builders start (at the merge gate: the integrator merges) |
+| `fleet send-back <run> "note"` | a new architect plans again, with your note and the plan before |
+| `fleet drop <run> <slice>` | leaves a slice out (not one another depends on) |
+| `fleet shape <run> single-loop\|diamond` | how to run it; a diamond is still checked |
+| `fleet cancel <run>` | nothing more starts |
+
+**How it runs.** A single loop builds one slice at a time on the run's own
+branch (`omaorchestra/fleet-<run>`, in its own worktree). A diamond builds
+the slices at once, each on a branch of its own, then waits at the merge
+gate. A diamond outside git, with fewer than three slices, or with two
+slices touching the same file becomes a single loop, and `fleet show` says
+why. Every agent is a queued task: the parallel limit, the daily budget
+and usage limits apply, and each shows in Sessions as usual.
+
+**When it holds.** A run stops and tells you (a notification, and a push
+when away) when it reaches a gate or needs you:
+
+| Held because | Answer |
+|---|---|
+| a reply without its JSON block, or a session that stopped | `fleet retry <run> [--note ...]`, or ask that agent in its window to fix its reply |
+| a slice rejected twice, or a builder blocked | `fleet retry <run> --note "..."`: another build, with your note |
+| a builder changed files outside its slice | `fleet accept-files <run> <builder> "why"`, or `fleet undo-files <run> <builder>` |
+| the budget or step limit | `fleet limits <run> --budget 10 --steps 40` |
+
+A builder or integrator that ends on any branch but its own holds the run
+too: a run's work never lands on your branches. A node waiting for you is
+marked, and one with no sign of life for a while is flagged. The Fleets tab
+of `omaorchestra top` does all of this from a phone.
+
+**Closing.** `fleet close` checks git: every slice built and reviewed PASS,
+its commits on the run's branch, nothing uncommitted, every changed file in
+a slice (or accepted). It then removes the slices' worktrees; the run's
+branch stays for you to merge with `omaorchestra worktree merge <branch>`.
+
+**Fleets.** `auto` (the architect picks the shape), `single-loop` and
+`diamond` are built in (`fleet templates`). Yours go in
+`~/.config/omaorchestra/fleets.toml`:
+
+```toml
+[fleets.careful]
+description = "Single loop, my security reviewer"
+shape = "single-loop"        # auto, single-loop, diamond
+scout = true                 # false: straight to the architect
+tries = 2                    # builds of a slice before a REJECT holds the run
+budget = 5                   # US$ (API-equivalent for subscriptions); 0: none
+max_steps = 30               # agents the run may start in all
+stall_minutes = 20           # working with no sign of life this long is flagged
+[fleets.careful.roles]       # which role plays each stage
+reviewer = "security-reviewer"
+```
+
 ## Worktrees
 
 In a git repository, each task started from omaorchestra gets its own git

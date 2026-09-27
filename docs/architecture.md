@@ -56,12 +56,13 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "queue-run", "id"}` | `{"ok": true, "session_id"}` |
 | `{"cmd": "queue-add", "item": {..., "after"?, "same_worktree"?, "brief"?, "review"?}}` | a chained task (`chain.py`): it waits (state `waiting`) until the task or session it follows finishes, then is released, or `held` with the reason |
 | `{"cmd": "stopping", "session_id"}` | `{"ok": true, "known": bool}`: it is being stopped on purpose (history says "stopped", not "crashed") |
-| `{"cmd": "fleet-start", "goal", "folder", "fleet"?, "path"?}` | `{"ok": true, "run": {...}}`: a fleet run (`fleet_graph.py`), its first node queued |
+| `{"cmd": "fleet-start", "goal", "folder", "fleet"?, "shape"?, "budget"?, "path"?}` | `{"ok": true, "run": {...}}`: a fleet run (`fleet_graph.py`), its first node queued |
 | `{"cmd": "fleet-list"}`, `{"cmd": "fleet-show", "run"}` | `{"ok": true, "runs": [...]}`, `{"ok": true, "run": {...}, "activity": [...]}` (`run` is an id or prefix) |
 | `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, merge) is passed |
 | `{"cmd": "fleet-cancel", "run"}` | `{"ok": true, "run": {...}}`: nothing more starts; its queued nodes are removed |
 | `{"cmd": "fleet-send-back", "run", "note"}`, `fleet-drop` (`slice`), `fleet-shape` (`shape`) | `{"ok": true, "run": {...}}`: answers at the plan gate |
 | `{"cmd": "fleet-accept-scope", "run", "node", "reason"}`, `{"cmd": "fleet-scope-back", "run", "node"}` | `{"ok": true, "run": {...}}`: a builder's files outside its slice (`fleet_scope.py`) accepted, or the slice sent to a new builder to undo them |
+| `{"cmd": "fleet-retry", "run", "note"?}` | `{"ok": true, "run": {...}, "node"}`: a held run tries again, with a new attempt of what held it |
 | `{"cmd": "fleet-limits", "run", "budget"?, "max_steps"?}` | `{"ok": true, "run": {...}}`: a run held by its limits goes on if they now allow it |
 | `{"cmd": "fleet-close", "run", "check"?}` | `{"ok": true, "run", "checks": [[ok, what]...], "notes"?}`: checked against git (`fleet_close.py`); with `check`, only the checks. The gate answers and closing are refused from inside an agent |
 

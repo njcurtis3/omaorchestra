@@ -30,6 +30,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`models`](#omaorchestra-models) | models from Claude Code and your providers |
 | [`worktree`](#omaorchestra-worktree) | task worktrees: list, review, merge, remove |
 | [`recipe`](#omaorchestra-recipe) | named multi-step chains: plan-then-build, build-then-review, your own |
+| [`fleet`](#omaorchestra-fleet) | fleet runs: a scout, an architect, builders and reviewers on one goal, with gates for you |
 | [`role`](#omaorchestra-role) | roles an agent can run as: scout, architect, builder, reviewer, integrator, yours |
 | [`stop`](#omaorchestra-stop) | stop a session's agent process (asks first) |
 | [`dismiss`](#omaorchestra-dismiss) | remove a session from the list (it returns if the agent reports again) |
@@ -729,6 +730,199 @@ omaorchestra recipe run [--in DIR] [--model MODEL] [--provider PROVIDER] [--work
 | `--worktree` | work in a separate git worktree (default: tasks.isolate_with_worktrees) |
 | `--no-worktree` | work in the folder itself |
 | `--paused` | add its first step paused |
+
+## `omaorchestra fleet`
+
+Fleet runs: a scout, an architect, builders and reviewers on one goal, with gates for you.
+
+```
+omaorchestra fleet <command> ...
+```
+
+### `omaorchestra fleet run`
+
+Start a fleet run on a goal; it waits for you at the plan gate.
+
+```
+omaorchestra fleet run [--in DIR] [--fleet FLEET] [--shape {single-loop,diamond}]
+                       [--budget BUDGET]
+                       goal
+```
+
+| Argument | Meaning |
+|---|---|
+| `goal` | what the run should achieve |
+| `--in DIR` | folder to work in (default: here) |
+| `--fleet FLEET` | which fleet (see `fleet templates`; default auto) |
+| `--shape SHAPE` | force the shape, whatever the architect says; one of `single-loop`, `diamond` |
+| `--budget BUDGET` | US$ this run may spend (API-equivalent); replaces the fleet's |
+
+### `omaorchestra fleet list`
+
+Current runs (not over, or ended this week).
+
+```
+omaorchestra fleet list [--all] [--json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--all` | every run |
+| `--json` | machine-readable output |
+
+### `omaorchestra fleet show`
+
+A run: the plan at its gate, else the board (a row per slice).
+
+```
+omaorchestra fleet show [--activity [N]] [--json] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `--activity N` | also its last N events (default 20) |
+| `--json` | machine-readable output |
+
+### `omaorchestra fleet approve`
+
+Approve the gate the run waits at (the plan, or the merge).
+
+```
+omaorchestra fleet approve [--gate {plan,merge}] [--note NOTE] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `--gate GATE` | which gate (default: the one it waits at); one of `plan`, `merge` |
+| `--note NOTE` | a note kept with the approval |
+
+### `omaorchestra fleet send-back`
+
+Send the plan back to a new architect, with what to change.
+
+```
+omaorchestra fleet send-back run note
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `note` | what should change |
+
+### `omaorchestra fleet drop`
+
+Leave a slice out of the plan before approving it.
+
+```
+omaorchestra fleet drop run slice
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `slice` | the slice's id (s1, s2...) |
+
+### `omaorchestra fleet shape`
+
+Run the plan as a single loop or a diamond (a diamond is still checked).
+
+```
+omaorchestra fleet shape run {single-loop,diamond}
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `shape` | one of single-loop, diamond |
+
+### `omaorchestra fleet accept-files`
+
+Accept the files a builder changed outside its slice, saying why.
+
+```
+omaorchestra fleet accept-files run node reason
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `node` | the builder (builder.s1...) |
+| `reason` | why they belong (the reviewer is told) |
+
+### `omaorchestra fleet undo-files`
+
+Send the slice to a new builder to undo the files outside it.
+
+```
+omaorchestra fleet undo-files run node
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `node` | the builder (builder.s1...) |
+
+### `omaorchestra fleet retry`
+
+A held run tries again: a new attempt of what held it.
+
+```
+omaorchestra fleet retry [--note NOTE] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `--note NOTE` | what to do differently (goes into its brief) |
+
+### `omaorchestra fleet limits`
+
+Change a run's budget or step limit (a run held by them goes on).
+
+```
+omaorchestra fleet limits [--budget BUDGET] [--steps STEPS] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `--budget BUDGET` | US$ (0: no budget) |
+| `--steps STEPS` | nodes the run may start in all |
+
+### `omaorchestra fleet cancel`
+
+Stop a run: nothing more starts.
+
+```
+omaorchestra fleet cancel run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+
+### `omaorchestra fleet close`
+
+Check a finished run against git and close it (its branch stays yours to merge).
+
+```
+omaorchestra fleet close [--check] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix |
+| `--check` | only the checks; close nothing |
+
+### `omaorchestra fleet templates`
+
+The fleets a run can use: auto, single-loop, diamond, yours.
+
+```
+omaorchestra fleet templates
+```
 
 ## `omaorchestra role`
 

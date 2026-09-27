@@ -434,6 +434,35 @@ def scope_send_back(state, nid, now=None):
     return new
 
 
+def retry(state, note=None, now=None):
+    """A held run tries again: a new attempt of what held it (a node that
+    failed or replied badly, a slice rejected too often or blocked, the
+    integrator), with your note in its brief. Returns the new node's id,
+    or None when the run just goes on (it held on something else). The
+    budget, steps and a builder's extra files have their own answers."""
+    if state["status"] != "held":
+        raise fleet.RunError(f"run {state['id']} is not held")
+    held = state.get("held_by")
+    if held == "limits":
+        raise fleet.RunError("it is held by its limits: raise them instead")
+    feedback = [" ".join(note.split())] if note and note.strip() else None
+    n = state["nodes"].get(held) if held else None
+    if n and n["role"] == "builder" and (n.get("scope") or {}).get("extra") and not n["scope"].get("accepted"):
+        raise fleet.RunError("it is held by a builder's extra files: accept them or send the slice back")
+    if n:
+        role, slice_id = n["role"], n.get("slice")
+        if n["status"] in ("held", "running", "waiting"):
+            n["status"] = "failed"  # replaced by the new attempt
+    elif held and fleet.slice_of(state, held):
+        role, slice_id = "builder", held
+    else:
+        role = None
+    new = fleet.add_node(state, role, slice_id, feedback=feedback)["id"] if role else None
+    fleet.activity(state["id"], {"event": "retry", "held_by": held, "next": new, "note": note or None}, now)
+    fleet.release(state, now)
+    return new
+
+
 def set_limits(state, budget=None, max_steps=None, now=None):
     """Change a run's budget (US$, 0 for none) or step limit; a run held by
     its limits goes on if they now allow it."""
