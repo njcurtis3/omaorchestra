@@ -56,7 +56,10 @@ class RunHarness(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"OMAORCHESTRA_STATE_DIR": str(self.root / "state"),
                                                 "OMAORCHESTRA_CONFIG": str(self.root / "c.toml"),
                                                 "OMAORCHESTRA_WORKTREES": str(self.root / "wt"),
-                                                "OMAORCHESTRA_CLAUDE": "true"})
+                                                "OMAORCHESTRA_CLAUDE": "true",
+                                                # merges make commits, and CI's git has no identity
+                                                "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                                                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
         self.env.start()
         self.d = daemon.Daemon(Registry(self.root / "state" / "sessions.json"), is_alive=lambda p, s: True)
         self.d.spawn = lambda cmd, **kw: None

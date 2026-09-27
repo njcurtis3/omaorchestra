@@ -197,7 +197,11 @@ def merge(record):
     result = git(repo, "merge", "--no-ff", "--no-edit", branch, check=False)
     if result.returncode != 0:
         git(repo, "merge", "--abort", check=False)
-        raise WorktreeError(f"merging {branch} into {target} conflicts; nothing was changed")
+        if "CONFLICT" in result.stdout + result.stderr:
+            raise WorktreeError(f"merging {branch} into {target} conflicts; nothing was changed")
+        said = (result.stderr or result.stdout).strip().splitlines()
+        raise WorktreeError(f"git could not merge {branch} into {target} ({said[-1] if said else 'no reason given'}); "
+                            "nothing was changed")
     return f"merged {branch} into {target} ({len(info['commits'])} commit(s))"
 
 
