@@ -8,7 +8,9 @@ A run may be closed once it has finished and git agrees:
     diamond, the integrator merged them there);
   - the run's branch has commits of its own, and its worktree and each
     slice's are clean (nothing left uncommitted);
-  - a diamond's integrator merged every slice and its full suite passed.
+  - a diamond's integrator merged every slice and its full suite passed;
+  - every file the run's branch changed is in a slice's approved files, or
+    one you accepted (the scope check, fleet_scope.py, across the branch).
 
 Closing removes the slices' worktrees (their work is on the run's branch;
 a worktree that would lose work is kept, and said so) and keeps the run's
@@ -21,7 +23,7 @@ Adapted from graph_agents' close-run (github.com/njcurtis3/graph_agents).
 import time
 from pathlib import Path
 
-from . import fleet, fleet_graph, worktrees
+from . import fleet, fleet_graph, fleet_scope, worktrees
 
 
 def _git(cwd, *args):
@@ -106,6 +108,15 @@ def check(state):
         made = int(count.stdout.strip() or 0) if count is not None and count.returncode == 0 else 0
         add(made, f"{state['branch']} has {made} commit{'s' if made != 1 else ''} to merge" if made
             else f"{state['branch']} has no commits")
+        files = fleet_scope.branch_changed(own["path"], own["base"], state["branch"])
+        allowed = [f for s in plan["slices"] for f in s["files"]] + fleet_scope.accepted(state)
+        extra = fleet_scope.outside(files or [], allowed)
+        if files is None:
+            add(False, f"git cannot list what {state['branch']} changed")
+        else:
+            add(not extra, "every file it changed is in a slice, or accepted" if not extra
+                else "files changed outside every slice: " + ", ".join(extra[:8])
+                + (f" and {len(extra) - 8} more" if len(extra) > 8 else ""))
     return checks
 
 

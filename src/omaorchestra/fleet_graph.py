@@ -25,6 +25,9 @@ it:
     shape = "single-loop"      # auto (the architect's call), single-loop, diamond
     scout = true               # false: straight to the architect
     tries = 2                  # builds of a slice before a REJECT holds the run
+    budget = 5                 # US$ the run may spend (API-equivalent); 0: no budget
+    max_steps = 30             # nodes the run may start in all
+    stall_minutes = 20         # a node working this long without a sign of life is flagged
     [fleets.careful.roles]     # the role (roles.py) that plays each stage
     reviewer = "security-reviewer"
 
@@ -46,7 +49,7 @@ BUILTIN = {
     "diamond": {"description": "Parallel builders when the plan allows it (checked), then an integrator",
                 "shape": "diamond"},
 }
-KEYS = ("description", "shape", "scout", "tries", "roles")
+KEYS = ("description", "shape", "scout", "tries", "roles", "budget", "max_steps", "stall_minutes")
 MIN_DIAMOND = 3
 
 
@@ -60,7 +63,8 @@ def path():
 
 def _complete(name, spec, builtin):
     out = {"name": name, "description": spec.get("description", ""), "shape": spec.get("shape", "auto"),
-           "scout": spec.get("scout", True), "tries": spec.get("tries", 2),
+           "scout": spec.get("scout", True), "tries": spec.get("tries", 2), "budget": spec.get("budget", 0),
+           "max_steps": spec.get("max_steps", 30), "stall_minutes": spec.get("stall_minutes", 20),
            "roles": {stage: (spec.get("roles") or {}).get(stage, stage) for stage in STAGES}, "builtin": builtin}
     return out
 
@@ -76,6 +80,13 @@ def _check(name, spec, where):
     tries = spec.get("tries", 2)
     if isinstance(tries, bool) or not isinstance(tries, int) or not 1 <= tries <= 5:
         raise FleetError(f"{where}: fleet {name}: tries must be a whole number from 1 to 5")
+    budget = spec.get("budget", 0)
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 <= budget <= 10000:
+        raise FleetError(f"{where}: fleet {name}: budget must be US$ from 0 (no budget) to 10000")
+    for key, low, high in (("max_steps", 3, 200), ("stall_minutes", 1, 240)):
+        value = spec.get(key, low)
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise FleetError(f"{where}: fleet {name}: {key} must be a whole number from {low} to {high}")
     if not isinstance(spec.get("description", ""), str):
         raise FleetError(f"{where}: fleet {name}: description must be text")
     parts = spec.get("roles") or {}
@@ -205,20 +216,44 @@ def off_branch(state, n):
     return None
 
 
+class _Limit(Exception):
+    pass
+
+
+def _add(state, role, slice_id=None):
+    """A new node, unless the run has reached its step limit."""
+    cap = (state.get("limits") or {}).get("max_steps")
+    if cap and len(state["nodes"]) >= cap:
+        raise _Limit(f"the run reached its limit of {cap} steps")
+    return fleet.add_node(state, role, slice_id)["id"]
+
+
+def over_budget(state):
+    budget = (state.get("limits") or {}).get("budget")
+    spent = fleet.spent(state)
+    if budget and spent >= budget:
+        return f"the run has spent ${spent:.2f}, at its ${budget} budget"
+    return None
+
+
 def _slice_step(state, slice_id):
     """("start", node id), ("wait",), ("passed",) or ("hold", reason)."""
     built = fleet.latest(state, "builder", slice_id)
     if built is None:
-        return "start", fleet.add_node(state, "builder", slice_id)["id"]
+        return "start", _add(state, "builder", slice_id)
     if built["status"] != "done":
         return ("wait",)  # running, waiting to start, or already holding the run
     if off_branch(state, built):
         return "hold", off_branch(state, built)
     if built["result"]["status"] == "blocked":
         return "hold", f"{built['id']} is blocked: {built['result']['blocked']}"
+    scope = built.get("scope") or {}
+    if scope.get("extra") and not scope.get("accepted"):
+        return "hold", f"{built['id']} changed files outside its slice: {', '.join(scope['extra'][:8])}" + \
+            (f" and {len(scope['extra']) - 8} more" if len(scope["extra"]) > 8 else ""), built["id"]
     review = fleet.latest(state, "reviewer", slice_id)
     if review is None or review["attempt"] < built["attempt"]:
-        return "start", fleet.add_node(state, "reviewer", slice_id)["id"]
+        return "start", _add(state, "reviewer", slice_id)
     if review["status"] != "done":
         return ("wait",)
     if review["result"]["verdict"] == "PASS":
@@ -228,7 +263,7 @@ def _slice_step(state, slice_id):
         worst = next((f for f in review["result"]["findings"] if f["severity"] == "blocker"), None)
         return "hold", (f"the reviewer rejected {slice_id} {tries} time{'s' if tries != 1 else ''}"
                         + (f": {worst['where']}: {worst['what']}" if worst else ""))
-    return "start", fleet.add_node(state, "builder", slice_id)["id"]
+    return "start", _add(state, "builder", slice_id)
 
 
 def at_gate(state, gate, now=None):
@@ -246,16 +281,29 @@ def advance(state, now=None):
     to start (added, waiting to start). Holds and gates stop it."""
     if state["status"] != "running":
         return []
+    reason = over_budget(state)
+    if reason:
+        fleet.hold(state, reason, by="limits", now=now)
+        return []
+    started = []
+    try:
+        return _advance(state, started, now)
+    except _Limit as e:
+        fleet.hold(state, str(e), by="limits", now=now)
+        return started
+
+
+def _advance(state, started, now):
     template = state["template"]
     if template["scout"]:
         scout = fleet.latest(state, "scout")
         if scout is None:
-            return [fleet.add_node(state, "scout")["id"]]
+            return [_add(state, "scout")]
         if scout["status"] != "done":
             return []
     architect = fleet.latest(state, "architect")
     if architect is None:
-        return [fleet.add_node(state, "architect")["id"]]
+        return [_add(state, "architect")]
     if architect["status"] != "done":
         return []
     if "plan" not in state["approved"]:
@@ -263,7 +311,6 @@ def advance(state, now=None):
         at_gate(state, "plan", now)
         return []
     plan = fleet.live_plan(state)
-    started = []
     for slice_id in order(plan):
         if not all(passed(state, d) for d in depends_on(plan, slice_id)):
             continue
@@ -271,8 +318,8 @@ def advance(state, now=None):
         if step[0] == "passed":
             continue
         if step[0] == "hold":
-            fleet.hold(state, step[1], by=slice_id, now=now)
-            return []
+            fleet.hold(state, step[1], by=step[2] if len(step) > 2 else slice_id, now=now)
+            return started  # nodes another slice already started still go
         if step[0] == "start":
             started.append(step[1])
         if state["shape"] == "single-loop":
@@ -287,7 +334,7 @@ def advance(state, now=None):
         return []
     integrator = fleet.latest(state, "integrator")
     if integrator is None:
-        return [fleet.add_node(state, "integrator")["id"]]
+        return [_add(state, "integrator")]
     if integrator["status"] != "done":
         return []
     result = integrator["result"]
@@ -348,6 +395,60 @@ def choose_shape(state, shape, now=None):
     state["shape_choice"] = shape
     decide_shape(state)
     fleet.activity(state["id"], {"event": "shape", "shape": state["shape"], "note": state.get("shape_note")}, now)
+
+
+def accept_scope(state, nid, reason, now=None):
+    """You accept the files a builder changed outside its slice, saying why;
+    the slice goes on to review."""
+    n = fleet.node(state, nid)
+    scope = n.get("scope") or {}
+    if n["role"] != "builder" or not scope.get("extra"):
+        raise fleet.RunError(f"{nid} changed no files outside its slice")
+    if scope.get("accepted"):
+        raise fleet.RunError(f"{nid}'s files were already accepted")
+    reason = " ".join((reason or "").split())
+    if not reason:
+        raise fleet.RunError("say why: the reason is recorded with the files")
+    scope["accepted"] = {"reason": reason, "at": now or time.time()}
+    fleet.activity(state["id"], {"event": "scope-accepted", "node": nid, "files": scope["extra"], "reason": reason},
+                   now)
+    if state.get("held_by") == nid:
+        fleet.release(state, now)
+
+
+def scope_send_back(state, nid, now=None):
+    """The slice goes to a new builder, told which files to undo; returns
+    its node id."""
+    n = fleet.node(state, nid)
+    scope = n.get("scope") or {}
+    if n["role"] != "builder" or not scope.get("extra") or scope.get("accepted"):
+        raise fleet.RunError(f"{nid} has no files outside its slice to send back")
+    if fleet.latest(state, "builder", n["slice"])["id"] != nid:
+        raise fleet.RunError(f"{nid} is not the slice's latest build")
+    note = ("Your slice's last build changed files outside it: " + ", ".join(scope["extra"])
+            + ". Undo those changes (they must not stay in the slice's commits) and keep to the approved files.")
+    new = fleet.add_node(state, "builder", n["slice"], feedback=[note])["id"]
+    fleet.activity(state["id"], {"event": "scope-sent-back", "node": nid, "next": new}, now)
+    if state.get("held_by") == nid:
+        fleet.release(state, now)
+    return new
+
+
+def set_limits(state, budget=None, max_steps=None, now=None):
+    """Change a run's budget (US$, 0 for none) or step limit; a run held by
+    its limits goes on if they now allow it."""
+    limits = state.setdefault("limits", {})
+    if budget is not None:
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 <= budget <= 10000:
+            raise fleet.RunError("the budget is US$ from 0 (none) to 10000")
+        limits["budget"] = budget
+    if max_steps is not None:
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 3 <= max_steps <= 200:
+            raise fleet.RunError("the step limit is a whole number from 3 to 200")
+        limits["max_steps"] = max_steps
+    fleet.activity(state["id"], {"event": "limits", **limits}, now)
+    if state.get("held_by") == "limits":
+        fleet.release(state, now)
 
 
 def approve(state, gate, note=None, now=None):

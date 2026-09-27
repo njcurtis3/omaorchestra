@@ -61,6 +61,8 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, merge) is passed |
 | `{"cmd": "fleet-cancel", "run"}` | `{"ok": true, "run": {...}}`: nothing more starts; its queued nodes are removed |
 | `{"cmd": "fleet-send-back", "run", "note"}`, `fleet-drop` (`slice`), `fleet-shape` (`shape`) | `{"ok": true, "run": {...}}`: answers at the plan gate |
+| `{"cmd": "fleet-accept-scope", "run", "node", "reason"}`, `{"cmd": "fleet-scope-back", "run", "node"}` | `{"ok": true, "run": {...}}`: a builder's files outside its slice (`fleet_scope.py`) accepted, or the slice sent to a new builder to undo them |
+| `{"cmd": "fleet-limits", "run", "budget"?, "max_steps"?}` | `{"ok": true, "run": {...}}`: a run held by its limits goes on if they now allow it |
 | `{"cmd": "fleet-close", "run", "check"?}` | `{"ok": true, "run", "checks": [[ok, what]...], "notes"?}`: checked against git (`fleet_close.py`); with `check`, only the checks. The gate answers and closing are refused from inside an agent |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.
@@ -96,7 +98,12 @@ nodes carries `fleet` and `node`; when it goes idle after working, the
 daemon reads its final reply (Claude's or Codex's transcript, opencode's
 `export`), checks the JSON block it ends with against the node's role
 (`fleet_reply.py`), and writes it under that node, or holds the run with the
-reason. Nodes never write the state themselves.
+reason. Nodes never write the state themselves. When a builder finishes,
+git lists the files it changed (committed, uncommitted, new) and those
+outside its slice hold the slice before review (the scope check; no hook
+blocks it while it works). Each node's cost is recorded when it ends and
+counts against the run's budget, and the daemon flags a node working with
+no sign of life for the run's `stall_minutes`.
 
 The run then moves on (`fleet_graph.advance`): each node it is ready for is
 queued like any task (so the parallel limit, budget and usage limits apply)

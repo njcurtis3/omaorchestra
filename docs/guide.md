@@ -149,6 +149,11 @@ that can run `top` and nothing else.
   slice built, reviewed PASS and its commits on the run's branch, nothing
   left uncommitted), the slices' worktrees are removed, and the run's own
   branch is left for you to merge (`omaorchestra worktree merge <branch>`).
+  A run held because a builder changed files outside its slice: **a**
+  accepts them (with your reason, which the reviewer is told) and the
+  slice goes to review, **b** sends it to a new builder to undo them. Held
+  by its budget or step limit: **r** raises them. A run's details show
+  what it has spent, and a node that waits for you or looks stalled.
   Answers from inside an agent, and closing, are refused.
 - **n** queues a new task: type it, then the folder (the picked session's, or
   the last one you used), then pick the agent.

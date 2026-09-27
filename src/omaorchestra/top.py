@@ -277,9 +277,27 @@ class Top:
 
     def fleet_key(self, key):
         run = self.selected()
-        if run is None or key not in ("y", "b", "d", "l", "x", "c"):
+        if run is None or key not in ("y", "b", "d", "l", "x", "c", "a", "r"):
             return
         gate = run.get("gate") if run["status"] == "at-gate" else None
+        scoped = self.scope_hold(run)
+        if scoped and key in ("a", "b"):
+            if key == "a":
+                self.ask = {"kind": "note", "question": "Why accept them",
+                            "then": lambda reason: self.fleet_send({"cmd": "fleet-accept-scope", "run": run["id"],
+                                                                    "node": scoped, "reason": reason},
+                                                                   "accepted; on to review"), "value": ""}
+            else:
+                self.ask = {"kind": "confirm", "question": "Send the slice to a new builder to undo them?",
+                            "then": lambda: self.fleet_send({"cmd": "fleet-scope-back", "run": run["id"], "node": scoped},
+                                                            "sent back to undo the extra files")}
+            return
+        if key == "r" and run["status"] == "held" and run.get("held_by") == "limits":
+            limits = run.get("limits") or {}
+            self.ask = {"kind": "note", "question": "Budget $ (and steps)",
+                        "value": f"{limits.get('budget') or 0} {limits.get('max_steps') or 30}",
+                        "then": lambda text: self.raise_limits(run, text)}
+            return
         title = clip(one_line(run["goal"]), 30)
         if key == "x" and run["status"] not in ("done", "cancelled"):
             self.ask = {"kind": "confirm", "question": f"Cancel the run \"{title}\"?",
@@ -307,6 +325,24 @@ class Top:
             self.ask = {"kind": "choice", "question": "Run it as", "options": ["single-loop", "diamond"],
                         "then": lambda shape: self.fleet_send({"cmd": "fleet-shape", "run": run["id"], "shape": shape},
                                                               f"shape: {shape}")}
+
+    @staticmethod
+    def scope_hold(run):
+        """The builder whose extra files hold the run, or None."""
+        held = run.get("held_by") if run["status"] == "held" else None
+        n = run["nodes"].get(held) if held else None
+        return held if n and (n.get("scope") or {}).get("extra") and not n["scope"].get("accepted") else None
+
+    def raise_limits(self, run, text):
+        parts = text.replace("$", "").split()
+        try:
+            budget = float(parts[0]) if parts else None
+            steps = int(parts[1]) if len(parts) > 1 else None
+        except ValueError:
+            self.tell("type the budget in US$, then the steps, e.g. 10 40", "urgent")
+            return
+        self.fleet_send({"cmd": "fleet-limits", "run": run["id"], "budget": budget, "max_steps": steps},
+                        "limits changed")
 
     def fleet_send(self, payload, done):
         response = self.send(payload, timeout=30)
@@ -576,8 +612,11 @@ class Top:
                          "chosen" if chosen else "bold"), right=(tail, RUN_STYLE.get(run["status"], "")))
             screen.row_hit(("row", i))
             done = sum(1 for n in run["nodes"].values() if n["status"] == "done")
+            waiting = [n["id"] for n in run["nodes"].values() if n.get("waiting") and n["status"] == "running"]
+            stalled = [n["id"] for n in run["nodes"].values() if n.get("stalled") and n["status"] == "running"]
             second = run.get("reason") if run["status"] == "held" else \
-                f"{present.project(run.get('folder'))} · {run.get('shape') or run.get('fleet')} · {done} steps done"
+                (f"{waiting[0]} waits for you" if waiting else f"{stalled[0]} looks stalled" if stalled else
+                 f"{present.project(run.get('folder'))} · {run.get('shape') or run.get('fleet')} · {done} steps done")
             screen.line(("  " + clip(one_line(second or ""), width - 2), "urgent" if run["status"] == "held" else "dim"))
             screen.row_hit(("row", i))
 
@@ -600,6 +639,18 @@ class Top:
             field("", "closed: merge its branch when you are ready" if run.get("closed")
                   else "finished: c checks it against git and closes it", "dim")
         field("branch", run.get("branch"))
+        limits = run.get("limits") or {}
+        spent = sum((n.get("cost") or {}).get("usd") or 0 for n in run["nodes"].values())
+        field("spent", f"${spent:.2f}" + (f" of ${limits['budget']}" if limits.get("budget") else "")
+              + f" · {len(run['nodes'])} of {limits.get('max_steps') or 30} steps", "dim")
+        for n in run["nodes"].values():
+            if n["status"] == "running" and (n.get("waiting") or n.get("stalled")):
+                field(n["id"], "waits for you (its session)" if n.get("waiting") else "no sign of life lately",
+                      "urgent")
+        scoped = self.scope_hold(run)
+        if scoped:
+            field("", "a accepts the extra files (with your reason) and the slice goes to review; b sends it to a new "
+                      "builder to undo them.", "dim")
         field("in", present.place(run.get("folder")))
         plan = fleet.live_plan(run)
         if plan:
@@ -699,6 +750,10 @@ class Top:
                 items.append(("y Approve…", "y"))
             if gate == "plan":
                 items += [("b Send back", "b"), ("d Drop slice", "d"), ("l Shape", "l")]
+            if self.scope_hold(run):
+                items += [("a Accept…", "a"), ("b Send back…", "b")]
+            if run["status"] == "held" and run.get("held_by") == "limits":
+                items.append(("r Raise limits", "r"))
             if run["status"] not in ("done", "cancelled"):
                 items.append(("x Cancel run", "x"))
             if run["status"] == "done" and not run.get("closed"):

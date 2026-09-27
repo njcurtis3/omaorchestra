@@ -34,7 +34,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import fleet_reply, history, paths, transcript
+from . import fleet_reply, fleet_scope, history, paths, transcript
 
 VERSION = 1
 RUN_STATUSES = ("running", "at-gate", "held", "done", "cancelled")
@@ -71,10 +71,11 @@ def new_id(goal, now=None):
     return run_id
 
 
-def create(goal, folder, template=None, now=None, path=None):
+def create(goal, folder, template=None, now=None, path=None, budget=None):
     """A new run of `template` (a fleet, fleet_graph.py; its settings are
     kept with the run, so editing fleets.toml later does not change it).
-    `path` is the PATH its agents start with."""
+    `path` is the PATH its agents start with; `budget` (US$) replaces the
+    fleet's."""
     goal = " ".join(goal.split())
     if not goal:
         raise RunError("the goal is empty")
@@ -89,13 +90,16 @@ def create(goal, folder, template=None, now=None, path=None):
     run_id = new_id(goal, now)
     (base / run_id).mkdir(mode=0o700)
     from . import worktrees
-    template = template or {"name": "auto", "shape": "auto", "scout": True, "tries": 2,
+    template = template or {"name": "auto", "shape": "auto", "scout": True, "tries": 2, "budget": 0,
+                            "max_steps": 30, "stall_minutes": 20,
                             "roles": {stage: stage for stage in ("scout", "architect", "builder", "reviewer",
                                                                  "integrator")}}
     state = {"v": VERSION, "id": run_id, "goal": goal, "folder": str(folder), "fleet": template["name"],
              "template": template, "repo": worktrees.repo_root(folder) is not None, "path": path,
              "status": "running", "reason": None, "held_by": None, "gate": None, "approved": {},
              "shape": None, "shape_note": None, "worktree": None, "branch": None, "slice_worktrees": {},
+             "limits": {"budget": budget if budget is not None else template.get("budget", 0),
+                        "max_steps": template.get("max_steps", 30)},
              "created": now, "updated": now, "nodes": {}}
     save(state, now)
     activity(run_id, {"event": "created", "goal": goal}, now)
@@ -257,11 +261,25 @@ def release(state, now=None):
         state.update(status="running", reason=None, held_by=None)
 
 
-def record_reply(state, nid, text, now=None, git=None):
+def spent(state):
+    """What the run's finished nodes cost (US$; API-equivalent for
+    subscription sessions)."""
+    return round(sum((n.get("cost") or {}).get("usd") or 0 for n in state["nodes"].values()), 4)
+
+
+def record_reply(state, nid, text, now=None, git=None, changed=None, cost=None):
     """A node's session finished its work: check its reply and store the
-    result, or hold the node and the run with the reason. Returns the node."""
+    result, or hold the node and the run with the reason. Returns the node.
+    `changed` (a builder's files, from git) is checked against its slice;
+    `cost` is what its session cost."""
     n = node(state, nid)
     now = now or time.time()
+    if cost:
+        n["cost"] = cost
+    if n["role"] == "builder" and changed is not None:
+        s = slice_of(state, n.get("slice"))
+        allowed = (s["files"] if s else []) + fleet_scope.accepted(state, n.get("slice"))
+        n["scope"] = {"changed": changed, "extra": fleet_scope.outside(changed, allowed), "accepted": None}
     try:
         result = fleet_reply.parse(n["role"], text)
     except fleet_reply.ReplyError as e:
@@ -276,11 +294,13 @@ def record_reply(state, nid, text, now=None, git=None):
     return n
 
 
-def node_failed(state, nid, outcome, now=None):
+def node_failed(state, nid, outcome, now=None, cost=None):
     """A node's session ended without finishing (stopped, crashed, never
     started, dismissed): the node fails and the run holds."""
     n = node(state, nid)
     now = now or time.time()
+    if cost:
+        n["cost"] = cost
     n.update(status="failed", error=f"its session {outcome}", ended=now)
     activity(state["id"], {"event": "failed", "node": nid, "outcome": outcome}, now)
     hold(state, f"{nid}: {n['error']}", nid, now)
@@ -367,6 +387,11 @@ def _builder_part(n):
               f" ({'passed' if r['done_when']['passed'] else 'failed'})", "```", r["done_when"]["output"], "```"]
     if r.get("noticed"):
         lines.append(f"Noticed outside the slice: {r['noticed']}")
+    scope = n.get("scope") or {}
+    if scope.get("extra"):
+        lines.append("Files it changed outside the slice: " + ", ".join(scope["extra"])
+                     + (f" (accepted by the person running this: {scope['accepted']['reason']})"
+                        if scope.get("accepted") else ""))
     git = n.get("git") or {}
     if git.get("branch"):
         lines.append(f"Its work is on branch {git['branch']}"

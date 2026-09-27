@@ -10,7 +10,8 @@ from pathlib import Path
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_close, fleet_graph, history,
+from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_close, fleet_graph, fleet_scope,
+               history,
                launch, notify,
                paths, procs, remote, roles, taskqueue, transcript, usage, windows, worktrees)
 from .log import event
@@ -58,7 +59,8 @@ ALREADY_RUNNING_EXIT = 3
 
 
 # A person's answers at a fleet run's gates: refused from inside an agent.
-FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape", "fleet-close")
+FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape", "fleet-close",
+                       "fleet-accept-scope", "fleet-scope-back", "fleet-limits")
 
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
@@ -555,6 +557,47 @@ class Daemon:
             fleet.activity(current["fleet"], {**entry, "node": current["node"], "session": current["id"]})
         except (fleet.RunError, OSError) as e:
             event(logging.WARNING, "fleet activity not recorded", run=current["fleet"], error=str(e))
+            return
+        waiting = bool(session and session.get("status") == "needs-input")
+        if waiting or (previous and previous.get("status") == "needs-input"):
+            # The run pauses while a node waits for you: say which one.
+            try:
+                state = fleet.load(current["fleet"])
+                n = fleet.node(state, current["node"])
+            except fleet.RunError:
+                return
+            if n.get("session") == current["id"] and bool(n.get("waiting")) != waiting:
+                n["waiting"] = waiting
+                self.fleet_saved(state, f"{n['id']} " + ("waits for you" if waiting else "goes on"))
+
+    def fleet_watch(self, now=None):
+        """Flag a running node whose agent has been working with no sign of
+        life (no hook report) for the run's stall_minutes; clear the flag
+        once it reports again. Flagged, never stopped."""
+        now = now or time.time()
+        for state in fleet.runs():
+            if state["status"] not in ("running", "held", "at-gate"):
+                continue
+            minutes = state["template"].get("stall_minutes", 20)
+            stalled, changed = [], False
+            for n in state["nodes"].values():
+                if n["status"] != "running":
+                    continue
+                session = self.registry.sessions.get(n.get("session")) or {}
+                quiet = session.get("status") == "working" and now - session.get("updated", now) >= minutes * 60
+                if quiet and not n.get("stalled"):
+                    n["stalled"] = session["updated"]
+                    stalled.append(n["id"])
+                    fleet.activity(state["id"], {"event": "stalled", "node": n["id"]}, now)
+                    changed = True
+                elif not quiet and n.get("stalled"):
+                    n["stalled"] = None
+                    changed = True
+            if changed:
+                self.fleet_saved(state, "stalled: " + ", ".join(stalled) if stalled else "no longer stalled")
+            if stalled and self.notifier:
+                self.notifier.tell(f"{Path(state['folder']).name}: {', '.join(stalled)} looks stalled",
+                                   f"No sign of life for {minutes} minutes. Check its window, or stop it.")
 
     def fleet_node_ended(self, session, finished, outcome=None):
         """A fleet node's session finished its work (its reply is read, off
@@ -571,17 +614,24 @@ class Daemon:
             return
         if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
             return  # another attempt's session, or a node already settled
-        if not finished:
-            fleet.node_failed(state, nid, outcome or "ended")
-            self.fleet_saved(state, f"{nid} failed: its session {outcome}")
+        if finished and n["status"] == "held" and not (n.get("error") or "").startswith("its reply"):
             return
-        if n["status"] == "held" and not (n.get("error") or "").startswith("its reply"):
-            return
+        builder = n["role"] == "builder"
 
         def read():
-            return fleet.read_reply(session), fleet.git_facts(session)
+            cost = None
+            try:
+                found = costs.session_cost(session) if session.get("transcript_path") else None
+                cost = {"usd": round(found["usd"], 4), "real": bool(found.get("real"))} if found else None
+            except (OSError, KeyError, TypeError, ValueError):
+                pass
+            if not finished:
+                return None, None, None, cost
+            git = fleet.git_facts(session)
+            changed = fleet_scope.changed(session["cwd"], git["base"]) if builder and git and git.get("base") else None
+            return fleet.read_reply(session), git, changed, cost
 
-        def record(text, git):
+        def record(text, git, changed, cost):
             try:
                 state = fleet.load(run_id)
                 n = fleet.node(state, nid)
@@ -589,7 +639,11 @@ class Daemon:
                 return
             if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
                 return
-            n = fleet.record_reply(state, nid, text, git=git)
+            if not finished:
+                fleet.node_failed(state, nid, outcome or "ended", cost=cost)
+                self.fleet_saved(state, f"{nid} failed: its session {outcome}")
+                return
+            n = fleet.record_reply(state, nid, text, git=git, changed=changed, cost=cost)
             self.fleet_advance(state, f"{nid} " + ("finished" if n["status"] == "done" else f"held: {n['error']}"))
 
         try:
@@ -612,7 +666,7 @@ class Daemon:
         if cmd == "fleet-start":
             template = fleet_graph.get(request.get("fleet") or "auto")
             state = fleet.create(request.get("goal") or "", request.get("folder") or "", template,
-                                 path=request.get("path") or self.user_path)
+                                 path=request.get("path") or self.user_path, budget=request.get("budget"))
             event(logging.INFO, "fleet run started", run=state["id"], fleet=template["name"], folder=state["folder"])
             self.fleet_advance(state, "started")
             return {"ok": True, "run": state}
@@ -639,6 +693,19 @@ class Daemon:
             else:
                 fleet_graph.choose_shape(state, request.get("shape"))
             self.fleet_saved(state, f"{cmd[6:]} at the plan gate")
+            return {"ok": True, "run": state}
+        if cmd == "fleet-accept-scope":
+            fleet_graph.accept_scope(state, request.get("node"), request.get("reason"))
+            self.fleet_advance(state, f"{request.get('node')}'s extra files accepted")
+            return {"ok": True, "run": state}
+        if cmd == "fleet-scope-back":
+            nid = fleet_graph.scope_send_back(state, request.get("node"))
+            self.fleet_enqueue(state, nid)
+            self.fleet_advance(state, f"{request.get('node')} sent back for its extra files", queued=[nid])
+            return {"ok": True, "run": state}
+        if cmd == "fleet-limits":
+            fleet_graph.set_limits(state, request.get("budget"), request.get("max_steps"))
+            self.fleet_advance(state, "limits changed")
             return {"ok": True, "run": state}
         if cmd == "fleet-close":
             if request.get("check"):
@@ -1180,6 +1247,7 @@ async def prune_forever(daemon, interval=PRUNE_INTERVAL):
         daemon.tend_history()
         daemon.offer_handoffs()
         daemon.check_limits()
+        daemon.fleet_watch()
         # A queue waiting on a usage limit gets another look (limits reset).
         if daemon.queue.next_pending():
             daemon.dispatch()
