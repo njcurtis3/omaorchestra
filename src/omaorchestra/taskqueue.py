@@ -24,7 +24,9 @@ FIELDS = ("task", "cwd", "model", "permission_mode", "worktree", "extra", "agent
           "mcp_profile", "agent", "role",
           # chains: the task it follows, whether it runs in that task's worktree,
           # gets a brief of it, or reviews it; and where it stands in the chain
-          "after", "parent_session", "same_worktree", "brief", "review", "chain", "step", "recipe", "worktree_path")
+          "after", "parent_session", "same_worktree", "brief", "review", "chain", "step", "recipe", "worktree_path",
+          # fleets: the run and the node it is
+          "fleet", "node")
 
 
 class QueueError(Exception):

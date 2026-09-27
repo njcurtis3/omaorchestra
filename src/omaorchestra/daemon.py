@@ -10,8 +10,8 @@ from pathlib import Path
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, history, launch, notify, paths, procs, remote,
-               taskqueue, transcript, usage, windows)
+from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_graph, history, launch, notify,
+               paths, procs, remote, roles, taskqueue, transcript, usage, windows, worktrees)
 from .log import event
 from .registry import CARRIED, Registry
 
@@ -422,11 +422,13 @@ class Daemon:
         except launch.LaunchError as e:
             self.queue.fail(item, str(e))
             event(logging.WARNING, "task failed to start", task=item["id"], error=str(e))
+            self.fleet_node_launched(item, None, agent, error=str(e))
             if self.pusher:
                 self.pusher.task_failed(item, str(e))
             return None
         self.queue.tasks.remove(item)
         self.queue.mark_started(item, result["id"])
+        self.fleet_node_launched(item, result["id"], agent)
         for child in self.queue.children(parent_id=item["id"]):
             child["parent_session"] = result["id"]  # it now waits on the session
         self.queue.save()
@@ -438,7 +440,7 @@ class Daemon:
     @staticmethod
     def chain_fields(item):
         """What the started session carries of its chain."""
-        fields = {k: item.get(k) for k in ("chain", "step", "review") if item.get(k)}
+        fields = {k: item.get(k) for k in ("chain", "step", "review", "fleet", "node") if item.get(k)}
         if item.get("worktree_path"):
             fields["worktree"] = item["worktree_path"]  # it runs in the step before's worktree
         return fields
@@ -583,7 +585,7 @@ class Daemon:
             if n.get("session") != session["id"] or n["status"] not in ("running", "held"):
                 return
             n = fleet.record_reply(state, nid, text, git=git)
-            self.fleet_saved(state, f"{nid} " + ("finished" if n["status"] == "done" else f"held: {n['error']}"))
+            self.fleet_advance(state, f"{nid} " + ("finished" if n["status"] == "done" else f"held: {n['error']}"))
 
         try:
             loop = asyncio.get_running_loop()
@@ -594,6 +596,126 @@ class Daemon:
         async def later():
             record(*await asyncio.to_thread(read))
         loop.create_task(later())
+
+    def handle_fleet(self, cmd, request):
+        if cmd == "fleet-start":
+            template = fleet_graph.get(request.get("fleet") or "auto")
+            state = fleet.create(request.get("goal") or "", request.get("folder") or "", template,
+                                 path=request.get("path") or self.user_path)
+            event(logging.INFO, "fleet run started", run=state["id"], fleet=template["name"], folder=state["folder"])
+            self.fleet_advance(state, "started")
+            return {"ok": True, "run": state}
+        if cmd == "fleet-list":
+            return {"ok": True, "runs": fleet.runs()}
+        state = fleet.find(request.get("run") or "")
+        if cmd == "fleet-show":
+            return {"ok": True, "run": state, "activity": fleet.read_activity(state["id"])}
+        if cmd == "fleet-approve":
+            gate = request.get("gate") or state.get("gate")
+            fleet_graph.approve(state, gate, request.get("note"))
+            if gate == "plan":
+                self.fleet_prepare(state)
+            self.fleet_advance(state, f"{gate} approved")
+            return {"ok": True, "run": state}
+        if cmd == "fleet-cancel":
+            waiting = {n["id"] for n in fleet_graph.cancel(state)}
+            for item in [t for t in self.queue.tasks if t.get("fleet") == state["id"] and t.get("node") in waiting]:
+                self.queue.tasks.remove(item)
+            self.queue.save()
+            self.publish_queue()
+            self.fleet_saved(state, "cancelled")
+            return {"ok": True, "run": state}
+        return {"ok": False, "error": f"unknown command: {cmd}"}
+
+    def fleet_prepare(self, state):
+        """Once the plan is approved: the run's own worktree and branch, which
+        the builders of a single loop and the integrator work in."""
+        if not state.get("repo") or state.get("worktree"):
+            return
+        try:
+            record = worktrees.create(state["folder"], state["goal"], None, name=f"fleet-{state['id']}",
+                                      extra={"fleet": state["id"]})
+        except worktrees.WorktreeError as e:
+            fleet.hold(state, f"could not make the run's worktree: {e}")
+            return
+        state["worktree"] = {k: record[k] for k in ("path", "workdir", "branch", "base")}
+        state["branch"] = record["branch"]
+
+    def fleet_workdir(self, state, n):
+        """Where a node works, and the worktree it belongs to (or None). A
+        diamond's slice gets a worktree of its own, from the run's branch, or
+        from the slice it depends on."""
+        own = state.get("worktree")
+        if n["role"] in ("scout", "architect"):
+            return state["folder"], None
+        if state["shape"] != "diamond" or not n.get("slice"):
+            return (own["workdir"], own["path"]) if own else (state["folder"], None)
+        slice_id = n["slice"]
+        record = state["slice_worktrees"].get(slice_id)
+        if record is None:
+            depends = fleet_graph.depends_on(fleet.plan(state), slice_id)
+            start = state["slice_worktrees"][depends[0]]["branch"] if depends else own["branch"]
+            made = worktrees.create(state["folder"], state["goal"], None, name=f"fleet-{state['id']}-{slice_id}",
+                                    start=start, extra={"fleet": state["id"], "slice": slice_id,
+                                                        "base_branch": own["branch"]})
+            record = state["slice_worktrees"][slice_id] = {k: made[k] for k in ("path", "workdir", "branch", "base")}
+        return record["workdir"], record["path"]
+
+    def fleet_enqueue(self, state, nid):
+        """Queue a node's task, so the parallel limit, the budget and usage
+        limits apply to it as to any task. A node that cannot be queued holds
+        the run."""
+        n = fleet.node(state, nid)
+        role_name = state["template"]["roles"][n["role"]]
+        try:
+            workdir, worktree = self.fleet_workdir(state, n)
+            role = roles.get(role_name, workdir)
+            task = fleet.task_for(state, nid)
+            item = self.queue.add({"task": task, "cwd": workdir, "worktree": False, "worktree_path": worktree,
+                                   "extra": [], "role": role_name, "agent": role.agent, "fleet": state["id"],
+                                   "node": nid, "path": state.get("path")})
+        except (worktrees.WorktreeError, roles.RoleError, fleet.RunError, taskqueue.QueueError) as e:
+            fleet.hold(state, f"{nid} cannot start: {e}", by=nid)
+            return
+        n.update(runs_as=role_name, agent=role.agent, queued=item["id"])
+        fleet.activity(state["id"], {"event": "queued", "node": nid, "task": item["id"]})
+
+    def fleet_advance(self, state, what):
+        """Move a run on (fleet_graph.advance), queue the nodes it is ready
+        for, save it, and let the queue start them."""
+        try:
+            ready = fleet_graph.advance(state)
+        except fleet.RunError as e:
+            fleet.hold(state, str(e))
+            ready = []
+        for nid in ready:
+            self.fleet_enqueue(state, nid)
+        self.fleet_saved(state, what)
+        if ready:
+            self.publish_queue()
+            self.dispatch()
+
+    def fleet_node_launched(self, item, session_id, agent, error=None, cancelled=False):
+        """A fleet node's queued task started (the node is running), or could
+        not start or was cancelled (the run holds, with the reason)."""
+        if not item.get("fleet") or not item.get("node"):
+            return
+        try:
+            state = fleet.load(item["fleet"])
+            n = fleet.node(state, item["node"])
+        except fleet.RunError as e:
+            event(logging.WARNING, "fleet node not found", run=item["fleet"], node=item["node"], error=str(e))
+            return
+        if n["status"] not in ("waiting", "held"):
+            return
+        if error:
+            if cancelled:
+                n["status"] = "cancelled"
+            fleet.hold(state, f"{n['id']}: {error}", by=n["id"])
+            self.fleet_saved(state, f"{n['id']}: {error}")
+            return
+        fleet.node_started(state, n["id"], session_id, agent)
+        self.fleet_saved(state, f"{n['id']} started")
 
     def fleet_saved(self, state, what):
         try:
@@ -647,6 +769,7 @@ class Daemon:
         elif cmd == "queue-cancel":
             item = q.remove(request["id"])
             event(logging.INFO, "task cancelled", task=item["id"])
+            self.fleet_node_launched(item, None, None, error="its queued task was cancelled", cancelled=True)
             for child in q.children(parent_id=item["id"]):
                 child.update(state="held", error="the task before it was cancelled")
             q.save()
@@ -923,6 +1046,11 @@ class Daemon:
                       message=session.get("message"))
             self.changed(before, dict(session))
             return {"ok": True, "session": session}
+        if cmd.startswith("fleet-"):
+            try:
+                return self.handle_fleet(cmd, request)
+            except (fleet.RunError, fleet_graph.FleetError) as e:
+                return {"ok": False, "error": str(e)}
         if cmd.startswith("queue-"):
             try:
                 return self.handle_queue(cmd, request)

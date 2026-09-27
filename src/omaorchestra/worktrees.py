@@ -105,21 +105,23 @@ def set_review(path, review):
 
 # ---------------------------------------------------------------- lifecycle
 
-def create(cwd, task, session_id):
+def create(cwd, task, session_id, name=None, start=None, extra=None):
     """Make a worktree for a task started in `cwd`; returns its record.
 
-    Starts from the checkout's current commit. Uncommitted changes in the
-    checkout are not carried over.
+    Starts from the checkout's current commit, or from `start` (a commit or
+    branch). Uncommitted changes in the checkout are not carried over.
+    `name` names it (and its branch, omaorchestra/<name>) instead of the
+    task and session; `extra` is kept in its record (a fleet run's).
     """
     root = repo_root(cwd)
     if root is None:
         raise WorktreeError(f"{cwd} is not in a git repository")
-    head = git(root, "rev-parse", "--verify", "HEAD", check=False)
+    head = git(root, "rev-parse", "--verify", f"{start or 'HEAD'}^{{commit}}", check=False)
     if head.returncode != 0:
-        raise WorktreeError("the repository has no commits yet")
+        raise WorktreeError("the repository has no commits yet" if not start else f"no commit {start}")
     base = head.stdout.strip()
     branch_now = git(root, "symbolic-ref", "--quiet", "--short", "HEAD", check=False).stdout.strip()
-    name = f"{slug(task)}-{session_id[:6]}"
+    name = name or f"{slug(task)}-{session_id[:6]}"
     branch = f"omaorchestra/{name}"
     path = base_dir() / root.name / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +131,7 @@ def create(cwd, task, session_id):
     record = {
         "session_id": session_id, "task": task, "repo": str(root), "path": str(path),
         "workdir": str(path / relative), "branch": branch, "base": base,
-        "base_branch": branch_now or None, "created": time.time(),
+        "base_branch": branch_now or None, "created": time.time(), **(extra or {}),
     }
     _save(records() + [record])
     return record

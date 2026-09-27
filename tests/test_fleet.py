@@ -367,7 +367,9 @@ class DaemonFleetTest(unittest.TestCase):
         n = self.node()
         self.assertEqual((n["status"], n["written_by"]), ("done", "scout"))
         events = [e["event"] for e in fleet.read_activity(self.state["id"])]
-        self.assertEqual(events, ["created", "started", "working", "needs-input", "working", "idle", "result"])
+        # The scout's result moves the run on: the architect is queued.
+        self.assertEqual(events, ["created", "started", "working", "needs-input", "working", "idle", "result",
+                                  "queued"])
         self.assertEqual(self.fleet_event()["status"], "running")
         # Going idle again after the node is done changes nothing.
         self.update("working")

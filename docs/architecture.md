@@ -56,6 +56,10 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "queue-run", "id"}` | `{"ok": true, "session_id"}` |
 | `{"cmd": "queue-add", "item": {..., "after"?, "same_worktree"?, "brief"?, "review"?}}` | a chained task (`chain.py`): it waits (state `waiting`) until the task or session it follows finishes, then is released, or `held` with the reason |
 | `{"cmd": "stopping", "session_id"}` | `{"ok": true, "known": bool}`: it is being stopped on purpose (history says "stopped", not "crashed") |
+| `{"cmd": "fleet-start", "goal", "folder", "fleet"?, "path"?}` | `{"ok": true, "run": {...}}`: a fleet run (`fleet_graph.py`), its first node queued |
+| `{"cmd": "fleet-list"}`, `{"cmd": "fleet-show", "run"}` | `{"ok": true, "runs": [...]}`, `{"ok": true, "run": {...}, "activity": [...]}` (`run` is an id or prefix) |
+| `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, merge) is passed |
+| `{"cmd": "fleet-cancel", "run"}` | `{"ok": true, "run": {...}}`: nothing more starts; its queued nodes are removed |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.
 
@@ -91,6 +95,14 @@ daemon reads its final reply (Claude's or Codex's transcript, opencode's
 `export`), checks the JSON block it ends with against the node's role
 (`fleet_reply.py`), and writes it under that node, or holds the run with the
 reason. Nodes never write the state themselves.
+
+The run then moves on (`fleet_graph.advance`): each node it is ready for is
+queued like any task (so the parallel limit, budget and usage limits apply)
+with `fleet`, `node` and its role, and its task is its brief. The plan and
+merge gates stop it until `fleet-approve`. After the plan gate the run gets a
+worktree of its own (branch `omaorchestra/fleet-<run>`); in a diamond each
+slice gets another (`omaorchestra/fleet-<run>-<slice>`, from the run's
+branch, or from the slice it depends on).
 
 A second daemon refuses to start while one is answering on the socket; a stale
 socket file is replaced.

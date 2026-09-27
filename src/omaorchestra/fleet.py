@@ -71,7 +71,10 @@ def new_id(goal, now=None):
     return run_id
 
 
-def create(goal, folder, fleet="auto", now=None):
+def create(goal, folder, template=None, now=None, path=None):
+    """A new run of `template` (a fleet, fleet_graph.py; its settings are
+    kept with the run, so editing fleets.toml later does not change it).
+    `path` is the PATH its agents start with."""
     goal = " ".join(goal.split())
     if not goal:
         raise RunError("the goal is empty")
@@ -85,8 +88,14 @@ def create(goal, folder, fleet="auto", now=None):
     base.mkdir(parents=True, exist_ok=True)
     run_id = new_id(goal, now)
     (base / run_id).mkdir(mode=0o700)
-    state = {"v": VERSION, "id": run_id, "goal": goal, "folder": str(folder), "fleet": fleet,
-             "status": "running", "reason": None, "held_by": None, "shape": None, "approved": None,
+    from . import worktrees
+    template = template or {"name": "auto", "shape": "auto", "scout": True, "tries": 2,
+                            "roles": {stage: stage for stage in ("scout", "architect", "builder", "reviewer",
+                                                                 "integrator")}}
+    state = {"v": VERSION, "id": run_id, "goal": goal, "folder": str(folder), "fleet": template["name"],
+             "template": template, "repo": worktrees.repo_root(folder) is not None, "path": path,
+             "status": "running", "reason": None, "held_by": None, "gate": None, "approved": {},
+             "shape": None, "shape_note": None, "worktree": None, "branch": None, "slice_worktrees": {},
              "created": now, "updated": now, "nodes": {}}
     save(state, now)
     activity(run_id, {"event": "created", "goal": goal}, now)
@@ -213,6 +222,8 @@ def node_started(state, nid, session_id, agent, now=None):
     now = now or time.time()
     n.update(status="running", session=session_id, agent=agent, started=now, error=None)
     activity(state["id"], {"event": "started", "node": nid, "session": session_id, "agent": agent}, now)
+    if state.get("held_by") == nid:
+        release(state, now)  # it could not start before; now it has
     return n
 
 
@@ -360,6 +371,9 @@ def brief(state, nid):
     if role == "scout":
         lines += ["You are the first step: nothing has been established yet.", ""]
     elif role == "architect":
+        forced = (state.get("template") or {}).get("shape", "auto")
+        if forced != "auto":
+            lines += [f"This run's fleet uses the {forced} shape whatever you choose; plan for it.", ""]
         lines += _scout_part(state)
         before = latest(state, "architect", done=True)
         if before and before["id"] != nid:
