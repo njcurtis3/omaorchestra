@@ -10,7 +10,8 @@ from pathlib import Path
 
 import subprocess
 
-from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_graph, history, launch, notify,
+from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_close, fleet_graph, history,
+               launch, notify,
                paths, procs, remote, roles, taskqueue, transcript, usage, windows, worktrees)
 from .log import event
 from .registry import CARRIED, Registry
@@ -57,7 +58,7 @@ ALREADY_RUNNING_EXIT = 3
 
 
 # A person's answers at a fleet run's gates: refused from inside an agent.
-FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape")
+FLEET_GATE_COMMANDS = ("fleet-approve", "fleet-send-back", "fleet-drop", "fleet-shape", "fleet-close")
 
 class Daemon:
     def __init__(self, registry, is_alive=procs.is_alive, notifier=None, backlog=SUBSCRIBER_BACKLOG,
@@ -602,7 +603,7 @@ class Daemon:
         loop.create_task(later())
 
     def handle_fleet(self, cmd, request, peer=None):
-        if cmd in FLEET_GATE_COMMANDS:
+        if cmd in FLEET_GATE_COMMANDS and not (cmd == "fleet-close" and request.get("check")):
             agent = self.from_agent(peer)
             if agent:
                 event(logging.WARNING, "fleet answer refused", run=request.get("run"), reason=f"sent from inside {agent}")
@@ -639,6 +640,14 @@ class Daemon:
                 fleet_graph.choose_shape(state, request.get("shape"))
             self.fleet_saved(state, f"{cmd[6:]} at the plan gate")
             return {"ok": True, "run": state}
+        if cmd == "fleet-close":
+            if request.get("check"):
+                return {"ok": True, "run": state, "checks": fleet_close.check(state)}
+            if state.get("closed"):
+                raise fleet.RunError(f"run {state['id']} is already closed")
+            checks, notes = fleet_close.close(state)
+            self.fleet_saved(state, "closed")
+            return {"ok": True, "run": state, "checks": checks, "notes": notes}
         if cmd == "fleet-cancel":
             waiting = {n["id"] for n in fleet_graph.cancel(state)}
             for item in [t for t in self.queue.tasks if t.get("fleet") == state["id"] and t.get("node") in waiting]:

@@ -277,13 +277,17 @@ class Top:
 
     def fleet_key(self, key):
         run = self.selected()
-        if run is None or key not in ("y", "b", "d", "l", "x"):
+        if run is None or key not in ("y", "b", "d", "l", "x", "c"):
             return
         gate = run.get("gate") if run["status"] == "at-gate" else None
         title = clip(one_line(run["goal"]), 30)
         if key == "x" and run["status"] not in ("done", "cancelled"):
             self.ask = {"kind": "confirm", "question": f"Cancel the run \"{title}\"?",
                         "then": lambda: self.fleet_send({"cmd": "fleet-cancel", "run": run["id"]}, "cancelled " + title)}
+        elif key == "c" and run["status"] == "done" and not run.get("closed"):
+            self.ask = {"kind": "confirm", "question": "Close it? Git is checked first",
+                        "then": lambda: self.fleet_send({"cmd": "fleet-close", "run": run["id"]},
+                                                        "closed: its work is on " + str(run.get("branch") or "the folder"))}
         elif key == "y" and gate:
             self.detail = True  # the plan on screen before saying yes
             question = "Approve this plan? Builders start" if gate == "plan" else "Approve merging the slices?"
@@ -565,6 +569,8 @@ class Top:
             word = RUN_WORD.get(run["status"], run["status"])
             if run["status"] == "at-gate":
                 word = f"{run.get('gate')} gate"
+            elif run.get("closed"):
+                word = "closed"
             tail = f" {word} "
             screen.line((("▸ " if chosen else "  ") + clip(one_line(run["goal"]), width - len(tail) - 2),
                          "chosen" if chosen else "bold"), right=(tail, RUN_STYLE.get(run["status"], "")))
@@ -590,6 +596,10 @@ class Top:
             state = f"waiting at the {run.get('gate')} gate"
         field("", state, RUN_STYLE.get(run["status"], ""))
         field("held", run.get("reason") if run["status"] == "held" else None, "urgent")
+        if run["status"] == "done":
+            field("", "closed: merge its branch when you are ready" if run.get("closed")
+                  else "finished: c checks it against git and closes it", "dim")
+        field("branch", run.get("branch"))
         field("in", present.place(run.get("folder")))
         plan = fleet.live_plan(run)
         if plan:
@@ -691,6 +701,8 @@ class Top:
                 items += [("b Send back", "b"), ("d Drop slice", "d"), ("l Shape", "l")]
             if run["status"] not in ("done", "cancelled"):
                 items.append(("x Cancel run", "x"))
+            if run["status"] == "done" and not run.get("closed"):
+                items.append(("c Close…", "c"))
         if self.tab == "queue":
             task = self.selected()
             if task:

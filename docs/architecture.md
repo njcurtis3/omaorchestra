@@ -60,6 +60,8 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "fleet-list"}`, `{"cmd": "fleet-show", "run"}` | `{"ok": true, "runs": [...]}`, `{"ok": true, "run": {...}, "activity": [...]}` (`run` is an id or prefix) |
 | `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, merge) is passed |
 | `{"cmd": "fleet-cancel", "run"}` | `{"ok": true, "run": {...}}`: nothing more starts; its queued nodes are removed |
+| `{"cmd": "fleet-send-back", "run", "note"}`, `fleet-drop` (`slice`), `fleet-shape` (`shape`) | `{"ok": true, "run": {...}}`: answers at the plan gate |
+| `{"cmd": "fleet-close", "run", "check"?}` | `{"ok": true, "run", "checks": [[ok, what]...], "notes"?}`: checked against git (`fleet_close.py`); with `check`, only the checks. The gate answers and closing are refused from inside an agent |
 
 Errors return `{"ok": false, "error": ...}` and keep the connection open.
 

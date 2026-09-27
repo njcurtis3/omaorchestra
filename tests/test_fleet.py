@@ -264,7 +264,8 @@ class NodeTest(unittest.TestCase):
         integrator = fleet.brief(self.state, "integrator")
         self.assertIn("- s1: Look users up by email; branch fleet/s1; latest review: REJECT", integrator)
         self.assertIn("- s2: Add an index; branch (none); latest review: not reviewed", integrator)
-        self.assertIn("into branch fleet/look-users-up", integrator)
+        self.assertIn("You are on branch fleet/look-users-up, the run's own", integrator)
+        self.assertIn("- s2: python -m pytest", integrator)  # each done-when, to run again
 
         task = fleet.task_for(self.state, "integrator")
         self.assertTrue(task.startswith(integrator))

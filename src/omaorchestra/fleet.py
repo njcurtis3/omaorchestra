@@ -436,8 +436,11 @@ def brief(state, nid):
             verdict = review["result"]["verdict"] if review else "not reviewed"
             lines.append(f"- {s['id']}: {s['intent']}; branch {branch or '(none)'}; latest review: {verdict}")
         if state.get("branch"):
-            lines += ["", f"Merge the slices that passed into branch {state['branch']}."]
-        lines.append("")
+            lines += ["", f"You are on branch {state['branch']}, the run's own. Merge each slice that passed into it "
+                          "(`git merge --no-ff <its branch>`), never into another branch."]
+        lines += ["", "After merging, run the full test suite, and each slice's done-when again: they must still "
+                      "pass together.", ""]
+        lines += [f"- {s['id']}: {s['done_when']}" for s in (live_plan(state) or {}).get("slices") or []] + [""]
         lines += _dropped_part(state)
     else:
         done = [d for d in state["nodes"].values() if d["status"] == "done" and d["id"] != nid]

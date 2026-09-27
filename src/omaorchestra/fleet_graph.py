@@ -185,6 +185,26 @@ def passed(state, slice_id):
                 and review["attempt"] >= built["attempt"] and review["result"]["verdict"] == "PASS")
 
 
+def expected_branch(state, n):
+    """The branch a builder or the integrator must end on: the slice's own
+    in a diamond, else the run's. None outside git."""
+    if n["role"] == "builder" and state.get("shape") == "diamond":
+        return (state.get("slice_worktrees", {}).get(n.get("slice")) or {}).get("branch")
+    return state.get("branch")
+
+
+def off_branch(state, n):
+    """Why a node that writes finished somewhere it should not, or None: a
+    run's work never lands on your own branches."""
+    wanted = expected_branch(state, n)
+    if not wanted or not n.get("git"):
+        return None
+    ended = n["git"].get("branch")
+    if ended != wanted:
+        return f"{n['id']} ended on {ended or 'a detached HEAD'}, not {wanted}"
+    return None
+
+
 def _slice_step(state, slice_id):
     """("start", node id), ("wait",), ("passed",) or ("hold", reason)."""
     built = fleet.latest(state, "builder", slice_id)
@@ -192,6 +212,8 @@ def _slice_step(state, slice_id):
         return "start", fleet.add_node(state, "builder", slice_id)["id"]
     if built["status"] != "done":
         return ("wait",)  # running, waiting to start, or already holding the run
+    if off_branch(state, built):
+        return "hold", off_branch(state, built)
     if built["result"]["status"] == "blocked":
         return "hold", f"{built['id']} is blocked: {built['result']['blocked']}"
     review = fleet.latest(state, "reviewer", slice_id)
@@ -269,9 +291,14 @@ def advance(state, now=None):
     if integrator["status"] != "done":
         return []
     result = integrator["result"]
-    if result["blocked"] or result["escalate"] or not result["suite"]["passed"]:
-        fleet.hold(state, "integrator: " + (result["escalate"] or result["blocked"] or "the full suite failed"),
-                   by="integrator", now=now)
+    missing = [s["id"] for s in plan["slices"] if s["id"] not in result["merged"]]
+    reason = (off_branch(state, integrator)
+              or (result["escalate"] or result["blocked"] or ("the full suite failed" if not result["suite"]["passed"]
+                                                                else None))
+              or (f"it did not merge {', '.join(missing)}" if missing else None))
+    if reason:
+        fleet.hold(state, reason if reason.startswith("integrator") else f"integrator: {reason}", by="integrator",
+                   now=now)
         return []
     finish(state, now)
     return []

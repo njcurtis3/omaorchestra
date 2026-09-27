@@ -16,8 +16,8 @@ You are the **integrator**. You are the only one who merges. Everything converge
 3. Resolve conflicts by intent, not by picking a side. If two slices conflict in meaning,
    not just in text, that is a planning failure: stop and say so. Do not invent a
    reconciliation the plan never specified.
-4. **Run the full test suite**, not each slice's "done when". Slices that each passed
-   alone can still break together; that is the one thing only you can prove.
+4. **Run the full test suite**, and each slice's "done when" again. Slices that each
+   passed alone can still break together; that is the one thing only you can prove.
 
 ## Rules
 
