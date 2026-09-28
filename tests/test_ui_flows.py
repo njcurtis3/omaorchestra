@@ -152,6 +152,14 @@ class UiFlowTest(unittest.TestCase):
         return self.find("detail").parentItem()
 
     # ---------------------------------------------------------- flows
+    def test_the_logo_heads_the_navigation(self):
+        logo = self.find("logo")
+        # Loaded and drawn (an SVG that fails hides it and shows the name instead).
+        self.assertTrue(wait_for(lambda: logo.property("paintedWidth") > 100), "the logo was not drawn")
+        self.assertTrue(logo.isVisible())
+        self.assertEqual(logo.width(), 168)  # the navigation's width inside its margins
+        self.assertLess(logo.mapToScene(QPointF(0, 0)).y(), 20)
+
     def test_sessions_detail_filters_and_settings(self):
         # Sessions reported to the daemon appear live.
         self.add_session("w1", "needs-input", "/tmp/website", message="Allow Bash?", model="claude-opus-5-5")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Draw omaorchestra's logo from the brand board ("Pixel Hop"): the app icon,
-light and dark tiles, the README wordmarks, favicons and GitHub's social
+light and dark tiles, the README and app wordmarks, favicons and GitHub's social
 preview.
 
 The mark is a pixel "o" whose top-right corner has hopped off as a spark,
@@ -25,6 +25,7 @@ from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "docs" / "assets"
+APP_QML = ROOT / "src" / "omaorchestra" / "app" / "qml"
 FONT_FILE = "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Bold.ttf"
 
 INK = "#17181c"        # the dark tile, and the mark on light
@@ -169,6 +170,8 @@ def main():
         ASSETS / "icon-light.svg": tile("light"),
         ASSETS / "logo-dark.svg": wordmark(font, "dark"),
         ASSETS / "logo-light.svg": wordmark(font, "light"),
+        APP_QML / "logo-dark.svg": wordmark(font, "dark"),     # the app's navigation header
+        APP_QML / "logo-light.svg": wordmark(font, "light"),
         ASSETS / "favicon.svg": favicon(32),
     }
     for path, text in written.items():

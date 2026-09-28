@@ -100,7 +100,23 @@ ApplicationWindow {
         anchors.margins: 16
         spacing: 4
 
+        // The wordmark, in the theme's mode; the name in text if the SVG
+        // cannot be drawn (Qt's SVG plugin missing).
+        Image {
+          id: logo
+          objectName: "logo"
+          source: theme.dark ? "logo-dark.svg" : "logo-light.svg"
+          Layout.fillWidth: true
+          Layout.preferredHeight: width * 72 / 454
+          Layout.bottomMargin: 16
+          fillMode: Image.PreserveAspectFit
+          horizontalAlignment: Image.AlignLeft
+          smooth: true
+          visible: status !== Image.Error
+          Accessible.name: "omaorchestra"
+        }
         Label {
+          visible: logo.status === Image.Error
           text: "omaorchestra"
           color: theme.foreground
           font.pixelSize: 18
