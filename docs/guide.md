@@ -540,6 +540,16 @@ its commits on the run's branch, nothing uncommitted, every changed file in
 a slice (or accepted). It then removes the slices' worktrees; the run's
 branch stays for you to merge with `omaorchestra worktree merge <branch>`.
 
+**What a run cost and caught.** `fleet report <run>` (the **Report** view
+of a run in omafleet) is its postmortem: time and cost per role and per
+agent, how long each spent waiting for you, each slice's builds and
+REJECTs, how long the gates and holds waited, and how parallel the builders
+really ran (at most how many at once, and how much of their time
+overlapped). `fleet stats` (and **Fleet roles** on the Usage page) adds up
+your runs per role: what each role costs, its share, and how often
+reviewers sent a build back. Costs are what each agent's session cost
+(API-equivalent on a subscription); times come from the run's activity.
+
 **Watching other fleets.** omafleet also shows runs it did not start,
 read-only, in an **Outside** group: [graph_agents](https://github.com/njcurtis3/graph_agents)
 runs from the folders in `fleets.watch` (a graph_agents checkout, or the

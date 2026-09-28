@@ -14,7 +14,7 @@ ScrollView {
   signal openSession(string sessionId)
   signal openHistory(string sessionId)
 
-  property string mode: "graph"  // graph, board, timeline
+  property string mode: "graph"  // graph, board, timeline, report
   property string nodeId: ""
   property string message: ""
   property bool messageBad: false
@@ -170,7 +170,8 @@ ScrollView {
       Layout.fillWidth: true
       spacing: 6
       Repeater {
-        model: [{ id: "graph", label: "Graph" }, { id: "board", label: "Board" }, { id: "timeline", label: "Timeline" }]
+        model: [{ id: "graph", label: "Graph" }, { id: "board", label: "Board" }, { id: "timeline", label: "Timeline" },
+                { id: "report", label: "Report" }]
         delegate: Button {
           required property var modelData
           objectName: "run-view-" + modelData.id
@@ -220,6 +221,13 @@ ScrollView {
     FleetTimeline {
       objectName: "run-timeline"
       visible: view.shownMode === "timeline" && view.r.outside !== "agent-team"
+      Layout.fillWidth: true
+      runId: view.runId
+    }
+
+    FleetReport {
+      objectName: "run-report"
+      visible: view.shownMode === "report" && view.r.outside !== "agent-team"
       Layout.fillWidth: true
       runId: view.runId
     }

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, fleet, fleet_graph,
-               fleet_outside,
+               fleet_outside, fleet_report,
                hooks, keys, launch,
                history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, service, setup, windows,
                worktrees)
@@ -1017,15 +1017,8 @@ def cmd_fleet_list(args):
 
 
 def cmd_fleet_show(args):
-    if args.run.startswith(("graph_agents:", "team:")):
-        try:
-            state, activity = fleet_outside.find(args.run)
-        except KeyError as e:
-            raise fleet.RunError(e.args[0]) from None
-        response = {"run": state, "activity": activity}
-    else:
-        response = fleet_request({"cmd": "fleet-show", "run": args.run})
-        state, activity = response["run"], response["activity"]
+    state, activity = read_run(args.run)
+    response = {"run": state, "activity": activity}
     if args.json:
         print(json.dumps(response, indent=2))
         return 0
@@ -1086,6 +1079,73 @@ def cmd_fleet_show(args):
             when = time.strftime("%H:%M:%S", time.localtime(entry["at"]))
             detail = " ".join(f"{k}={v}" for k, v in entry.items() if k not in ("at", "event") and v not in (None, ""))
             print(f"  {when}  {entry['event']:<14} {detail}")
+    return 0
+
+
+def span_text(seconds):
+    from .app import present
+    return present.duration(seconds) if seconds else "0s"
+
+
+def read_run(run_id):
+    """(state, activity) of a run of ours (from the daemon) or an outside one."""
+    if run_id.startswith(("graph_agents:", "team:")):
+        try:
+            return fleet_outside.find(run_id)
+        except KeyError as e:
+            raise fleet.RunError(e.args[0]) from None
+    response = fleet_request({"cmd": "fleet-show", "run": run_id})
+    return response["run"], response["activity"]
+
+
+def cmd_fleet_report(args):
+    state, activity = read_run(args.run)
+    r = fleet_report.report(state, activity)
+    if args.json:
+        print(json.dumps(r, indent=2))
+        return 0
+    money = "~$" if r["estimated"] else "$"
+    print(f"{r['goal']}\n  {run_word(state)}, {state.get('shape') or '?'}, over {span_text(r['span_s'])}"
+          + (f", {money}{r['cost']:.2f}" if not state.get("outside") else ""))
+    costs = not state.get("outside")  # someone else's run: no costs of ours
+    print("\n  role         agents  working     waiting for you" + ("  cost" if costs else ""))
+    for role in r["roles"]:
+        print(f"  {role['role']:<12} {role['nodes']:<7} {span_text(role['working_s']):<11} "
+              f"{span_text(role['waiting_s']):<16}"
+              + (f" {money}{role['cost']:.2f} ({round(role['share'] * 100)}%)" if costs else ""))
+    if r["slices"]:
+        print("\n  slice   builds  rejects  verdict" + ("  cost" if costs else ""))
+        for s in r["slices"]:
+            print(f"  {s['slice']:<7} {s['builds']:<7} {s['rejects']:<8} {s['verdict'] or '-':<8}"
+                  + (f" {money}{s['cost']:.2f}" if costs else "")
+                  + (f"  ({s['extra_files']} files outside it)" if s["extra_files"] else ""))
+    p = r["parallel"]
+    print(f"\n  sent back {r['sent_back']} time(s) ({r['rejects']} REJECT), {r['retries']} retry(s), "
+          f"{r['stalls']} stall(s)")
+    for gate in r["gates"]:
+        print(f"  the {gate['gate']} gate waited {span_text(gate['waited_s'])} for you")
+    if r["holds"]["count"]:
+        print(f"  held {r['holds']['count']} time(s), {span_text(r['holds']['held_s'])} in all")
+    print(f"  builders: at most {p['builders_at_once']} at once, {round(p['builders_together'] * 100)}% of their time "
+          f"together; {p['busy']} agents busy on average")
+    return 0
+
+
+def cmd_fleet_stats(args):
+    since = time.time() - args.days * 86400 if args.days else None
+    s = fleet_report.stats(fleet.runs(), since)
+    if args.json:
+        print(json.dumps(s, indent=2))
+        return 0
+    if not s["runs"]:
+        print("no fleet runs" + (f" in the last {args.days} days" if args.days else ""))
+        return 0
+    print(f"{s['runs']} run(s), ${s['cost']:.2f} (${s['per_run']:.2f} a run); reviewers rejected "
+          f"{round(s['reject_rate'] * 100)}% of the builds they saw")
+    print("\n  role         agents  cost       average   share  working")
+    for r in s["roles"]:
+        print(f"  {r['role']:<12} {r['nodes']:<7} ${r['cost']:<9.2f} ${r['average']:<8.2f} "
+              f"{round(r['share'] * 100):>3}%   {span_text(r['working_s'])}")
     return 0
 
 
@@ -1758,6 +1818,14 @@ def build_parser():
     fcl.set_defaults(func=cmd_fleet_close)
     fsub.add_parser("templates", help="the fleets a run can use: auto, single-loop, diamond, yours").set_defaults(
         func=cmd_fleet_templates)
+    frp = fsub.add_parser("report", help="a run's postmortem: time and cost per role, send-backs, gates, parallelism")
+    frp.add_argument("run", help="run id or prefix (graph_agents:<run> for an outside one)")
+    frp.add_argument("--json", action="store_true", help="machine-readable output")
+    frp.set_defaults(func=cmd_fleet_report)
+    fst = fsub.add_parser("stats", help="across runs, per role: agents, cost, working time, how often reviews reject")
+    fst.add_argument("--days", type=int, default=30, help="the last N days (0: every run; default 30)")
+    fst.add_argument("--json", action="store_true", help="machine-readable output")
+    fst.set_defaults(func=cmd_fleet_stats)
     role_p = sub.add_parser("role", help="roles an agent can run as: scout, architect, builder, reviewer, integrator, "
                                          "yours")
     role_sub = role_p.add_subparsers(dest="role_command", required=True)

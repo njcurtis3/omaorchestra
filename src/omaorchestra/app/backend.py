@@ -9,7 +9,8 @@ from PySide6.QtCore import (Property, QAbstractListModel, QFileSystemWatcher, QM
                             Signal, Slot)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import (adapters, catalog, changes, client, config, control, fleet, fleet_graph, fleet_outside, history, keys,
+from .. import (adapters, catalog, changes, client, config, control, fleet, fleet_graph, fleet_outside, fleet_report,
+               history, keys,
                launch,
                modeldefaults, providers, recent, roles, transcript, windows, worktrees)
 from . import present, present_fleet
@@ -1219,6 +1220,38 @@ class Fleets(QObject):
         n = (self.by_id.get(run_id) or {}).get("nodes", {}).get(node_id) or {}
         session = self.sessions.by_id.get(n.get("session")) or {}
         return fleet.read_reply(session) if session else ""
+
+    @Slot(str, result="QVariantMap")
+    def report(self, run_id):
+        """A run's postmortem (fleet_report), with its times as text."""
+        from pathlib import Path
+        if run_id in self.outside:
+            state = self.outside[run_id]
+            events = fleet_outside.activity(Path(state["source"]) / "activity.jsonl") \
+                if state["outside"] == "graph_agents" else []
+        else:
+            response = self._send({"cmd": "fleet-show", "run": run_id}, update=False)
+            if "run" not in response:
+                return {}
+            state, events = response["run"], response.get("activity") or []
+        r = fleet_report.report(state, events)
+        for row in r["roles"] + r["nodes"]:
+            row["workingText"] = present.duration(row["working_s"]) if row["working_s"] else "-"
+            row["waitingText"] = present.duration(row["waiting_s"]) if row["waiting_s"] else "-"
+        for gate in r["gates"]:
+            gate["text"] = present.duration(gate["waited_s"])
+        r["spanText"] = present.duration(r["span_s"])
+        r["heldText"] = present.duration(r["holds"]["held_s"]) if r["holds"]["held_s"] else ""
+        r["outside"] = bool(state.get("outside"))
+        return r
+
+    @Slot(int, result="QVariantMap")
+    def stats(self, days):
+        """Across your runs, per role (the Usage page)."""
+        s = fleet_report.stats(fleet.runs(), time.time() - days * 86400 if days else None)
+        for row in s["roles"]:
+            row["workingText"] = present.duration(row["working_s"]) if row["working_s"] else "-"
+        return s
 
     @Slot(str, result="QVariantMap")
     def team(self, run_id):

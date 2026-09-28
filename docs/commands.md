@@ -950,6 +950,32 @@ The fleets a run can use: auto, single-loop, diamond, yours.
 omaorchestra fleet templates
 ```
 
+### `omaorchestra fleet report`
+
+A run's postmortem: time and cost per role, send-backs, gates, parallelism.
+
+```
+omaorchestra fleet report [--json] run
+```
+
+| Argument | Meaning |
+|---|---|
+| `run` | run id or prefix (graph_agents:<run> for an outside one) |
+| `--json` | machine-readable output |
+
+### `omaorchestra fleet stats`
+
+Across runs, per role: agents, cost, working time, how often reviews reject.
+
+```
+omaorchestra fleet stats [--days DAYS] [--json]
+```
+
+| Argument | Meaning |
+|---|---|
+| `--days DAYS` | the last N days (0: every run; default 30) |
+| `--json` | machine-readable output |
+
 ## `omaorchestra role`
 
 Roles an agent can run as: scout, architect, builder, reviewer, integrator, yours.

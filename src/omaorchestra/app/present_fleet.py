@@ -11,7 +11,7 @@ is tested without a window (as the bar widget's logic lives in Format.js).
 import json
 import time
 
-from .. import fleet, fleet_graph
+from .. import fleet, fleet_graph, fleet_report
 from . import present
 
 GROUPS = ("needs-you", "running", "finished", "outside")
@@ -240,36 +240,10 @@ def timeline(state, activity, now=None):
     Also where the run waited at a gate."""
     now = now or time.time()
     start = state["created"]
-    end = state.get("finished") or (state["updated"] if state["status"] in ("done", "cancelled") else now)
+    end = fleet_report.run_end(state, now)
     span = max(1.0, end - start)
-    lanes, current = {}, {}
-
-    def close(nid, at):
-        seg = current.pop(nid, None)
-        if seg:
-            seg["to"] = at
-            lanes.setdefault(nid, []).append(seg)
-
-    def begin(nid, what, at):
-        if (current.get(nid) or {}).get("kind") == what:
-            return  # still the same: one segment, not two
-        close(nid, at)
-        current[nid] = {"kind": what, "from": at}
-
-    for entry in activity:
-        nid, at, kind = entry.get("node"), entry.get("at") or start, entry.get("event")
-        if not nid:
-            continue
-        if kind in ("started", "working"):
-            begin(nid, "working", at)
-        elif kind == "needs-input":
-            begin(nid, "waiting", at)
-        elif kind == "idle":
-            begin(nid, "idle", at)
-        elif kind in ("ended", "result", "failed", "bad-reply"):
-            close(nid, at)
-    for nid in list(current):
-        close(nid, end)
+    lanes = {nid: [{"kind": kind, "from": a, "to": b} for kind, a, b in segs]
+             for nid, segs in fleet_report.segments(activity, end).items()}
     gates, open_gate = [], None
     for entry in activity:
         if entry.get("event") == "gate":

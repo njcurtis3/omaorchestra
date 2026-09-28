@@ -415,6 +415,12 @@ class UiFlowTest(unittest.TestCase):
         self.click("board-s2")
         self.assertTrue(wait_for(lambda: self.shown("node-detail")), "no node detail")
         self.assertEqual(self.find("run-view").property("nodeId"), "builder.s2.2")
+        self.click("run-view-report")
+        self.assertTrue(wait_for(lambda: self.shown("report-role-builder")), "no report")
+        self.assertIn("Sent back 1 time (1 REJECT)", self.find("report-summary").property("text"))
+        self.click("nav-usage")
+        self.assertTrue(wait_for(lambda: self.shown("fleet-stats")), "no fleet roles on the Usage page")
+        self.click("nav-fleets")
 
         # A fleet node in Sessions carries a chip that opens its run.
         self.add_session("fleet-node-1", "working", str(repo), fleet=ids["running"], node="builder.s2")

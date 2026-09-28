@@ -14,6 +14,7 @@ ScrollView {
   readonly property var r: spend.report
   property int statsDays: 30
   readonly property var h: { sessionHistory.rows; return sessionHistory.stats(statsDays) }
+  readonly property var f: { fleets.revision; return fleets.stats(statsDays) }
 
   component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 8 }
   component Line: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -156,6 +157,33 @@ ScrollView {
             Label { Layout.preferredWidth: 150; text: modelData.workingText + " working"; color: theme.muted }
             Label { Layout.fillWidth: true; text: modelData.costText; color: theme.muted }
           }
+        }
+      }
+    }
+
+    // Fleet runs, per role (fleet_report.stats): what each role costs and
+    // how often reviews send builds back, over the same days as above.
+    Section { visible: page.f.runs > 0; text: "Fleet roles" }
+    Line {
+      objectName: "fleet-stats"
+      visible: page.f.runs > 0
+      text: page.f.runs + " run" + (page.f.runs === 1 ? "" : "s") + ", $" + page.f.cost.toFixed(2) + " ($"
+            + page.f.per_run.toFixed(2) + " a run); reviewers rejected " + Math.round(page.f.reject_rate * 100)
+            + "% of the builds they saw"
+    }
+    Repeater {
+      model: page.f.runs > 0 ? page.f.roles : []
+      delegate: RowLayout {
+        required property var modelData
+        Layout.fillWidth: true
+        spacing: 12
+        Label { Layout.preferredWidth: 200; text: modelData.role; color: theme.foreground }
+        Label { Layout.preferredWidth: 90; text: modelData.nodes + " agent" + (modelData.nodes === 1 ? "" : "s"); color: theme.muted }
+        Label { Layout.preferredWidth: 150; text: modelData.workingText + " working"; color: theme.muted }
+        Label {
+          Layout.fillWidth: true
+          color: theme.muted
+          text: "$" + modelData.cost.toFixed(2) + " (" + Math.round(modelData.share * 100) + "%, $" + modelData.average.toFixed(2) + " each)"
         }
       }
     }
