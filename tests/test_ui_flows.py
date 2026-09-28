@@ -154,7 +154,7 @@ class UiFlowTest(unittest.TestCase):
     # ---------------------------------------------------------- flows
     def test_the_logo_heads_the_navigation(self):
         logo = self.find("logo")
-        # Loaded and drawn (an SVG that fails hides it and shows the name instead).
+        # Loaded and drawn.
         self.assertTrue(wait_for(lambda: logo.property("paintedWidth") > 100), "the logo was not drawn")
         self.assertTrue(logo.isVisible())
         self.assertEqual(logo.width(), 168)  # the navigation's width inside its margins

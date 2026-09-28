@@ -154,11 +154,12 @@ def social(font):
             f'</svg>\n')
 
 
-def render_png(svg_text, out):
+def render_png(svg_text, out, width=None):
     with tempfile.NamedTemporaryFile("w", suffix=".svg") as f:
         f.write(svg_text)
         f.flush()
-        subprocess.run(["rsvg-convert", f.name, "-o", str(out)], check=True)
+        size = ["-w", str(width)] if width else []
+        subprocess.run(["rsvg-convert", *size, f.name, "-o", str(out)], check=True)
 
 
 def main():
@@ -170,8 +171,6 @@ def main():
         ASSETS / "icon-light.svg": tile("light"),
         ASSETS / "logo-dark.svg": wordmark(font, "dark"),
         ASSETS / "logo-light.svg": wordmark(font, "light"),
-        APP_QML / "logo-dark.svg": wordmark(font, "dark"),     # the app's navigation header
-        APP_QML / "logo-light.svg": wordmark(font, "light"),
         ASSETS / "favicon.svg": favicon(32),
     }
     for path, text in written.items():
@@ -179,7 +178,13 @@ def main():
     render_png(favicon(16), ASSETS / "favicon-16.png")
     render_png(favicon(32), ASSETS / "favicon-32.png")
     render_png(social(font), ASSETS / "social-preview.png")
-    for path in [*written, *(ASSETS / n for n in ("favicon-16.png", "favicon-32.png", "social-preview.png"))]:
+    # The app's navigation header: PNG, since Qt reads SVG only with qt6-svg,
+    # which pyside6 does not pull in. 3x its 168-pixel width, for HiDPI.
+    for theme in ("dark", "light"):
+        render_png(wordmark(font, theme), APP_QML / f"logo-{theme}.png", width=504)
+    pngs = [ASSETS / n for n in ("favicon-16.png", "favicon-32.png", "social-preview.png")]
+    pngs += [APP_QML / f"logo-{theme}.png" for theme in ("dark", "light")]
+    for path in [*written, *pngs]:
         print(path.relative_to(ROOT))
 
 

@@ -100,28 +100,18 @@ ApplicationWindow {
         anchors.margins: 16
         spacing: 4
 
-        // The wordmark, in the theme's mode; the name in text if the SVG
-        // cannot be drawn (Qt's SVG plugin missing).
+        // The wordmark, in the theme's mode (PNG: Qt reads SVG only with
+        // qt6-svg, which pyside6 does not pull in).
         Image {
-          id: logo
           objectName: "logo"
-          source: theme.dark ? "logo-dark.svg" : "logo-light.svg"
+          source: theme.dark ? "logo-dark.png" : "logo-light.png"
           Layout.fillWidth: true
           Layout.preferredHeight: width * 72 / 454
           Layout.bottomMargin: 16
           fillMode: Image.PreserveAspectFit
           horizontalAlignment: Image.AlignLeft
-          smooth: true
-          visible: status !== Image.Error
+          mipmap: true
           Accessible.name: "omaorchestra"
-        }
-        Label {
-          visible: logo.status === Image.Error
-          text: "omaorchestra"
-          color: theme.foreground
-          font.pixelSize: 18
-          font.bold: true
-          Layout.bottomMargin: 16
         }
 
         Repeater {
