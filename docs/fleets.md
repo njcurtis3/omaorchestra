@@ -1,5 +1,13 @@
 # Fleets
 
+> [!WARNING]
+> **Fleets are experimental.** Every part is tested (the engine, the
+> gates, the checks against git, the app), but live runs with real agents
+> are only beginning, and the run-state format may still change. Start
+> with a small goal in a repository you can reset, and
+> [report](https://github.com/njcurtis3/omaorchestra/issues) what goes
+> wrong.
+
 A fleet run puts several agents, each with a role, on one goal:
 
 ```

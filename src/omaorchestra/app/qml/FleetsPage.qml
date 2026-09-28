@@ -192,7 +192,8 @@ ColumnLayout {
         text: "A fleet run puts a scout, an architect, builders and reviewers on one goal. You approve the plan before anything is built, "
               + "and a reviewer who never saw the code written checks each part.\n\n"
               + "Worth it for work of several parts, or work you would not merge unreviewed. For one file or one bug, "
-              + "a single task (New task) is cheaper and as good."
+              + "a single task (New task) is cheaper and as good.\n\n"
+              + "Fleets are experimental: start with a small goal in a repository you can reset."
       }
       FleetButton {
         visible: fleets.runs.count === 0

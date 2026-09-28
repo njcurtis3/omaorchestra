@@ -25,6 +25,7 @@
   </a>
   <img src="https://img.shields.io/badge/python-3.11%2B-8f8c84.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" style="height: 20px;">
   <img src="https://img.shields.io/badge/Qt-PySide6-8f8c84.svg?style=flat-square&logo=qt&logoColor=white" alt="PySide6" style="height: 20px;">
+  <img src="https://img.shields.io/badge/status-alpha-c9a227.svg?style=flat-square" alt="status: alpha" style="height: 20px;">
 </h4>
 
 <p align="center">
@@ -55,6 +56,14 @@ one its own git worktree, pick the model per task, route agents through API
 providers, and manage every agent's MCP servers in one place. Everything runs
 locally as a user service behind a Unix socket, with no web server and no
 open port.
+
+> [!WARNING]
+> **omaorchestra is alpha.** The core (tracking sessions, the bar, the app,
+> the queue, worktrees, history) is in daily use, but on few machines so far,
+> and settings or state formats may still change between releases. **Fleets
+> are experimental**: every part is tested, but live runs are only beginning,
+> so start with a small goal. Omarchy's plugin APIs are still changing too.
+> [Issues](https://github.com/njcurtis3/omaorchestra/issues) welcome.
 
 > [!NOTE]
 > omaorchestra is an independent, third-party project. It is not part of, or
@@ -101,7 +110,7 @@ open port.
     <td><b>Local and private</b><br>A user service behind a Unix socket, no open port, keys in the system keyring, and a native Qt app, not a web page.</td>
   </tr>
   <tr>
-    <td colspan="2"><b>Fleets (omafleet)</b><br>Put a scout, an architect, builders and reviewers on one goal. You approve the plan before anything is built, builders work in parallel worktrees when the slices allow it, a reviewer who never saw the code written can send it back, and closing a run is checked against git. Any role can be Claude Code, Codex or opencode.</td>
+    <td colspan="2"><b>Fleets (omafleet), experimental</b><br>Put a scout, an architect, builders and reviewers on one goal. You approve the plan before anything is built, builders work in parallel worktrees when the slices allow it, a reviewer who never saw the code written can send it back, and closing a run is checked against git. Any role can be Claude Code, Codex or opencode.</td>
   </tr>
 </table>
 
@@ -230,7 +239,7 @@ a new omaorchestra release.
 - [User guide](docs/guide.md): sessions, the app, the bar widget,
   notifications, starting and queueing tasks, worktrees, agents and handoffs,
   history, keybindings, configuration
-- [Fleets](docs/fleets.md): a scout, an architect, builders and reviewers
+- [Fleets](docs/fleets.md) (experimental): a scout, an architect, builders and reviewers
   on one goal, with a plan you approve; roles, `fleets.toml`, and watching
   graph_agents runs and Claude agent teams
 - [Commands](docs/commands.md): every command and option

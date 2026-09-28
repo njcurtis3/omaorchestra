@@ -417,6 +417,8 @@ Guardrails:
 
 ## Fleets and roles
 
+Fleets are **experimental** in this release: start with a small goal.
+
 A **fleet run** puts several agents with roles on one goal: a scout
 establishes the facts, an architect writes a plan of slices, **you approve
 it**, then builders build the slices (in parallel worktrees when they touch

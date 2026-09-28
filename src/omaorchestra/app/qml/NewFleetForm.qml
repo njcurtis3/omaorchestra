@@ -58,11 +58,25 @@ ColumnLayout {
     palette.dark: theme.muted
   }
 
-  Label {
-    text: "New fleet run"
-    color: theme.foreground
-    font.pixelSize: 18
-    font.bold: true
+  RowLayout {
+    spacing: 10
+    Label {
+      text: "New fleet run"
+      color: theme.foreground
+      font.pixelSize: 18
+      font.bold: true
+    }
+    Label {
+      objectName: "fleet-experimental"
+      text: "experimental"
+      color: theme.accent
+      font.pixelSize: 12
+      leftPadding: 6; rightPadding: 6; topPadding: 1; bottomPadding: 1
+      background: Rectangle { radius: 8; color: "transparent"; border.color: theme.accent }
+      ToolTip.visible: tagMouse.containsMouse
+      ToolTip.text: "Every part is tested, but live runs are only beginning: start with a small goal in a repository you can reset."
+      MouseArea { id: tagMouse; anchors.fill: parent; hoverEnabled: true }
+    }
   }
   Label {
     Layout.fillWidth: true
