@@ -184,6 +184,19 @@ ColumnLayout {
                   onTextEdited: page.setValue(fieldRow.modelData, text.trim())
                 }
 
+                // A list of free text (folders): comma separated.
+                TextField {
+                  visible: fieldRow.modelData.kind === "list"
+                  objectName: "setting-list-" + fieldRow.modelData.section + "." + fieldRow.modelData.key
+                  Layout.preferredWidth: 320
+                  text: fieldRow.modelData.kind === "list" ? (fieldRow.current || []).join(", ") : ""
+                  placeholderText: "(none)"
+                  placeholderTextColor: theme.muted
+                  color: theme.foreground
+                  background: Rectangle { radius: 4; color: theme.background; border.color: theme.selection }
+                  onTextEdited: page.setValue(fieldRow.modelData, text.split(",").map(t => t.trim()).filter(t => t))
+                }
+
                 Row {
                   visible: fieldRow.modelData.kind === "choices"
                   spacing: 12

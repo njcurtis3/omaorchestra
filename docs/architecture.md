@@ -107,6 +107,9 @@ counts against the run's budget, and the daemon flags a node working with
 no sign of life for the run's `stall_minutes`. For the bar widget, which
 reads files and never the socket, the daemon keeps `fleets.json` beside
 `sessions.json`: the runs not over, in brief, whether each needs you.
+Runs from elsewhere (`fleet_outside.py`: graph_agents' `.graph/runs`, Claude
+Code's `~/.claude/teams`) are read by the app and the CLI, never by the
+daemon, and never written.
 
 The run then moves on (`fleet_graph.advance`): each node it is ready for is
 queued like any task (so the parallel limit, budget and usage limits apply)

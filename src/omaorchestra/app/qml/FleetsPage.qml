@@ -30,6 +30,9 @@ ColumnLayout {
     form.prefill(goal, folder)
   }
   onVisibleChanged: if (visible && sessions.connected) fleets.refresh()
+  // Outside runs (graph_agents, agent teams) are files other programs
+  // write: read again every few seconds while the tab is shown.
+  Timer { interval: 8000; repeat: true; running: page.visible; onTriggered: fleets.refreshOutside() }
 
   RowLayout {
     Layout.fillWidth: true
@@ -80,6 +83,7 @@ ColumnLayout {
       section.property: "group"
       section.delegate: Label {
         required property string section
+        objectName: "section-" + section
         text: section
         color: section === "Needs you" ? theme.urgent : theme.muted
         font.pixelSize: 12
@@ -97,6 +101,7 @@ ColumnLayout {
         radius: 6
         color: page.selectedId === key && !page.creating ? theme.selection : runMouse.containsMouse ? Qt.alpha(theme.selection, 0.5) : theme.surface
         border.color: item.group === "needs-you" ? theme.urgent : "transparent"
+        opacity: item.outside ? 0.85 : 1
 
         MouseArea {
           id: runMouse

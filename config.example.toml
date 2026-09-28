@@ -73,3 +73,11 @@ answer_wait = 600
 keep_days = 90
 # false: keep no task titles or prompts in the records (and remove any kept)
 titles = true
+
+[fleets]
+# Fleet runs from elsewhere, shown in omafleet read-only (omaorchestra never
+# writes to them). Folders with graph_agents runs (.graph/runs), or the folder
+# holding a graph_agents checkout, e.g. ["~/repos/graph_agents"]
+watch = []
+# Show Claude Code's agent teams (~/.claude/teams) while they run
+agent_teams = true

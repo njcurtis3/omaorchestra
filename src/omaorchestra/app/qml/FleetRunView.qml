@@ -70,6 +70,7 @@ ScrollView {
         Layout.fillWidth: true
         spacing: 8
         Label {
+          visible: !view.r.outside
           text: "$" + (view.r.spent || 0).toFixed(2) + (view.r.budget ? " of $" + view.r.budget : " spent (no budget)")
           color: theme.muted
           font.pixelSize: 12
@@ -92,7 +93,7 @@ ScrollView {
         IconButton { glyph: "󰆏"; tip: "Copy its branch"; visible: !!view.r.branch; onActivated: sessions.copyPath(view.r.branch) }
         FleetButton {
           objectName: "run-pause"
-          visible: view.r.status === "running" || (view.r.status === "held" && view.r.heldBy === "paused")
+          visible: !view.r.outside && (view.r.status === "running" || (view.r.status === "held" && view.r.heldBy === "paused"))
           text: view.r.status === "running" ? "Pause" : "Resume"
           onClicked: {
             const result = fleets.pause(view.runId, view.r.status === "running")
@@ -101,7 +102,7 @@ ScrollView {
         }
         FleetButton {
           objectName: "run-cancel"
-          visible: view.r.status === "running"
+          visible: !view.r.outside && view.r.status === "running"
           danger: true
           text: view.cancelArmed ? "Really cancel?" : "Cancel run"
           onClicked: {
@@ -111,6 +112,25 @@ ScrollView {
             view.say(result.error || result.message, !!result.error)
           }
         }
+      }
+    }
+
+    // Someone else's run: watched, never answered from here.
+    Rectangle {
+      objectName: "run-outside"
+      visible: !!view.r.outside
+      Layout.fillWidth: true
+      implicitHeight: outsideText.implicitHeight + 16
+      radius: 6
+      color: theme.surface
+      border.color: theme.selection
+      Label {
+        id: outsideText
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+        wrapMode: Text.Wrap
+        color: theme.muted
+        text: "Read-only: " + (view.r.outsideLabel || "an outside run") + ", from " + (view.r.source || "") + ". omaorchestra only watches it; "
+              + (view.r.outside === "graph_agents" ? "answer its gates where it runs (its orchestrator's session)." : "talk to it in its lead's session.")
       }
     }
 
@@ -138,7 +158,15 @@ ScrollView {
     }
 
     // ------------------------------------------------------ graph, board, timeline
+    FleetTeam {
+      objectName: "run-team"
+      visible: view.r.outside === "agent-team"
+      Layout.fillWidth: true
+      runId: view.r.outside === "agent-team" ? view.runId : ""
+    }
+
     RowLayout {
+      visible: view.r.outside !== "agent-team"
       Layout.fillWidth: true
       spacing: 6
       Repeater {
@@ -165,7 +193,7 @@ ScrollView {
 
     FleetGraph {
       objectName: "run-graph"
-      visible: view.shownMode === "graph"
+      visible: view.shownMode === "graph" && view.r.outside !== "agent-team"
       Layout.fillWidth: true
       runId: view.runId
       chosen: view.nodeId
@@ -178,7 +206,7 @@ ScrollView {
 
     FleetBoard {
       objectName: "run-board"
-      visible: view.shownMode === "board"
+      visible: view.shownMode === "board" && view.r.outside !== "agent-team"
       Layout.fillWidth: true
       runId: view.runId
       chosen: view.nodeId.split(".")[1] || ""
@@ -191,7 +219,7 @@ ScrollView {
 
     FleetTimeline {
       objectName: "run-timeline"
-      visible: view.shownMode === "timeline"
+      visible: view.shownMode === "timeline" && view.r.outside !== "agent-team"
       Layout.fillWidth: true
       runId: view.runId
     }

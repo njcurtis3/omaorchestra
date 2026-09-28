@@ -57,6 +57,11 @@ def _events(value):
         return f"unknown event {', '.join(unknown)} (known: {', '.join(REMOTE_EVENTS)})"
 
 
+def _folders(value):
+    if not isinstance(value, list) or not all(isinstance(f, str) and f.strip() for f in value):
+        return "must be a list of folders"
+
+
 def plain_http(url):
     """True for an http:// URL to anywhere but this machine: what is sent
     there, secrets included, can be read on the way."""
@@ -114,6 +119,10 @@ SCHEMA = {
     "history": {
         "keep_days": (90, _int_between(*_RANGES[("history", "keep_days")])),
         "titles": (True, _bool),
+    },
+    "fleets": {
+        "watch": ([], _folders),
+        "agent_teams": (True, _bool),
     },
 }
 
@@ -202,6 +211,16 @@ METADATA = {
                                          "kept are removed."),
         },
     },
+    "fleets": {
+        "title": "Fleets",
+        "help": "Fleet runs from elsewhere, shown in omafleet read-only: omaorchestra never writes to them.",
+        "keys": {
+            "watch": ("graph_agents folders", "Folders with graph_agents runs (.graph/runs), or the folder that "
+                                              "holds a graph_agents checkout; separate several with commas."),
+            "agent_teams": ("Claude agent teams", "Show Claude Code's agent teams (~/.claude/teams) while they "
+                                                  "run."),
+        },
+    },
 }
 
 
@@ -219,8 +238,10 @@ def describe(config):
                 kind = "int"
             elif isinstance(default, str):
                 kind = "text"
-            else:
+            elif (section, key) in OPTIONS:
                 kind = "choices"
+            else:
+                kind = "list"
             field = {"section": section, "key": key, "label": label, "help": help_text, "kind": kind,
                      "value": config[section][key], "default": default}
             if kind == "int":

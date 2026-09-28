@@ -14,8 +14,10 @@ import time
 from .. import fleet, fleet_graph
 from . import present
 
-GROUPS = ("needs-you", "running", "finished")
-GROUP_LABEL = {"needs-you": "Needs you", "running": "Running", "finished": "Finished"}
+GROUPS = ("needs-you", "running", "finished", "outside")
+GROUP_LABEL = {"needs-you": "Needs you", "running": "Running", "finished": "Finished",
+               "outside": "Outside (read-only)"}
+OUTSIDE_LABEL = {"graph_agents": "a graph_agents run", "agent-team": "a Claude agent team"}
 STATUS_WORD = {"running": "Running", "at-gate": "Waiting for you", "held": "Held", "done": "Finished",
                "cancelled": "Cancelled"}
 
@@ -34,12 +36,19 @@ def node_state(n):
 
 
 def group(state):
+    if state.get("outside"):
+        return "outside"  # not ours to answer
     if fleet.needs_you(state):
         return "needs-you"
     return "running" if state["status"] == "running" else "finished"
 
 
 def status_text(state):
+    if state.get("outside") == "agent-team":
+        tasks = state.get("tasks") or []
+        done = sum(1 for t in tasks if t.get("status") == "completed")
+        return f"{len(state['nodes'])} teammate{'s' if len(state['nodes']) != 1 else ''}" + (
+            f", {done} of {len(tasks)} tasks done" if tasks else "")
     if state["status"] == "at-gate":
         return f"Waiting at the {state.get('gate')} gate"
     waiting = [n["id"] for n in state["nodes"].values() if n.get("waiting") and n["status"] == "running"]
@@ -68,6 +77,8 @@ def row(state, now=None):
         "spent": fleet.spent(state), "budget": limits.get("budget") or 0,
         "elapsed": present.duration(end - state["created"]), "created": state["created"],
         "updated": state["updated"], "branch": state.get("branch") or "",
+        "outside": state.get("outside") or "", "outsideLabel": OUTSIDE_LABEL.get(state.get("outside"), ""),
+        "source": state.get("source") or "",
     }
 
 
@@ -91,6 +102,8 @@ def cards(state):
     """The decisions a run waits on you for. Each card: kind, title, what it
     says, and the actions it offers (the tab draws the buttons)."""
     out = []
+    if state.get("outside"):
+        return out  # watched, never answered from here
     since = state.get("since")
     if state["status"] == "at-gate" and state.get("gate") == "plan":
         plan = fleet.live_plan(state) or {}
@@ -272,8 +285,11 @@ def timeline(state, activity, now=None):
     def fraction(at):
         return max(0.0, min(1.0, (at - start) / span))
 
+    ids = list(state["nodes"]) + [nid for nid in lanes if nid not in state["nodes"]]
+    if state.get("outside"):
+        ids = [nid for nid in ids if lanes.get(nid)]  # its log's lanes: an agent each, not a node
     out = []
-    for nid in state["nodes"]:
+    for nid in ids:
         segments = [{"kind": s["kind"], "x": fraction(s["from"]), "w": max(0.004, fraction(s["to"]) - fraction(s["from"])),
                      "minutes": round((s["to"] - s["from"]) / 60, 1)} for s in lanes.get(nid, []) if s["kind"] != "idle"]
         out.append({"node": nid, "segments": segments,
@@ -318,10 +334,14 @@ def _result_lines(role, r):
 
 def node_detail(state, nid):
     n = fleet.node(state, nid)
-    try:
-        brief = fleet.brief(state, nid)
-    except fleet.RunError as e:
-        brief = f"(no brief: {e})"
+    if state.get("outside"):
+        brief = (f"({OUTSIDE_LABEL.get(state['outside'], 'an outside run')}: its own files say what it was told; "
+                 f"see {state.get('source')})")
+    else:
+        try:
+            brief = fleet.brief(state, nid)
+        except fleet.RunError as e:
+            brief = f"(no brief: {e})"
     started, ended = n.get("started"), n.get("ended")
     scope = n.get("scope") or {}
     return {
@@ -335,6 +355,12 @@ def node_detail(state, nid):
         "branch": (n.get("git") or {}).get("branch") or "",
         "extra": scope.get("extra") or [], "accepted": (scope.get("accepted") or {}).get("reason") or "",
     }
+
+
+def team(state):
+    """An agent team: its members and its task list."""
+    return {"members": [{"name": n["id"], "role": n["role"]} for n in state["nodes"].values()],
+            "tasks": state.get("tasks") or []}
 
 
 def stop_rule_hint(goal):

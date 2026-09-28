@@ -540,6 +540,22 @@ its commits on the run's branch, nothing uncommitted, every changed file in
 a slice (or accepted). It then removes the slices' worktrees; the run's
 branch stays for you to merge with `omaorchestra worktree merge <branch>`.
 
+**Watching other fleets.** omafleet also shows runs it did not start,
+read-only, in an **Outside** group: [graph_agents](https://github.com/njcurtis3/graph_agents)
+runs from the folders in `fleets.watch` (a graph_agents checkout, or the
+folder holding one), and Claude Code's agent teams (`~/.claude/teams`)
+while they run (`fleets.agent_teams`, on by default). A graph_agents run
+gets the same graph, board and timeline (a lane per agent it started);
+a team shows its members and task list. Nothing is answered or written
+there: approve a graph_agents plan in its orchestrator's session, talk to
+a team in its lead's. On the command line: `fleet list --outside`, and
+`fleet show graph_agents:<run>` or `team:<name>`.
+
+```toml
+[fleets]
+watch = ["~/repos/graph_agents"]
+```
+
 **Fleets.** `auto` (the architect picks the shape), `single-loop` and
 `diamond` are built in (`fleet templates`). Yours go in
 `~/.config/omaorchestra/fleets.toml`:

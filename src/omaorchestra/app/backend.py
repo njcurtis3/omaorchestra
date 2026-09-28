@@ -9,7 +9,8 @@ from PySide6.QtCore import (Property, QAbstractListModel, QFileSystemWatcher, QM
                             Signal, Slot)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
-from .. import (adapters, catalog, changes, client, config, control, fleet, fleet_graph, history, keys, launch,
+from .. import (adapters, catalog, changes, client, config, control, fleet, fleet_graph, fleet_outside, history, keys,
+               launch,
                modeldefaults, providers, recent, roles, transcript, windows, worktrees)
 from . import present, present_fleet
 from . import theme as theme_file
@@ -1062,11 +1063,15 @@ class Fleets(QObject):
 
     changed = Signal()  # the run list or its counts
     runChanged = Signal(str)  # one run's state (its id)
+    _outsideRead = Signal(list)
 
     def __init__(self, sessions, parent=None):
         super().__init__(parent)
         self.sessions = sessions
         self.by_id = {}
+        self.outside = {}  # graph_agents runs and agent teams (fleet_outside): read-only
+        self._reading = False
+        self._outsideRead.connect(self._set_outside)
         self._revision = 0  # goes up on every change: QML bindings read it to re-run
         self._runs = KeyedListModel("id", self)
         self._boards, self._graphs = {}, {}  # run id -> KeyedListModel
@@ -1093,14 +1098,17 @@ class Fleets(QObject):
         self._publish()
         self.runChanged.emit(state["id"])
 
+    def _get(self, run_id):
+        return self.by_id.get(run_id) or self.outside.get(run_id)
+
     def _publish(self):
-        self._runs.set_items(present_fleet.rows(fleet.current(list(self.by_id.values()))))
+        self._runs.set_items(present_fleet.rows(fleet.current(list(self.by_id.values())) + list(self.outside.values())))
         for run_id, model in self._boards.items():
-            if run_id in self.by_id:
-                model.set_items(fleet.board(self.by_id[run_id]))
+            if self._get(run_id):
+                model.set_items(fleet.board(self._get(run_id)))
         for run_id, model in self._graphs.items():
-            if run_id in self.by_id:
-                model.set_items(present_fleet.graph(self.by_id[run_id])["nodes"])
+            if self._get(run_id):
+                model.set_items(present_fleet.graph(self._get(run_id))["nodes"])
         self._revision += 1
         self.changed.emit()
 
@@ -1109,25 +1117,55 @@ class Fleets(QObject):
         response = self._send({"cmd": "fleet-list"})
         if "runs" in response:
             self._set_all(fleet.current(response["runs"]))
+        self.refreshOutside()
+
+    @Slot()
+    def refreshOutside(self):
+        """Read the outside runs again, off the UI thread (their files can be
+        large); the tab calls this every few seconds while it is shown."""
+        if self._reading:
+            return
+        self._reading = True
+
+        def work():
+            try:
+                found = fleet_outside.runs()
+            except Exception:  # noqa: BLE001 (other programs' files: never take the app down)
+                found = []
+            self._outsideRead.emit(found)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(list)
+    def _set_outside(self, states):
+        self._reading = False
+        before = self.outside
+        self.outside = {s["id"]: s for s in states}
+        if {k: v["updated"] for k, v in before.items()} != {k: v["updated"] for k, v in self.outside.items()}:
+            self._publish()
+            for run_id in self.outside:
+                if before.get(run_id, {}).get("updated") != self.outside[run_id]["updated"]:
+                    self.runChanged.emit(run_id)
 
     runs = Property(QObject, lambda self: self._runs, constant=True)
     revision = Property(int, lambda self: self._revision, notify=changed)
     needing = Property(int, lambda self: sum(1 for s in self.by_id.values()
                                              if present_fleet.group(s) == "needs-you"), notify=changed)
+    outsideCount = Property(int, lambda self: len(self.outside), notify=changed)
     count = Property(int, lambda self: len(self.by_id), notify=changed)
 
     @Slot(str, result="QVariantMap")
     def row(self, run_id):
-        state = self.by_id.get(run_id)
+        state = self._get(run_id)
         return present_fleet.row(state) if state else {}
 
     @Slot(str, result="QVariantMap")
     def state(self, run_id):
-        return self.by_id.get(run_id) or {}
+        return self._get(run_id) or {}
 
     @Slot(str, result="QVariantList")
     def cards(self, run_id):
-        state = self.by_id.get(run_id)
+        state = self._get(run_id)
         return present_fleet.cards(state) if state else []
 
     @Slot(str, result=QObject)
@@ -1135,25 +1173,31 @@ class Fleets(QObject):
         """The run's board rows, as a model that updates in place."""
         if run_id not in self._boards:
             self._boards[run_id] = KeyedListModel("slice", self)
-        if run_id in self.by_id:
-            self._boards[run_id].set_items(fleet.board(self.by_id[run_id]))
+        if self._get(run_id):
+            self._boards[run_id].set_items(fleet.board(self._get(run_id)))
         return self._boards[run_id]
 
     @Slot(str, result=QObject)
     def graphNodes(self, run_id):
         if run_id not in self._graphs:
             self._graphs[run_id] = KeyedListModel("key", self)
-        if run_id in self.by_id:
-            self._graphs[run_id].set_items(present_fleet.graph(self.by_id[run_id])["nodes"])
+        if self._get(run_id):
+            self._graphs[run_id].set_items(present_fleet.graph(self._get(run_id))["nodes"])
         return self._graphs[run_id]
 
     @Slot(str, result="QVariantMap")
     def graph(self, run_id):
-        state = self.by_id.get(run_id)
+        state = self._get(run_id)
         return present_fleet.graph(state) if state else {"nodes": [], "edges": [], "columns": 0, "lanes": 0}
 
     @Slot(str, result="QVariantMap")
     def timeline(self, run_id):
+        if run_id in self.outside:
+            state = self.outside[run_id]
+            from pathlib import Path
+            events = fleet_outside.activity(Path(state["source"]) / "activity.jsonl") \
+                if state["outside"] == "graph_agents" else []
+            return present_fleet.timeline(state, events)
         response = self._send({"cmd": "fleet-show", "run": run_id}, update=False)
         if "run" not in response:
             return {"lanes": [], "gates": [], "length": ""}
@@ -1161,7 +1205,7 @@ class Fleets(QObject):
 
     @Slot(str, str, result="QVariantMap")
     def node(self, run_id, node_id):
-        state = self.by_id.get(run_id)
+        state = self._get(run_id)
         if not state or node_id not in state["nodes"]:
             return {}
         detail = present_fleet.node_detail(state, node_id)
@@ -1175,6 +1219,11 @@ class Fleets(QObject):
         n = (self.by_id.get(run_id) or {}).get("nodes", {}).get(node_id) or {}
         session = self.sessions.by_id.get(n.get("session")) or {}
         return fleet.read_reply(session) if session else ""
+
+    @Slot(str, result="QVariantMap")
+    def team(self, run_id):
+        state = self.outside.get(run_id)
+        return present_fleet.team(state) if state else {"members": [], "tasks": []}
 
     @Slot(str, result=str)
     def stopRuleHint(self, goal):
@@ -1200,6 +1249,8 @@ class Fleets(QObject):
         return response
 
     def _act(self, payload, done):
+        if payload.get("run") in self.outside:
+            return {"error": "that run is someone else's: omafleet only watches it"}
         response = self._send(payload)
         if "error" in response:
             return {"error": response["error"]}

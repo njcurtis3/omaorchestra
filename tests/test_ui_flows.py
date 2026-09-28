@@ -451,6 +451,40 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(self.window.property("page"), "fleets")
         self.assertEqual(self.warnings, [])
 
+    def test_outside_runs_are_shown_read_only(self):
+        runs = Path(self.tmp.name) / "graph_agents" / ".graph" / "runs" / "2026-09-20-fleet-gaps"
+        runs.mkdir(parents=True)
+        (runs / "state.json").write_text(json.dumps({
+            "run_id": "2026-09-20-fleet-gaps", "goal": "Close three gaps", "status": "blocked",
+            "architect": {"shape": "single-loop", "plan": [{"slice": "s1", "intent": "Diagnose", "files": ["a.py"]}]},
+            "builders": {"s1": {"status": "done", "branch": "s1-x"}},
+            "reviews": {"s1": {"verdict": "PASS", "summary": "fine"}}}))
+        claude = Path(self.tmp.name) / "claude"
+        (claude / "teams" / "session-abc").mkdir(parents=True)
+        (claude / "teams" / "session-abc" / "config.json").write_text(json.dumps({"members": [
+            {"name": "team-lead", "agentType": "team-lead"}, {"name": "tester", "agentType": "reviewer"}]}))
+        (claude / "tasks" / "session-abc").mkdir(parents=True)
+        (claude / "tasks" / "session-abc" / "1.json").write_text(json.dumps({"id": "1", "subject": "Run the tests",
+                                                                            "status": "in_progress"}))
+        with open(self.config_path, "a") as f:
+            f.write(f'[fleets]\nwatch = ["{Path(self.tmp.name) / "graph_agents"}"]\n')
+        with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(claude)}):
+            self.click("nav-fleets")
+            self.assertTrue(wait_for(lambda: self.fleets.outsideCount == 2), "outside runs not read")
+            self.assertTrue(wait_for(lambda: self.shown("section-Outside (read-only)")), "no outside section")
+            self.window.showFleet("graph_agents:2026-09-20")
+            self.assertTrue(wait_for(lambda: self.shown("run-outside")), "no read-only banner")
+            self.assertFalse(self.shown("card-held"), "an outside run offers answers")
+            self.assertFalse(self.shown("run-cancel"))
+            self.click("run-view-board")
+            self.assertTrue(wait_for(lambda: self.shown("board-s1")))
+            result = self.fleets.cancel("graph_agents:2026-09-20-fleet-gaps")
+            self.assertIn("only watches", result["error"])
+            self.window.showFleet("team:session-abc")
+            self.assertTrue(wait_for(lambda: self.shown("team-task-1")), "no team view")
+            self.assertFalse(self.shown("run-graph"))
+        self.assertEqual(self.warnings, [])
+
     def test_queue_from_the_form_then_pause_resume_cancel(self):
         # Hold first, so nothing is actually launched during the test.
         self.click("nav-queue")

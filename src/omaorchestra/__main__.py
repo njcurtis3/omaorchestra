@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, fleet, fleet_graph,
+               fleet_outside,
                hooks, keys, launch,
                history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, service, setup, windows,
                worktrees)
@@ -974,8 +975,8 @@ def run_word(state):
 
 
 def print_run_line(state):
-    spent = fleet.spent(state)
-    print(f"{state['id']:<48} {run_word(state):<26} {state.get('shape') or state['fleet']:<11} ${spent:.2f}")
+    spent = "" if state.get("outside") else f"${fleet.spent(state):.2f}"
+    print(f"{state['id']:<48} {run_word(state):<26} {state.get('shape') or state['fleet']:<11} {spent}".rstrip())
     if state["status"] == "held" and state.get("reason"):
         print(f"{'':<48} {state['reason']}")
 
@@ -999,33 +1000,52 @@ def cmd_fleet_list(args):
     runs = fleet_request({"cmd": "fleet-list"})["runs"]
     if not args.all:
         runs = fleet.current(runs)
+    outside = fleet_outside.runs() if args.outside else []
     if args.json:
-        print(json.dumps(runs, indent=2))
+        print(json.dumps(runs + outside, indent=2))
         return 0
-    if not runs:
+    if not runs and not outside:
         print("no fleet runs" + ("" if args.all else " (--all for older ones)"))
         return 0
     for state in runs:
         print_run_line(state)
+    if outside:
+        print("\noutside (read-only):")
+        for state in outside:
+            print_run_line(state)
     return 0
 
 
 def cmd_fleet_show(args):
-    response = fleet_request({"cmd": "fleet-show", "run": args.run})
-    state, activity = response["run"], response["activity"]
+    if args.run.startswith(("graph_agents:", "team:")):
+        try:
+            state, activity = fleet_outside.find(args.run)
+        except KeyError as e:
+            raise fleet.RunError(e.args[0]) from None
+        response = {"run": state, "activity": activity}
+    else:
+        response = fleet_request({"cmd": "fleet-show", "run": args.run})
+        state, activity = response["run"], response["activity"]
     if args.json:
         print(json.dumps(response, indent=2))
         return 0
     print(state["goal"])
-    print(f"  {run_word(state)}" + (f": {state['reason']}" if state["status"] == "held" else ""))
+    print(f"  {run_word(state)}" + (f": {state['reason']}" if state["status"] == "held" and state.get("reason") else ""))
+    if state.get("outside"):
+        print(f"  read-only, from {state['source']}")
+    if state.get("outside") == "agent-team":
+        print("  members: " + ", ".join(f"{n['id']} ({n['role']})" for n in state["nodes"].values()))
+        for task in state.get("tasks") or []:
+            print(f"  [{task['status']}] {task['subject'] or task['id']}" + (f"  ({task['owner']})" if task["owner"] else ""))
+        return 0
     limits = state.get("limits") or {}
     for label, value in (("run", state["id"]), ("folder", state["folder"]), ("fleet", state["fleet"]),
                          ("shape", " ".join(x for x in (state.get("shape"), f"({state['shape_note']})"
                                                          if state.get("shape_note") else "") if x)),
                          ("branch", state.get("branch")),
-                         ("spent", f"${fleet.spent(state):.2f}" + (f" of ${limits['budget']}" if limits.get("budget")
-                                                                    else "") + f"; {len(state['nodes'])} of "
-                          f"{limits.get('max_steps') or 30} steps")):
+                         ("spent", "" if state.get("outside") else
+                          f"${fleet.spent(state):.2f}" + (f" of ${limits['budget']}" if limits.get("budget") else "")
+                          + f"; {len(state['nodes'])} of {limits.get('max_steps') or 30} steps")):
         if value:
             print(f"  {label + ':':<8} {value}")
     for role in ("scout", "architect"):
@@ -1679,10 +1699,12 @@ def build_parser():
     fr.set_defaults(func=cmd_fleet_run)
     fl = fsub.add_parser("list", help="current runs (not over, or ended this week)")
     fl.add_argument("--all", action="store_true", help="every run")
+    fl.add_argument("--outside", action="store_true",
+                    help="also runs from elsewhere, read-only: graph_agents ([fleets] watch) and Claude agent teams")
     fl.add_argument("--json", action="store_true", help="machine-readable output")
     fl.set_defaults(func=cmd_fleet_list)
     fs = fsub.add_parser("show", help="a run: the plan at its gate, else the board (a row per slice)")
-    fs.add_argument("run", help="run id or prefix")
+    fs.add_argument("run", help="run id or prefix (graph_agents:<run> or team:<name> for an outside one)")
     fs.add_argument("--activity", type=int, nargs="?", const=20, default=0, metavar="N",
                     help="also its last N events (default 20)")
     fs.add_argument("--json", action="store_true", help="machine-readable output")

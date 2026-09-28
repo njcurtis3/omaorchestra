@@ -763,12 +763,13 @@ omaorchestra fleet run [--in DIR] [--fleet FLEET] [--shape {single-loop,diamond}
 Current runs (not over, or ended this week).
 
 ```
-omaorchestra fleet list [--all] [--json]
+omaorchestra fleet list [--all] [--outside] [--json]
 ```
 
 | Argument | Meaning |
 |---|---|
 | `--all` | every run |
+| `--outside` | also runs from elsewhere, read-only: graph_agents ([fleets] watch) and Claude agent teams |
 | `--json` | machine-readable output |
 
 ### `omaorchestra fleet show`
@@ -781,7 +782,7 @@ omaorchestra fleet show [--activity [N]] [--json] run
 
 | Argument | Meaning |
 |---|---|
-| `run` | run id or prefix |
+| `run` | run id or prefix (graph_agents:<run> or team:<name> for an outside one) |
 | `--activity N` | also its last N events (default 20) |
 | `--json` | machine-readable output |
 
