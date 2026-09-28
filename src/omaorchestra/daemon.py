@@ -1172,8 +1172,13 @@ class Daemon:
             before = self.registry.sessions.get(request["session_id"])
             before = dict(before) if before else None
             previous = before["status"] if before else None
+            status = request["status"]
+            if request.get("start") and previous == "working":
+                # Launched with its prompt, so already at work: its SessionStart
+                # hook comes after and must not read as a finished turn.
+                status = "working"
             session = self.registry.update(
-                request["session_id"], request.get("agent", "unknown"), request["status"],
+                request["session_id"], request.get("agent", "unknown"), status,
                 cwd=request.get("cwd"), message=request.get("message"),
                 pid=request.get("pid"), pid_start=request.get("pid_start"),
                 transcript_path=request.get("transcript_path"),

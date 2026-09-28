@@ -62,6 +62,19 @@ class HookMappingTest(unittest.TestCase):
         self.assertIsNone(hooks.request_for({"hook_event_name": "PreCompact", "session_id": "s1"}))
         self.assertIsNone(hooks.request_for({"hook_event_name": "Stop"}))
 
+    def test_idle_reminder_is_not_a_question(self):
+        for extra in ({"notification_type": "idle_prompt", "message": "anything"},
+                      {"message": "Claude is waiting for your input"}):
+            self.assertIsNone(hooks.request_for({"hook_event_name": "Notification", "session_id": "s1", **extra}))
+        req = hooks.request_for({"hook_event_name": "Notification", "session_id": "s1",
+                                 "notification_type": "permission_prompt", "message": "Claude needs your permission"})
+        self.assertEqual(req["status"], "needs-input")
+
+    def test_session_start_is_marked(self):
+        req = hooks.request_for({"hook_event_name": "SessionStart", "session_id": "s1"})
+        self.assertEqual((req["status"], req.get("start")), ("idle", True))
+        self.assertNotIn("start", hooks.request_for({"hook_event_name": "Stop", "session_id": "s1"}))
+
     def test_install_covers_every_event(self):
         from omaorchestra import claude_settings
         installed = claude_settings.install({}, "/x/omaorchestra hook claude")
@@ -98,6 +111,22 @@ class SocketTest(unittest.TestCase):
             {"cmd": "list"},
         ))
         self.assertEqual([s["id"] for s in listed["sessions"]], ["s1"])
+
+    def test_session_start_keeps_a_launched_session_working(self):
+        # A task is registered working with its prompt; its SessionStart
+        # hook arrives after and must not read as a turn that ended.
+        _, started, stopped = asyncio.run(self.roundtrip(
+            {"cmd": "update", "session_id": "s1", "agent": "claude", "status": "working"},
+            {"cmd": "update", "session_id": "s1", "agent": "claude", "status": "idle", "start": True},
+            {"cmd": "update", "session_id": "s1", "agent": "claude", "status": "idle"},
+        ))
+        self.assertEqual(started["session"]["status"], "working")
+        self.assertEqual(stopped["session"]["status"], "idle")
+        _, fresh = asyncio.run(self.roundtrip(
+            {"cmd": "list"},
+            {"cmd": "update", "session_id": "s2", "agent": "claude", "status": "idle", "start": True},
+        ))
+        self.assertEqual(fresh["session"]["status"], "idle")
 
     def test_bad_requests_get_errors_not_disconnects(self):
         bad, unknown, ping = asyncio.run(self.roundtrip(

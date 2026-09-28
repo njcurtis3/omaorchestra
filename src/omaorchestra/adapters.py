@@ -64,6 +64,8 @@ class Adapter:
                    "cwd": event.get("cwd"), "message": self.message(event) if name in self.needs_input_events else None,
                    "transcript_path": event.get("transcript_path"), "model": event.get("model") or None,
                    "launch_id": event.get("launch_id")}
+        if name == "SessionStart":
+            request["start"] = True  # a session starting never ends a turn (daemon.handle)
         if agent_process and agent_process[1] is not None:
             request["pid"], request["pid_start"] = agent_process
         return request
@@ -126,7 +128,15 @@ class Claude(Adapter):
             return "Allow " + describe(event.get("tool_name"), event.get("tool_input"), event.get("mcp_server")) + "?"
         return event.get("message")
 
+    # Sent a minute after a turn ends. The session is idle, not asking
+    # anything: read as needs-input it would hold a queue slot and say a
+    # finished agent waits for you.
+    IDLE_PROMPT = "Claude is waiting for your input"
+
     def request_for(self, event, agent_process=None):
+        if event.get("hook_event_name") == "Notification" and (
+                event.get("notification_type") == "idle_prompt" or event.get("message") == self.IDLE_PROMPT):
+            return None
         request = super().request_for(event, agent_process)
         if request and request["cmd"] == "update":
             request.pop("model")  # Claude's model comes from its transcript (it can change mid-session)
