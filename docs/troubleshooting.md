@@ -1,7 +1,7 @@
 # Troubleshooting
 
 <!-- sections -->
-**Sections:** [A session never appears](#a-session-never-appears) · [The daemon will not start](#the-daemon-will-not-start) · [The bar widget is missing or stale](#the-bar-widget-is-missing-or-stale) · [Focus does not find the window](#focus-does-not-find-the-window) · [The app does not open](#the-app-does-not-open) · [Queued tasks do not start](#queued-tasks-do-not-start) · [A fleet run does not move](#a-fleet-run-does-not-move) · [Keys and MCP secrets](#keys-and-mcp-secrets) · [Notifications do not show](#notifications-do-not-show) · [Removing everything](#removing-everything)
+**Sections:** [A session never appears](#a-session-never-appears) · [The daemon will not start](#the-daemon-will-not-start) · [The bar widget is missing or stale](#the-bar-widget-is-missing-or-stale) · [Focus does not find the window](#focus-does-not-find-the-window) · [The app does not open](#the-app-does-not-open) · [Queued tasks do not start](#queued-tasks-do-not-start) · [A fleet run does not move](#a-fleet-run-does-not-move) · [Fleet commits carry a Co-Authored-By trailer](#fleet-commits-carry-a-co-authored-by-trailer) · [Keys and MCP secrets](#keys-and-mcp-secrets) · [Notifications do not show](#notifications-do-not-show) · [Removing everything](#removing-everything)
 <!-- /sections -->
 
 Start with the daemon's log and a check of each piece:
@@ -98,6 +98,12 @@ waits on. The usual reasons:
 
 An answer refused with "inside an agent" was sent from an agent's own
 terminal: answer from yours, the app, or `top`.
+
+## Fleet commits carry a Co-Authored-By trailer
+
+Claude Code adds its attribution trailer to commits itself, and a role's
+instructions cannot stop it. Set `"attribution": {"commit": "", "pr": ""}`
+in `~/.claude/settings.json`; see [Fleets](fleets.md#roles).
 
 ## Keys and MCP secrets
 

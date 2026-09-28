@@ -61,8 +61,8 @@ open port.
 > **omaorchestra is alpha.** The core (tracking sessions, the bar, the app,
 > the queue, worktrees, history) is in daily use, but on few machines so far,
 > and settings or state formats may still change between releases. **Fleets
-> are experimental**: every part is tested, but live runs are only beginning,
-> so start with a small goal. Omarchy's plugin APIs are still changing too.
+> are experimental**: every part is tested and a first run has gone end to
+> end, but live runs are only beginning, so start with a small goal. Omarchy's plugin APIs are still changing too.
 > [Issues](https://github.com/njcurtis3/omaorchestra/issues) welcome.
 
 > [!NOTE]

@@ -6,8 +6,10 @@
 
 > [!WARNING]
 > **Fleets are experimental.** Every part is tested (the engine, the
-> gates, the checks against git, the app), but live runs with real agents
-> are only beginning, and the run-state format may still change. Start
+> gates, the checks against git, the app), and a first run has gone end
+> to end with Claude Code in every role, but live runs are only beginning:
+> Codex and opencode roles are untried live, and the run-state format may
+> still change. Start
 > with a small goal in a repository you can reset, and
 > [report](https://github.com/njcurtis3/omaorchestra/issues) what goes
 > wrong.
@@ -61,7 +63,9 @@ Each agent is a queued task in a terminal of its own, so the queue's limits
 apply: the parallel limit, the daily budget, and usage limits. The first
 time an agent works in a folder, Claude Code asks whether to trust it;
 answer in its window. Every agent shows in Sessions, with a chip naming its
-run and role.
+run and role. An agent's window stays open after its reply is read, so you
+can look back at its work; once the node is done the run no longer needs
+it, and an idle window holds no queue slot. Close it when you like.
 
 ## How a run goes
 
@@ -230,6 +234,15 @@ omaorchestra run "…" --role reviewer    # a role on its own, outside a fleet
 
 To change a built-in, copy it to yours (**Copy to mine** in omafleet's Roles
 view) and edit that.
+
+A role's instructions cannot turn off what the agent itself adds to
+commits: Claude Code's own `Co-Authored-By` trailer wins over a role that
+forbids it. To keep trailers out of a fleet's commits, turn it off in
+Claude Code's settings (`~/.claude/settings.json`):
+
+```json
+{ "attribution": { "commit": "", "pr": "" } }
+```
 
 ### fleets.toml
 
