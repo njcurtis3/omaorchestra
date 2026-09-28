@@ -74,6 +74,27 @@ slots are busy (an agent waiting for you still counts), the queue is held
 A task that fails to start with "command not found" was queued from a shell
 whose `PATH` the daemon cannot see; queue it again from a normal terminal.
 
+## A fleet run does not move
+
+`omaorchestra fleet show <run>` (or the run in omafleet) says what it
+waits on. The usual reasons:
+
+- **It waits for you**: at the plan or merge gate, or held (a reply without
+  its JSON block, a slice rejected twice, files outside a slice, its
+  budget). Each has an answer; see [Fleets](fleets.md#answering).
+- **Its next agent is queued, not started**: the queue's limits apply to
+  fleet agents too (see above); `omaorchestra queue` shows them as one row
+  per run.
+- **An agent waits in its window**: the folder-trust question the first
+  time Claude Code works in a folder, or a permission prompt. In away mode
+  a prompt waits for an answer from your phone (`omaorchestra top`); the
+  run is marked as waiting for you.
+- **An agent looks stalled**: no sign of life for the fleet's
+  `stall_minutes`. Look at its window; stop it, then `fleet retry`.
+
+An answer refused with "inside an agent" was sent from an agent's own
+terminal: answer from yours, the app, or `top`.
+
 ## Keys and MCP secrets
 
 `provider key` and `mcp add --secret-*` need a Secret Service keyring

@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
 
 
 class CommandsPageTest(unittest.TestCase):
@@ -21,3 +22,28 @@ class CommandsPageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FleetsPageTest(unittest.TestCase):
+    def test_every_reply_field_is_in_the_reference(self):
+        # docs/fleets.md lists what each role hands back; keep it in step with the contracts.
+        from omaorchestra import fleet_reply
+        text = (ROOT / "docs" / "fleets.md").read_text()
+
+        def fields(spec):
+            if isinstance(spec, fleet_reply.Fields):
+                for name, inner in {**spec.required, **spec.optional}.items():
+                    yield name
+                    yield from fields(inner)
+            elif isinstance(spec, fleet_reply.Many):
+                yield from fields(spec.item)
+
+        for role, contract in fleet_reply.CONTRACTS.items():
+            for name in fields(contract):
+                self.assertIn(f"`{name}`", text, f"{role}'s `{name}` is not in docs/fleets.md")
+
+    def test_every_fleet_key_is_in_the_reference(self):
+        from omaorchestra import fleet_graph
+        text = (ROOT / "docs" / "fleets.md").read_text()
+        for key in fleet_graph.KEYS:
+            self.assertIn(f"`{key}", text, f"fleets.toml's `{key}` is not in docs/fleets.md")

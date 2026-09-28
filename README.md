@@ -31,6 +31,7 @@
   <a href="#install">Install</a> ·
   <a href="#setup">Setup</a> ·
   <a href="docs/guide.md">User guide</a> ·
+  <a href="docs/fleets.md">Fleets</a> ·
   <a href="docs/commands.md">Commands</a> ·
   <a href="docs/troubleshooting.md">Troubleshooting</a> ·
   <a href="https://github.com/njcurtis3/omaorchestra/releases">Releases</a>
@@ -181,6 +182,7 @@ omaorchestra run "fix the flaky test" --in ~/code/app
 omaorchestra queue add "update the dependencies" --in ~/code/app
 ```
 
+<a id="uninstall"></a>
 <details>
 <summary>
  Uninstall
@@ -228,6 +230,9 @@ a new omaorchestra release.
 - [User guide](docs/guide.md): sessions, the app, the bar widget,
   notifications, starting and queueing tasks, worktrees, agents and handoffs,
   history, keybindings, configuration
+- [Fleets](docs/fleets.md): a scout, an architect, builders and reviewers
+  on one goal, with a plan you approve; roles, `fleets.toml`, and watching
+  graph_agents runs and Claude agent teams
 - [Commands](docs/commands.md): every command and option
 - [From your phone](docs/remote.md): `omaorchestra top` over SSH on your
   tailnet, with a key that can run nothing else

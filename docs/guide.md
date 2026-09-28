@@ -84,7 +84,7 @@ or switches the open window to it. The model and branch come from the
 agent's transcript (Claude Code), or from the agent itself when it reports
 them.
 
-The **omafleet** tab holds [fleet runs](#fleets): the runs on the left
+The **omafleet** tab holds [fleet runs](fleets.md): the runs on the left
 (needing you first), and the picked run on the right with what it waits on
 you for (the plan to approve, files outside a slice, a slice rejected
 twice...), then the run as a graph, a board (a row per slice) or a
@@ -381,7 +381,7 @@ Recipes are named chains. Two are built in:
 
 Your own go in `~/.config/omaorchestra/recipes.toml`; each step has a
 prompt (with `{task}` where your task goes) and, if you like, a
-[role](#roles), an agent, model and permission mode (these win over the
+[role](fleets.md#roles), an agent, model and permission mode (these win over the
 role's). A recipe with a built-in's name replaces it.
 
 ```toml
@@ -415,77 +415,17 @@ Guardrails:
   permission mode, which a recipe can set (as plan-then-build's first step
   does); set yours in `recipes.toml`.
 
-## Roles
+## Fleets and roles
 
-A role is an agent with a part to play: its own instructions, the tools it
-may use, and a model. Five are built in, the parts of a fleet (Milestone 12
-builds fleets on them); you can use any of them on its own now:
-
-| Role | Does | Tools | Model |
-|---|---|---|---|
-| `scout` | establishes facts, each with its `file:line`, and changes nothing | read-only, web | haiku |
-| `architect` | turns a goal into a plan of slices and picks its shape | read-only | opus |
-| `builder` | implements one slice, inside its files, and commits | all | sonnet |
-| `reviewer` | reviews one slice and may reject it, with a concrete failure | read-only | opus |
-| `integrator` | merges the slices that passed and runs the whole suite | all | opus |
-
-```bash
-omaorchestra role list                 # every role, and where it comes from
-omaorchestra role show reviewer        # its settings and instructions
-omaorchestra run "review the auth changes" --role reviewer
-omaorchestra queue add "look around before we plan" --role scout
-omaorchestra role check                # role files that cannot be used
-```
-
-A role file is the same as a Claude Code subagent file: Markdown with
-`name`, `description`, `tools`, `disallowedTools`, `model`, `permissionMode`
-and `effort` at the top, and the instructions below. One more field is
-omaorchestra's, and Claude ignores it: `agent` (claude, codex or opencode),
-the agent that runs the role. `--agent` overrides it, and `--model` and
-`--permission-mode` override the role's. The first role with a name wins,
-looking in:
-
-1. the project: `.claude/agents/` in the folder and each folder above it up
-   to the repository's root, closest first, so a project's own Claude
-   subagents are roles too;
-2. yours: `~/.config/omaorchestra/roles/*.md`;
-3. the built-ins. To change one, copy it from `role show` into yours.
-
-`role list` says when one hides another ("yours, over built-in").
-
-How each agent takes on a role:
-
-- **Claude Code** runs as it (`--agents` and `--agent`): the role's
-  instructions, tools and model become the session's.
-- **Codex** gets the instructions as developer instructions, and a
-  read-only role runs in Codex's read-only sandbox.
-- **opencode** gets the role as an agent of its own (`omaorchestra-<name>`,
-  passed in `OPENCODE_CONFIG_CONTENT`, never written to its config), with
-  editing, shell and web tools denied when the role does not have them.
-
-Claude's model names (`opus`, `claude-…`) and permission modes apply only
-when Claude runs the role; Codex and opencode keep their own defaults.
-Read-only is a promise for Claude (its tools) and a guarantee for Codex (its
-sandbox). A role's `Bash` can still run a command that writes, so the
-built-ins also tell read-only roles to change nothing.
-
-The built-in roles are adapted from
-[graph_agents](https://github.com/njcurtis3/graph_agents), whose own role
-files load unchanged as a project's roles.
-
-## Fleets
-
-A fleet run puts several agents with [roles](#roles) on one goal: a scout
+A **fleet run** puts several agents with roles on one goal: a scout
 establishes the facts, an architect writes a plan of slices, **you approve
-it**, then a builder builds each slice and a reviewer who never saw it
-written checks it and may send it back. With three or more slices that
-touch different files, builders can work in parallel, each in a worktree
-of its own, and an integrator merges them once you approve the merge.
+it**, then builders build the slices (in parallel worktrees when they touch
+different files) and a reviewer who never saw each one written checks it and
+may send it back. Closing a run is checked against git. It is for work of
+several parts, or work you would not merge unreviewed; for one file or one
+bug, a single task is cheaper and as good.
 
 ![A fleet run's plan, waiting at its gate](screenshots/omafleet-plan.png)
-
-In the app it is the **omafleet** tab (**New fleet run**, or **Run as
-fleet…** on New task to carry a task over); on the command line:
 
 ```bash
 omaorchestra fleet run "add pagination to search" --in ~/code/app
@@ -494,93 +434,20 @@ omaorchestra fleet approve <run>       # the builders start
 omaorchestra fleet close <run>         # checked against git; the branch is yours to merge
 ```
 
-It is for work of several parts, or work you would not merge unreviewed.
-One file, one bug, anything you could say in a paragraph: a single task
-(`run`, or New task) is cheaper and as good.
+In the app it is the **omafleet** tab; on a phone, the Fleets tab of
+`omaorchestra top`. **[Fleets](fleets.md)** has all of it: when a fleet is
+worth it, how a run goes, answering its gates and holds, the guardrails,
+closing, the postmortem, watching graph_agents runs and Claude agent teams,
+and the reference for roles, `fleets.toml` and what each role hands back.
 
-**The plan gate.** Nothing is built before you approve. `fleet show` prints
-the plan: its shape, each slice with the files it may touch, how to check
-it is done, and its risk, and what is not being done. Then:
+A **role** (scout, architect, builder, reviewer, integrator, or yours in
+`~/.config/omaorchestra/roles/`) is a Claude Code subagent file, plus which
+agent runs it; a project's own `.claude/agents` are roles too. Any task can
+run as one:
 
-| Command | Does |
-|---|---|
-| `fleet approve <run>` | the builders start (at the merge gate: the integrator merges) |
-| `fleet send-back <run> "note"` | a new architect plans again, with your note and the plan before |
-| `fleet drop <run> <slice>` | leaves a slice out (not one another depends on) |
-| `fleet shape <run> single-loop\|diamond` | how to run it; a diamond is still checked |
-| `fleet cancel <run>` | nothing more starts |
-
-**How it runs.** A single loop builds one slice at a time on the run's own
-branch (`omaorchestra/fleet-<run>`, in its own worktree). A diamond builds
-the slices at once, each on a branch of its own, then waits at the merge
-gate. A diamond outside git, with fewer than three slices, or with two
-slices touching the same file becomes a single loop, and `fleet show` says
-why. Every agent is a queued task: the parallel limit, the daily budget
-and usage limits apply, and each shows in Sessions as usual.
-
-**When it holds.** A run stops and tells you (a notification, and a push
-when away) when it reaches a gate or needs you:
-
-| Held because | Answer |
-|---|---|
-| a reply without its JSON block, or a session that stopped | `fleet retry <run> [--note ...]`, or ask that agent in its window to fix its reply |
-| a slice rejected twice, or a builder blocked | `fleet retry <run> --note "..."`: another build, with your note |
-| a builder changed files outside its slice | `fleet accept-files <run> <builder> "why"`, or `fleet undo-files <run> <builder>` |
-| the budget or step limit | `fleet limits <run> --budget 10 --steps 40` |
-
-A builder or integrator that ends on any branch but its own holds the run
-too: a run's work never lands on your branches. A node waiting for you is
-marked, and one with no sign of life for a while is flagged. The omafleet
-tab answers each of these with a card at the top of the run, and the
-Fleets tab of `omaorchestra top` does it from a phone. The bar counts runs
-that need you, and its panel lists them.
-
-**Closing.** `fleet close` checks git: every slice built and reviewed PASS,
-its commits on the run's branch, nothing uncommitted, every changed file in
-a slice (or accepted). It then removes the slices' worktrees; the run's
-branch stays for you to merge with `omaorchestra worktree merge <branch>`.
-
-**What a run cost and caught.** `fleet report <run>` (the **Report** view
-of a run in omafleet) is its postmortem: time and cost per role and per
-agent, how long each spent waiting for you, each slice's builds and
-REJECTs, how long the gates and holds waited, and how parallel the builders
-really ran (at most how many at once, and how much of their time
-overlapped). `fleet stats` (and **Fleet roles** on the Usage page) adds up
-your runs per role: what each role costs, its share, and how often
-reviewers sent a build back. Costs are what each agent's session cost
-(API-equivalent on a subscription); times come from the run's activity.
-
-**Watching other fleets.** omafleet also shows runs it did not start,
-read-only, in an **Outside** group: [graph_agents](https://github.com/njcurtis3/graph_agents)
-runs from the folders in `fleets.watch` (a graph_agents checkout, or the
-folder holding one), and Claude Code's agent teams (`~/.claude/teams`)
-while they run (`fleets.agent_teams`, on by default). A graph_agents run
-gets the same graph, board and timeline (a lane per agent it started);
-a team shows its members and task list. Nothing is answered or written
-there: approve a graph_agents plan in its orchestrator's session, talk to
-a team in its lead's. On the command line: `fleet list --outside`, and
-`fleet show graph_agents:<run>` or `team:<name>`.
-
-```toml
-[fleets]
-watch = ["~/repos/graph_agents"]
-```
-
-**Fleets.** `auto` (the architect picks the shape), `single-loop` and
-`diamond` are built in (`fleet templates`). Yours go in
-`~/.config/omaorchestra/fleets.toml`:
-
-```toml
-[fleets.careful]
-description = "Single loop, my security reviewer"
-shape = "single-loop"        # auto, single-loop, diamond
-scout = true                 # false: straight to the architect
-tries = 2                    # builds of a slice before a REJECT holds the run
-budget = 5                   # US$ (API-equivalent for subscriptions); 0: none
-max_steps = 30               # agents the run may start in all
-stall_minutes = 20           # working with no sign of life this long is flagged
-[fleets.careful.roles]       # which role plays each stage
-reviewer = "security-reviewer"
+```bash
+omaorchestra role list                 # every role, and where it comes from
+omaorchestra run "review the auth changes" --role reviewer
 ```
 
 ## Worktrees
