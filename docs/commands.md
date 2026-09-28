@@ -1,5 +1,9 @@
 # Commands
 
+<!-- sections -->
+**Sections:** [At a glance](#at-a-glance) · [omaorchestra daemon](#omaorchestra-daemon) · [omaorchestra ping](#omaorchestra-ping) · [omaorchestra ls](#omaorchestra-ls) · [omaorchestra focus](#omaorchestra-focus) · [omaorchestra app](#omaorchestra-app) · [omaorchestra watch](#omaorchestra-watch) · [omaorchestra top](#omaorchestra-top) · [omaorchestra run](#omaorchestra-run) · [omaorchestra queue](#omaorchestra-queue) · [omaorchestra handoff](#omaorchestra-handoff) · [omaorchestra permissions](#omaorchestra-permissions) · [omaorchestra spend](#omaorchestra-spend) · [omaorchestra mcp](#omaorchestra-mcp) · [omaorchestra provider](#omaorchestra-provider) · [omaorchestra models](#omaorchestra-models) · [omaorchestra worktree](#omaorchestra-worktree) · [omaorchestra recipe](#omaorchestra-recipe) · [omaorchestra fleet](#omaorchestra-fleet) · [omaorchestra role](#omaorchestra-role) · [omaorchestra stop](#omaorchestra-stop) · [omaorchestra dismiss](#omaorchestra-dismiss) · [omaorchestra hook](#omaorchestra-hook) · [omaorchestra hooks](#omaorchestra-hooks) · [omaorchestra remote](#omaorchestra-remote) · [omaorchestra history](#omaorchestra-history) · [omaorchestra resume](#omaorchestra-resume) · [omaorchestra approvals](#omaorchestra-approvals) · [omaorchestra approve](#omaorchestra-approve) · [omaorchestra deny](#omaorchestra-deny) · [omaorchestra away](#omaorchestra-away) · [omaorchestra config](#omaorchestra-config) · [omaorchestra service](#omaorchestra-service) · [omaorchestra setup](#omaorchestra-setup) · [omaorchestra teardown](#omaorchestra-teardown)
+<!-- /sections -->
+
 Every `omaorchestra` command, with its options. `omaorchestra <command> --help`
 prints the same from the command line.
 

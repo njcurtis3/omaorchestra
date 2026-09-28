@@ -7,6 +7,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 
+def load_script(name):
+    """A script from scripts/ (no .py) as a module."""
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), str(ROOT / "scripts" / name))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
 class CommandsPageTest(unittest.TestCase):
     def test_docs_commands_md_is_current(self):
         result = subprocess.run([sys.executable, str(ROOT / "scripts" / "commands"), "--check"],
@@ -47,3 +57,21 @@ class FleetsPageTest(unittest.TestCase):
         text = (ROOT / "docs" / "fleets.md").read_text()
         for key in fleet_graph.KEYS:
             self.assertIn(f"`{key}", text, f"fleets.toml's `{key}` is not in docs/fleets.md")
+
+
+class SectionsLineTest(unittest.TestCase):
+    def test_every_doc_lists_its_sections(self):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "doc-sections"), "--check"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr or "run scripts/doc-sections")
+
+    def test_anchors_match_github(self):
+        ds = load_script("doc-sections")
+        self.assertEqual(ds.slug("In a terminal (and on your phone)"), "in-a-terminal-and-on-your-phone")
+        self.assertEqual(ds.slug("`omaorchestra fleet run`"), "omaorchestra-fleet-run")
+        self.assertEqual(ds.slug("A session never appears"), "a-session-never-appears")
+        text = "# T\n\n## Setup\n\n```\n## not a heading\n```\n\n### Setup\n\n## Use it\n"
+        self.assertEqual([h[2] for h in ds.headings(text)], ["t", "setup", "setup-1", "use-it"])
+        once = ds.apply(text)
+        self.assertIn("**Sections:** [Setup](#setup) · [Use it](#use-it)", once)
+        self.assertEqual(ds.apply(once), once)  # rerunning changes nothing

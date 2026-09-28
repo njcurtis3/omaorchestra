@@ -1,5 +1,9 @@
 # From your phone
 
+<!-- sections -->
+**Sections:** [Tailscale first](#tailscale-first) · [Option 1: Tailscale SSH](#option-1-tailscale-ssh) · [Option 2: sshd with a key that can only run top](#option-2-sshd-with-a-key-that-can-only-run-top) · [Using top on a phone](#using-top-on-a-phone) · [If the phone is lost](#if-the-phone-is-lost) · [Checking](#checking)
+<!-- /sections -->
+
 omaorchestra has two ways to reach you while you are away from the desk:
 
 - **Pushes** tell you when an agent needs you or finishes (see

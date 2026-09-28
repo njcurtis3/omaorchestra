@@ -1,5 +1,9 @@
 # Troubleshooting
 
+<!-- sections -->
+**Sections:** [A session never appears](#a-session-never-appears) · [The daemon will not start](#the-daemon-will-not-start) · [The bar widget is missing or stale](#the-bar-widget-is-missing-or-stale) · [Focus does not find the window](#focus-does-not-find-the-window) · [The app does not open](#the-app-does-not-open) · [Queued tasks do not start](#queued-tasks-do-not-start) · [A fleet run does not move](#a-fleet-run-does-not-move) · [Keys and MCP secrets](#keys-and-mcp-secrets) · [Notifications do not show](#notifications-do-not-show) · [Removing everything](#removing-everything)
+<!-- /sections -->
+
 Start with the daemon's log and a check of each piece:
 
 ```bash

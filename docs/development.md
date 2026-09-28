@@ -1,5 +1,9 @@
 # Development
 
+<!-- sections -->
+**Sections:** [Design](#design) · [Layout](#layout) · [Tests](#tests) · [Continuous integration](#continuous-integration) · [Screenshots](#screenshots) · [The commands page](#the-commands-page) · [Releasing](#releasing)
+<!-- /sections -->
+
 How omaorchestra is built, tested and released. The design notes and the
 daemon's socket protocol are in [architecture.md](architecture.md).
 
@@ -72,6 +76,12 @@ sessions, folders, keys or theme appears in them.
 `docs/commands.md` is generated from the CLI's parser by `scripts/commands`.
 After adding or changing a command or its help text, run it again; a test
 fails while the page is out of date.
+
+Each page in `docs/` opens with a **Sections:** line linking its `##`
+sections. `scripts/doc-sections` writes it (between `<!-- sections -->`
+markers, so it is safe to rerun); run it after adding, renaming or removing
+a section, or a test fails. The commands page gets its line from
+`scripts/commands`.
 
 ## Releasing
 

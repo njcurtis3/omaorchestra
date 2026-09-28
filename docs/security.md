@@ -1,5 +1,9 @@
 # Security
 
+<!-- sections -->
+**Sections:** [In short](#in-short) · [Who it trusts](#who-it-trusts) · [What leaves the machine](#what-leaves-the-machine) · [Threats](#threats) · [Known limits](#known-limits) · [Reporting a problem](#reporting-a-problem)
+<!-- /sections -->
+
 What omaorchestra exposes, what leaves the machine, and what happens if
 something goes wrong: a lost phone, a leaked push topic, other people on
 your tailnet, or an agent turned against you.

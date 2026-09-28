@@ -1,5 +1,9 @@
 # Architecture
 
+<!-- sections -->
+**Sections:** [Components](#components) · [Principles](#principles) · [Protocol](#protocol) · [Liveness](#liveness)
+<!-- /sections -->
+
 ## Components
 - **omaorchestrad**: user service holding the session registry and task queue.
 - **omaorchestra CLI**: talks to the daemon over a Unix socket (JSON messages).

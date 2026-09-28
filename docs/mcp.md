@@ -1,5 +1,9 @@
 # MCP servers and permissions
 
+<!-- sections -->
+**Sections:** [Quick start](#quick-start) · [MCP servers](#mcp-servers) · [Permissions](#permissions)
+<!-- /sections -->
+
 ## Quick start
 
 Add a server once and install it for the agents you use; its secret goes to

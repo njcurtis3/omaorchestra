@@ -21,6 +21,16 @@ os.environ["COLUMNS"] = "100"
 
 from omaorchestra import __main__ as cli  # noqa: E402
 
+
+def _doc_sections():
+    """scripts/doc-sections, for the page's sections line (a script, not a module)."""
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("doc_sections", str(ROOT / "scripts" / "doc-sections"))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
 INTRO = """\
 # Commands
 
@@ -106,7 +116,7 @@ def render():
     lines += ["", "Global options: `--version`, `--help`.", ""]
     for name, help_text, sub in top:
         lines += section(sub, name, help_text, 2)
-    return "\n".join(lines).rstrip() + "\n"
+    return _doc_sections().apply("\n".join(lines).rstrip() + "\n")
 
 
 def anchor(name):

@@ -1,5 +1,9 @@
 # User guide
 
+<!-- sections -->
+**Sections:** [The daemon and hooks](#the-daemon-and-hooks) · [App](#app) · [Bar widget](#bar-widget) · [In a terminal (and on your phone)](#in-a-terminal-and-on-your-phone) · [Notifications](#notifications) · [Starting an agent](#starting-an-agent) · [The queue](#the-queue) · [Fleets and roles](#fleets-and-roles) · [Worktrees](#worktrees) · [Agents](#agents) · [Stopping an agent](#stopping-an-agent) · [History](#history) · [Jumping to a session](#jumping-to-a-session) · [Keybindings and menu](#keybindings-and-menu) · [Configuration](#configuration)
+<!-- /sections -->
+
 Everything omaorchestra does, feature by feature. Installing and setting it
 up is in the [README](../README.md); every command and option is listed in
 [Commands](commands.md).

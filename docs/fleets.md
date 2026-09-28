@@ -1,5 +1,9 @@
 # Fleets
 
+<!-- sections -->
+**Sections:** [When a fleet is worth it](#when-a-fleet-is-worth-it) · [Starting one](#starting-one) · [How a run goes](#how-a-run-goes) · [Answering](#answering) · [Guardrails](#guardrails) · [Closing and merging](#closing-and-merging) · [What it cost and caught](#what-it-cost-and-caught) · [Watching other fleets](#watching-other-fleets) · [Reference](#reference) · [Where it comes from](#where-it-comes-from)
+<!-- /sections -->
+
 > [!WARNING]
 > **Fleets are experimental.** Every part is tested (the engine, the
 > gates, the checks against git, the app), but live runs with real agents

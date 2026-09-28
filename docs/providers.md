@@ -1,5 +1,9 @@
 # Providers and models
 
+<!-- sections -->
+**Sections:** [Quick start](#quick-start) · [Providers](#providers) · [Running agents through a provider](#running-agents-through-a-provider)
+<!-- /sections -->
+
 ## Quick start
 
 OpenRouter, for Claude models billed per token instead of your subscription:
