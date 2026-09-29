@@ -43,20 +43,20 @@ ColumnLayout {
     Layout.fillWidth: true
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.muted
       text: page.reviewing
         ? "Everything done in this worktree since its task started."
         : "Each task started with a separate worktree works on its own branch. Review what it did, merge it into the branch it started from, then remove it."
     }
-    IconButton { visible: !!page.reviewing; glyph: "󰁍"; tip: "Back to the list"; onActivated: page.reviewing = "" }
-    IconButton { glyph: "󰑐"; tip: "Refresh"; onActivated: page.reviewing ? page.review(page.reviewing) : worktrees.refresh() }
+    IconButton { Layout.alignment: Qt.AlignTop; visible: !!page.reviewing; glyph: "󰁍"; tip: "Back to the list"; onActivated: page.reviewing = "" }
+    IconButton { Layout.alignment: Qt.AlignTop; glyph: "󰑐"; tip: "Refresh"; onActivated: page.reviewing ? page.review(page.reviewing) : worktrees.refresh() }
   }
 
   Label {
     visible: !!page.message
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: page.messageIsError ? theme.urgent : theme.accent
     text: page.message
   }
@@ -74,6 +74,7 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "No task worktrees. Start a task in a git repository with a separate worktree to get one."
   }
@@ -107,8 +108,16 @@ ColumnLayout {
           Layout.fillWidth: true
           spacing: 3
           RowLayout {
+            Layout.fillWidth: true
             spacing: 10
-            Label { text: item.modelData.task; color: theme.foreground; font.bold: true; elide: Text.ElideRight; Layout.maximumWidth: 420 }
+            Label {
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.min(Math.ceil(implicitWidth), 420)
+              text: item.modelData.task
+              color: theme.foreground
+              font.bold: true
+              elide: Text.ElideRight
+            }
             Label { visible: item.live; text: "agent running"; color: theme.accent; font.pixelSize: 12 }
             Label {
               objectName: "worktree-fleet-" + item.modelData.branch
@@ -118,8 +127,11 @@ ColumnLayout {
               font.pixelSize: 12
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openFleet(item.modelData.fleet) }
             }
+            Item { Layout.fillWidth: true }
           }
           Label {
+            Layout.fillWidth: true
+            elide: Text.ElideMiddle
             text: " " + item.modelData.branch + "  →  " + (item.modelData.base_branch || item.modelData.base.slice(0, 8))
             color: theme.muted
             font.pixelSize: 12
@@ -133,11 +145,16 @@ ColumnLayout {
           }
         }
 
+        // At most a third of the row; its lines elide past that.
         ColumnLayout {
           Layout.alignment: Qt.AlignTop
+          Layout.fillWidth: true
+          Layout.maximumWidth: Math.min(Math.ceil(implicitWidth), itemContent.width / 3)
           spacing: 2
           Label {
-            Layout.alignment: Qt.AlignRight
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
             color: item.modelData.error ? theme.urgent : item.modelData.merged ? theme.accent : theme.foreground
             text: item.modelData.error ? "error"
               : !item.modelData.exists ? "folder gone"
@@ -150,6 +167,8 @@ ColumnLayout {
             objectName: "review-" + item.modelData.branch
             visible: !!item.modelData.review
             Layout.alignment: Qt.AlignRight
+            Layout.maximumWidth: parent.width
+            elide: Text.ElideRight
             text: item.modelData.review ? "reviewed: " + item.modelData.review.verdict : ""
             color: !item.modelData.review ? theme.muted
                    : item.modelData.review.verdict === "ready" ? theme.accent
@@ -212,7 +231,7 @@ ColumnLayout {
     header: Label { text: confirm.title; padding: 16; color: theme.foreground; font.bold: true }
     contentItem: Label {
       width: 420
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: page.pending && page.pending.force ? theme.urgent : theme.foreground
       text: {
         const p = page.pending

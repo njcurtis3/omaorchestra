@@ -22,15 +22,14 @@ ColumnLayout {
       text: queue.busy + " of " + queue.limit + " agent slots busy"
         + (queue.held ? " · queue held: nothing new starts" : "")
         + ". A slot frees when an agent finishes; waiting for you still counts as busy."
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     }
-    Button {
+    AppButton {
       objectName: "queue-hold"
+      Layout.alignment: Qt.AlignTop
       text: queue.held ? "Release" : "Hold"
-      flat: true
+      active: queue.held
       onClicked: page.act(queue.setHeld(!queue.held))
-      contentItem: Label { text: parent.text; color: queue.held ? theme.accent : theme.foreground; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; implicitWidth: 90; color: parent.hovered ? theme.selection : "transparent"; border.color: queue.held ? theme.accent : theme.selection }
     }
   }
 
@@ -46,7 +45,7 @@ ColumnLayout {
       id: blockedLabel
       anchors.fill: parent
       anchors.margins: 10
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.urgent
       text: "Waiting: " + queue.blockedText + ". Queued tasks start once it is below the limit set in Settings (Start now overrides it)."
     }
@@ -55,7 +54,7 @@ ColumnLayout {
   Label {
     visible: !!page.message
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.urgent
     text: page.message
   }
@@ -65,6 +64,7 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "No queued tasks. Use Add to queue on the New task page, or `omaorchestra queue add`."
   }
@@ -112,7 +112,7 @@ ColumnLayout {
             elide: Text.ElideRight
           }
         }
-        FleetButton { objectName: "queued-open-fleet"; text: "Open run"; onClicked: page.openFleet(row.modelData.fleet) }
+        AppButton { objectName: "queued-open-fleet"; text: "Open run"; onClicked: page.openFleet(row.modelData.fleet) }
       }
 
       RowLayout {
@@ -131,7 +131,7 @@ ColumnLayout {
         ColumnLayout {
           Layout.fillWidth: true
           spacing: 3
-          Label { Layout.fillWidth: true; text: (row.modelData.base_task || row.modelData.task || "").split("\n")[0]; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap }
+          Label { Layout.fillWidth: true; text: (row.modelData.base_task || row.modelData.task || "").split("\n")[0]; color: theme.foreground; elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
           Label {
             Layout.fillWidth: true
             text: [row.modelData.step ? "step " + row.modelData.step + (row.modelData.recipe ? " of " + row.modelData.recipe : "") : "",
@@ -146,7 +146,7 @@ ColumnLayout {
           Label {
             visible: !!row.modelData.error
             Layout.fillWidth: true
-            wrapMode: Text.Wrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             text: (row.modelData.state === "held" ? "Held: " : "Failed to start: ") + (row.modelData.error || "")
             color: theme.urgent
             font.pixelSize: 12

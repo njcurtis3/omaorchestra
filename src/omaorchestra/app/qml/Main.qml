@@ -34,6 +34,8 @@ ApplicationWindow {
   palette.dark: theme.muted
 
   property string page: "sessions"
+  // A narrow window: the navigation shows glyphs only.
+  readonly property bool compact: width < 880
 
   // Called from Python when asked to open a session (`app --session <id>`).
   // A prefix is enough; it is matched against the current sessions.
@@ -90,72 +92,112 @@ ApplicationWindow {
     spacing: 0
 
     // ---------------------------------------------------------- Navigation
+    // Glyphs only in a narrow window, so the page keeps the room; the
+    // entries scroll when the window is short.
     Rectangle {
+      objectName: "nav"
       Layout.fillHeight: true
-      Layout.preferredWidth: 200
+      Layout.preferredWidth: window.compact ? 64 : 200
       color: theme.surface
 
       ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
+        anchors.margins: window.compact ? 8 : 16
         spacing: 4
 
         // The wordmark, in the theme's mode (PNG: Qt reads SVG only with
-        // qt6-svg, which pyside6 does not pull in).
-        Image {
-          objectName: "logo"
-          source: theme.dark ? "logo-dark.png" : "logo-light.png"
-          Layout.fillWidth: true
-          Layout.preferredHeight: width * 72 / 454
+        // qt6-svg, which pyside6 does not pull in); just its mark when narrow.
+        Item {
+          Layout.fillWidth: !window.compact
+          Layout.preferredWidth: window.compact ? Math.ceil(logo.width * 81 / 554) : -1  // the mark ends 81 of 554 in
+          Layout.alignment: Qt.AlignHCenter
+          Layout.preferredHeight: logo.height
           Layout.bottomMargin: 16
-          fillMode: Image.PreserveAspectFit
-          horizontalAlignment: Image.AlignLeft
-          mipmap: true
-          Accessible.name: "omaorchestra"
+          clip: true
+          Image {
+            id: logo
+            objectName: "logo"
+            source: theme.dark ? "logo-dark.png" : "logo-light.png"
+            width: window.compact ? 168 : parent.width
+            height: width * 72 / 454
+            fillMode: Image.PreserveAspectFit
+            horizontalAlignment: Image.AlignLeft
+            mipmap: true
+            Accessible.name: "omaorchestra"
+          }
         }
 
-        Repeater {
-          model: window.pages
+        Flickable {
+          id: navList
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          contentHeight: navColumn.implicitHeight
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy: navList.contentHeight > navList.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
 
-          delegate: ItemDelegate {
-            required property var modelData
-            objectName: "nav-" + modelData.id
-            Layout.fillWidth: true
-            highlighted: window.page === modelData.id
-            onClicked: window.page = modelData.id
+          ColumnLayout {
+            id: navColumn
+            width: navList.width
+            spacing: 4
 
-            contentItem: RowLayout {
-              Label {
+            Repeater {
+              model: window.pages
+
+              delegate: ItemDelegate {
+                id: navItem
+                required property var modelData
+                objectName: "nav-" + modelData.id
                 Layout.fillWidth: true
-                text: modelData.glyph + "  " + modelData.label
-                color: parent.parent.highlighted ? theme.foreground : theme.muted
+                highlighted: window.page === modelData.id
+                onClicked: window.page = modelData.id
+                ToolTip.visible: window.compact && hovered
+                ToolTip.delay: 300
+                ToolTip.text: modelData.label
+
+                contentItem: RowLayout {
+                  spacing: 0
+                  Label {
+                    Layout.fillWidth: true
+                    horizontalAlignment: window.compact ? Text.AlignHCenter : Text.AlignLeft
+                    text: window.compact ? navItem.modelData.glyph : navItem.modelData.glyph + "  " + navItem.modelData.label
+                    color: navItem.highlighted ? theme.foreground : theme.muted
+                    elide: Text.ElideRight
+                  }
+                  // Runs that need you: at a gate, held, or a node waiting.
+                  Label {
+                    objectName: "nav-badge-" + navItem.modelData.id
+                    visible: !window.compact && navItem.modelData.id === "fleets" && fleets.needing > 0
+                    text: String(fleets.needing)
+                    color: theme.background
+                    font.pixelSize: 11
+                    font.bold: true
+                    leftPadding: 6; rightPadding: 6
+                    background: Rectangle { radius: 8; color: theme.urgent }
+                  }
+                }
+                // The badge as a dot on the glyph when narrow.
+                Rectangle {
+                  visible: window.compact && navItem.modelData.id === "fleets" && fleets.needing > 0
+                  width: 8; height: 8; radius: 4
+                  color: theme.urgent
+                  x: parent.width - 14; y: 6
+                }
+                background: Rectangle {
+                  radius: 4
+                  color: navItem.highlighted ? theme.selection : navItem.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
+                }
               }
-              // Runs that need you: at a gate, held, or a node waiting.
-              Label {
-                objectName: "nav-badge-" + modelData.id
-                visible: modelData.id === "fleets" && fleets.needing > 0
-                text: String(fleets.needing)
-                color: theme.background
-                font.pixelSize: 11
-                font.bold: true
-                leftPadding: 6; rightPadding: 6
-                background: Rectangle { radius: 8; color: theme.urgent }
-              }
-            }
-            background: Rectangle {
-              radius: 4
-              color: parent.highlighted ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
             }
           }
         }
 
-        Item { Layout.fillHeight: true }
-
         // Away mode (`omaorchestra away`): pushes and remote answers happen only while away.
         ColumnLayout {
           objectName: "away"
-          visible: awayMode.known && awayMode.active && sessions.connected
+          visible: !window.compact && awayMode.known && awayMode.active && sessions.connected
           Layout.fillWidth: true
+          Layout.topMargin: 8
           Layout.bottomMargin: 12
           spacing: 6
 
@@ -169,6 +211,7 @@ ApplicationWindow {
             id: awayBox
             objectName: "away-mode"
             Layout.fillWidth: true
+            implicitHeight: 30
             font.pixelSize: 12
             model: [{ value: "auto", text: "Auto" },
                     { value: "on", text: "Away" },
@@ -203,13 +246,15 @@ ApplicationWindow {
             text: "󰄜  " + awayMode.text
             color: awayMode.away ? theme.foreground : theme.muted
             font.pixelSize: 12
-            wrapMode: Text.Wrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             Layout.fillWidth: true
           }
         }
 
         Label {
-          text: "v" + appVersion
+          Layout.fillWidth: true
+          horizontalAlignment: window.compact ? Text.AlignHCenter : Text.AlignLeft
+          text: (window.compact ? "" : "v") + appVersion
           color: theme.muted
           font.pixelSize: 12
         }
@@ -220,8 +265,9 @@ ApplicationWindow {
     ColumnLayout {
       Layout.fillWidth: true
       Layout.fillHeight: true
-      Layout.margins: 24
+      Layout.margins: window.compact ? 16 : 24
       spacing: 16
+      clip: true  // nothing a page overflows draws over the navigation
 
       RowLayout {
         Layout.fillWidth: true
@@ -232,6 +278,7 @@ ApplicationWindow {
           font.pixelSize: 22
           font.bold: true
           Layout.fillWidth: true
+          elide: Text.ElideRight
         }
 
         Rectangle {
@@ -250,7 +297,7 @@ ApplicationWindow {
       Label {
         visible: (window.page === "sessions" || window.page === "fleets") && !sessions.connected
         Layout.fillWidth: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: theme.muted
         text: "omaorchestrad is not running. Start it with `omaorchestra service install`; this window reconnects on its own."
       }

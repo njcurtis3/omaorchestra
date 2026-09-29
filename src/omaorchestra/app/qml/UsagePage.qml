@@ -17,7 +17,7 @@ ScrollView {
   readonly property var f: { fleets.revision; return fleets.stats(statsDays) }
 
   component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 8 }
-  component Line: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+  component Line: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
 
   ColumnLayout {
     width: page.availableWidth
@@ -28,7 +28,7 @@ ScrollView {
       Label {
         Layout.fillWidth: true
         color: theme.muted
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         text: "Spend through API providers is real; a subscription session's cost is what the same work would cost on the API."
       }
       IconButton { glyph: spend.loading ? "󰔟" : "󰑐"; tip: "Refresh"; onActivated: spend.refresh() }
@@ -55,9 +55,11 @@ ScrollView {
         required property var modelData
         Layout.fillWidth: true
         spacing: 12
-        Label { Layout.preferredWidth: 220; text: modelData.label; color: theme.foreground }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 220; Layout.maximumWidth: 220; elide: Text.ElideRight; text: modelData.label; color: theme.foreground }
         Rectangle {
+          Layout.fillWidth: true
           Layout.preferredWidth: 220
+          Layout.maximumWidth: 220
           height: 8
           radius: 4
           color: theme.selection
@@ -83,16 +85,21 @@ ScrollView {
         required property var modelData
         Layout.fillWidth: true
         spacing: 12
-        Label { Layout.preferredWidth: 200; text: modelData.project; color: theme.foreground; elide: Text.ElideRight }
-        Label { Layout.preferredWidth: 110; text: modelData.model; color: theme.muted }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 200; Layout.maximumWidth: 200; text: modelData.project; color: theme.foreground; elide: Text.ElideRight }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight; text: modelData.model; color: theme.muted }
         Label {
+          Layout.fillWidth: true
           Layout.preferredWidth: 90
+          Layout.maximumWidth: 90
+          elide: Text.ElideRight
           horizontalAlignment: Text.AlignRight
           text: "$" + modelData.usd.toFixed(2)
           color: modelData.real ? theme.foreground : theme.muted
         }
         Label {
           Layout.fillWidth: true
+          Layout.preferredWidth: 0
+          elide: Text.ElideRight
           color: theme.muted
           text: (modelData.real ? "spent via " + modelData.provider : "API-equivalent")
             + (modelData.unpriced.length ? "  (no price for " + modelData.unpriced.join(", ") + ")" : "")
@@ -152,10 +159,10 @@ ScrollView {
             required property var modelData
             Layout.fillWidth: true
             spacing: 12
-            Label { Layout.preferredWidth: 200; text: modelData.name; color: theme.foreground; elide: Text.ElideRight }
-            Label { Layout.preferredWidth: 90; text: modelData.sessions + " session" + (modelData.sessions === 1 ? "" : "s"); color: theme.muted }
-            Label { Layout.preferredWidth: 150; text: modelData.workingText + " working"; color: theme.muted }
-            Label { Layout.fillWidth: true; text: modelData.costText; color: theme.muted }
+            Label { Layout.fillWidth: true; Layout.preferredWidth: 200; Layout.maximumWidth: 200; text: modelData.name; color: theme.foreground; elide: Text.ElideRight }
+            Label { Layout.fillWidth: true; Layout.preferredWidth: 90; Layout.maximumWidth: 90; elide: Text.ElideRight; text: modelData.sessions + " session" + (modelData.sessions === 1 ? "" : "s"); color: theme.muted }
+            Label { Layout.fillWidth: true; Layout.preferredWidth: 150; Layout.maximumWidth: 150; elide: Text.ElideRight; text: modelData.workingText + " working"; color: theme.muted }
+            Label { Layout.fillWidth: true; Layout.preferredWidth: 0; text: modelData.costText; color: theme.muted; elide: Text.ElideRight }
           }
         }
       }
@@ -177,11 +184,13 @@ ScrollView {
         required property var modelData
         Layout.fillWidth: true
         spacing: 12
-        Label { Layout.preferredWidth: 200; text: modelData.role; color: theme.foreground }
-        Label { Layout.preferredWidth: 90; text: modelData.nodes + " agent" + (modelData.nodes === 1 ? "" : "s"); color: theme.muted }
-        Label { Layout.preferredWidth: 150; text: modelData.workingText + " working"; color: theme.muted }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 200; Layout.maximumWidth: 200; elide: Text.ElideRight; text: modelData.role; color: theme.foreground }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 90; Layout.maximumWidth: 90; elide: Text.ElideRight; text: modelData.nodes + " agent" + (modelData.nodes === 1 ? "" : "s"); color: theme.muted }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 150; Layout.maximumWidth: 150; elide: Text.ElideRight; text: modelData.workingText + " working"; color: theme.muted }
         Label {
           Layout.fillWidth: true
+          Layout.preferredWidth: 0
+          elide: Text.ElideRight
           color: theme.muted
           text: "$" + modelData.cost.toFixed(2) + " (" + Math.round(modelData.share * 100) + "%, $" + modelData.average.toFixed(2) + " each)"
         }

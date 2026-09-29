@@ -46,6 +46,7 @@ ColumnLayout {
   component FieldLabel: Label { color: theme.muted }
   component ThemedComboBox: ComboBox {
     implicitContentWidthPolicy: ComboBox.WidestTextWhenCompleted
+    implicitHeight: 32
     palette.button: theme.surface
     palette.buttonText: theme.foreground
     palette.base: theme.surface
@@ -80,7 +81,7 @@ ColumnLayout {
   }
   Label {
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "A scout looks first, an architect writes a plan of slices, and nothing is built until you approve it. "
           + "Then builders and reviewers take the slices, one at a time or in parallel."
@@ -111,7 +112,7 @@ ColumnLayout {
     objectName: "fleet-hint"
     visible: text !== ""
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.accent
     text: fleets.stopRuleHint(goal.text)
   }
@@ -120,6 +121,7 @@ ColumnLayout {
   TextField {
     id: folder
     objectName: "fleet-folder"
+    implicitHeight: 32
     Layout.fillWidth: true
     color: theme.foreground
     placeholderText: "~/code/app"
@@ -150,6 +152,7 @@ ColumnLayout {
       TextField {
         id: budgetField
         objectName: "fleet-budget"
+        implicitHeight: 32
         implicitWidth: 110
         color: theme.foreground
         placeholderText: "the fleet's"
@@ -162,36 +165,44 @@ ColumnLayout {
   Label {
     objectName: "fleet-description"
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: fleetBox.currentIndex >= 0 && fleetBox.model.length ? fleetBox.model[fleetBox.currentIndex].description : ""
   }
-  Label { id: templateError; visible: text !== ""; color: theme.urgent; Layout.fillWidth: true; wrapMode: Text.Wrap }
+  Label { id: templateError; visible: text !== ""; color: theme.urgent; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
 
   Label {
     visible: !!form.error
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.urgent
     text: form.error
   }
 
-  RowLayout {
+  // The note beside the buttons, or above them in a narrow window.
+  GridLayout {
     Layout.fillWidth: true
+    columns: form.width >= 640 ? 2 : 1
+    columnSpacing: 16
+    rowSpacing: 8
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.muted
       font.pixelSize: 12
       text: "Each agent is a queued task in its own terminal: the parallel limit, the daily budget and usage limits apply. The first time an agent works in a folder it asks whether to trust it; answer there."
     }
-    FleetButton { text: "Cancel"; onClicked: form.cancelled() }
-    FleetButton {
-      objectName: "fleet-start"
-      primary: true
-      enabled: form.ready
-      text: "Start the run"
-      onClicked: form.start()
+    RowLayout {
+      Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+      spacing: 8
+      AppButton { text: "Cancel"; onClicked: form.cancelled() }
+      AppButton {
+        objectName: "fleet-start"
+        primary: true
+        enabled: form.ready
+        text: "Start the run"
+        onClicked: form.start()
+      }
     }
   }
   Item { Layout.fillHeight: true }

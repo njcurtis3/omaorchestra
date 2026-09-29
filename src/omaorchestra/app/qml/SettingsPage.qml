@@ -42,42 +42,35 @@ ColumnLayout {
       color: theme.muted
       elide: Text.ElideMiddle
     }
-    Button {
+    AppButton {
       text: "Open in editor"
-      flat: true
       onClicked: settings.openInEditor()
-      contentItem: Label { text: parent.text; color: theme.foreground; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; color: parent.hovered ? theme.selection : "transparent"; border.color: theme.selection }
     }
-    Button {
+    AppButton {
       text: "Revert"
-      flat: true
       enabled: page.dirty
       onClicked: { page.edits = ({}); page.message = "" }
-      contentItem: Label { text: parent.text; color: parent.enabled ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
     }
-    Button {
+    AppButton {
       objectName: "settings-save"
       text: "Save"
+      primary: true
       enabled: page.dirty
       onClicked: page.save()
-      contentItem: Label { text: parent.text; color: parent.enabled ? theme.background : theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; color: parent.enabled ? theme.accent : "transparent"; border.color: theme.selection }
     }
   }
 
   Label {
     visible: !!settings.error
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.urgent
     text: "The config file has a problem, so defaults are shown: " + settings.error
   }
   Label {
     visible: !!page.message
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: page.messageIsError ? theme.urgent : theme.accent
     text: page.message
   }
@@ -102,7 +95,7 @@ ColumnLayout {
           spacing: 8
 
           Label { text: sectionBox.modelData.title; color: theme.foreground; font.bold: true; font.pixelSize: 16 }
-          Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: sectionBox.modelData.help; color: theme.muted }
+          Label { Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; text: sectionBox.modelData.help; color: theme.muted }
 
           Repeater {
             model: sectionBox.modelData.fields
@@ -118,18 +111,21 @@ ColumnLayout {
               color: theme.surface
               border.color: edited ? theme.accent : "transparent"
 
-              RowLayout {
+              // The control beside its text, or under it in a narrow window.
+              GridLayout {
                 id: fieldLayout
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
-                spacing: 16
+                columns: width >= 600 ? 2 : 1
+                columnSpacing: 16
+                rowSpacing: 8
 
                 ColumnLayout {
                   Layout.fillWidth: true
                   spacing: 2
-                  Label { text: fieldRow.modelData.label; color: theme.foreground }
+                  Label { Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; text: fieldRow.modelData.label; color: theme.foreground }
                   Label {
                     Layout.fillWidth: true
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     text: fieldRow.modelData.help + "  (default: " + JSON.stringify(fieldRow.modelData.default) + ")"
                     color: theme.muted
                     font.pixelSize: 12
@@ -161,6 +157,7 @@ ColumnLayout {
                 }
 
                 SpinBox {
+                  implicitHeight: 32
                   visible: fieldRow.modelData.kind === "int"
                   from: fieldRow.modelData.min || 0
                   to: fieldRow.modelData.max || 0
@@ -174,8 +171,9 @@ ColumnLayout {
                 }
 
                 TextField {
+                  implicitHeight: 32
                   visible: fieldRow.modelData.kind === "text"
-                  Layout.preferredWidth: 220
+                  Layout.preferredWidth: Math.min(220, fieldLayout.width)
                   text: fieldRow.modelData.kind === "text" ? fieldRow.current : ""
                   placeholderText: "(none)"
                   placeholderTextColor: theme.muted
@@ -186,9 +184,10 @@ ColumnLayout {
 
                 // A list of free text (folders): comma separated.
                 TextField {
+                  implicitHeight: 32
                   visible: fieldRow.modelData.kind === "list"
                   objectName: "setting-list-" + fieldRow.modelData.section + "." + fieldRow.modelData.key
-                  Layout.preferredWidth: 320
+                  Layout.preferredWidth: Math.min(320, fieldLayout.width)
                   text: fieldRow.modelData.kind === "list" ? (fieldRow.current || []).join(", ") : ""
                   placeholderText: "(none)"
                   placeholderTextColor: theme.muted
@@ -197,8 +196,9 @@ ColumnLayout {
                   onTextEdited: page.setValue(fieldRow.modelData, text.split(",").map(t => t.trim()).filter(t => t))
                 }
 
-                Row {
+                Flow {
                   visible: fieldRow.modelData.kind === "choices"
+                  Layout.preferredWidth: Math.min(Math.ceil(implicitWidth), fieldLayout.width)
                   spacing: 12
                   Repeater {
                     model: fieldRow.modelData.options || []

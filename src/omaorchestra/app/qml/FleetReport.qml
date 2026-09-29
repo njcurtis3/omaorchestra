@@ -23,7 +23,7 @@ ColumnLayout {
   Label {
     objectName: "report-summary"
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.foreground
     text: r.run ? "Over " + r.spanText + (r.outside ? "" : ", " + reportView.money + r.cost.toFixed(2))
                   + ". Sent back " + r.sent_back + " time" + (r.sent_back === 1 ? "" : "s") + " (" + r.rejects + " REJECT)"
@@ -32,7 +32,7 @@ ColumnLayout {
   }
   Label {
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     visible: !!r.run
     text: r.run ? "Builders: at most " + r.parallel.builders_at_once + " at once, together "
@@ -47,7 +47,7 @@ ColumnLayout {
     spacing: 12
     Repeater {
       model: ["Role", "Agents", "Working", "Waiting for you", reportView.r.outside ? "" : "Cost"]
-      delegate: Label { required property string modelData; text: modelData; color: theme.muted; font.pixelSize: 12; Layout.preferredWidth: 110 }
+      delegate: Label { required property string modelData; text: modelData; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
     }
   }
   Repeater {
@@ -56,13 +56,16 @@ ColumnLayout {
       required property var modelData
       objectName: "report-role-" + modelData.role
       spacing: 12
-      Cell { text: modelData.role; Layout.preferredWidth: 110 }
-      Cell { text: String(modelData.nodes); Layout.preferredWidth: 110 }
-      Cell { text: modelData.workingText; Layout.preferredWidth: 110 }
-      Cell { text: modelData.waitingText; Layout.preferredWidth: 110; color: modelData.waiting_s ? theme.urgent : theme.muted }
+      Cell { text: modelData.role; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
+      Cell { text: String(modelData.nodes); Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
+      Cell { text: modelData.workingText; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
+      Cell { text: modelData.waitingText; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight; color: modelData.waiting_s ? theme.urgent : theme.muted }
       Cell {
         visible: !reportView.r.outside
+        Layout.fillWidth: true
         Layout.preferredWidth: 160
+        Layout.maximumWidth: 160
+        elide: Text.ElideRight
         text: reportView.money + modelData.cost.toFixed(2) + "  (" + Math.round(modelData.share * 100) + "%)"
       }
     }
@@ -74,18 +77,24 @@ ColumnLayout {
     delegate: RowLayout {
       required property var modelData
       spacing: 12
-      Cell { text: modelData.slice; Layout.preferredWidth: 110 }
-      Cell { text: modelData.builds + " build" + (modelData.builds === 1 ? "" : "s"); Layout.preferredWidth: 110 }
+      Cell { text: modelData.slice; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
+      Cell { text: modelData.builds + " build" + (modelData.builds === 1 ? "" : "s"); Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
       Cell {
         text: modelData.rejects + " REJECT"
         color: modelData.rejects ? theme.urgent : theme.muted
+        Layout.fillWidth: true
         Layout.preferredWidth: 110
+        Layout.maximumWidth: 110
+        elide: Text.ElideRight
       }
-      Cell { text: modelData.verdict || "-"; Layout.preferredWidth: 110 }
+      Cell { text: modelData.verdict || "-"; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
       Cell {
         visible: !reportView.r.outside
         text: reportView.money + modelData.cost.toFixed(2) + (modelData.extra_files ? "   " + modelData.extra_files + " files outside it" : "")
+        Layout.fillWidth: true
         Layout.preferredWidth: 220
+        Layout.maximumWidth: 220
+        elide: Text.ElideRight
       }
     }
   }

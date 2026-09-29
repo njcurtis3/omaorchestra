@@ -13,7 +13,7 @@ ScrollView {
   readonly property var p: mcp.permissions
 
   component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 10 }
-  component Muted: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+  component Muted: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
 
   function ago(at) {
     const s = Math.max(0, Math.floor(Date.now() / 1000 - at))
@@ -70,14 +70,17 @@ ScrollView {
         required property int index
         Layout.fillWidth: true
         spacing: 12
-        Label { Layout.preferredWidth: 70; text: page.ago(modelData.at); color: theme.muted }
-        Label { Layout.preferredWidth: 150; text: (modelData.project || "").split("/").pop(); color: theme.foreground; elide: Text.ElideRight }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 70; Layout.maximumWidth: 70; elide: Text.ElideRight; text: page.ago(modelData.at); color: theme.muted }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 150; Layout.maximumWidth: 150; text: (modelData.project || "").split("/").pop(); color: theme.foreground; elide: Text.ElideRight }
         Label {
+          Layout.fillWidth: true
           Layout.preferredWidth: 190
-          text: modelData.outcome + (modelData.waited !== null ? " (" + modelData.waited + "s)" : "")
+          Layout.maximumWidth: 190
+          elide: Text.ElideRight
+          text: modelData.outcome + (typeof modelData.waited === "number" ? " (" + modelData.waited + "s)" : "")
           color: modelData.outcome === "waiting" ? theme.urgent : theme.muted
         }
-        Label { Layout.fillWidth: true; text: modelData.message || ""; color: theme.foreground; elide: Text.ElideRight }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 0; text: modelData.message || ""; color: theme.foreground; elide: Text.ElideRight }
       }
     }
   }

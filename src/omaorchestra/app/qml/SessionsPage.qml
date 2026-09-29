@@ -40,66 +40,67 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Filters
-  RowLayout {
+  // The chips, then the search: on one line, or two in a narrow window.
+  GridLayout {
     visible: page.selectedId === ""
     Layout.fillWidth: true
-    spacing: 8
+    columns: page.width >= 780 ? 2 : 1
+    columnSpacing: 16
+    rowSpacing: 8
 
-    Repeater {
-      model: [
-        { label: "All", status: "", count: sessions.total },
-        { label: "Waiting", status: "needs-input", count: sessions.waiting },
-        { label: "Working", status: "working", count: sessions.working },
-        { label: "Idle", status: "idle", count: sessions.idle }
-      ]
+    Flow {
+      Layout.fillWidth: page.width < 780
+      spacing: 8
+      Repeater {
+        model: [
+          { label: "All", status: "", count: sessions.total },
+          { label: "Waiting", status: "needs-input", count: sessions.waiting },
+          { label: "Working", status: "working", count: sessions.working },
+          { label: "Idle", status: "idle", count: sessions.idle }
+        ]
 
-      delegate: Button {
-        required property var modelData
-        objectName: "filter-" + (modelData.status || "all")
-        readonly property bool selected: page.statusFilter === modelData.status
-        text: modelData.label + "  " + modelData.count
-        flat: true
-        onClicked: page.statusFilter = modelData.status
-        contentItem: Label {
-          text: parent.text
-          color: parent.selected ? theme.foreground
-                 : modelData.status === "needs-input" && modelData.count > 0 ? theme.urgent : theme.muted
-          horizontalAlignment: Text.AlignHCenter
-        }
-        background: Rectangle {
-          radius: 4
-          color: parent.selected ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
-          border.color: theme.selection
+        delegate: Chip {
+          required property var modelData
+          objectName: "filter-" + (modelData.status || "all")
+          text: modelData.label + "  " + modelData.count
+          selected: page.statusFilter === modelData.status
+          urgent: modelData.status === "needs-input" && modelData.count > 0
+          onClicked: page.statusFilter = modelData.status
         }
       }
     }
 
-    TextField {
-      id: search
-      objectName: "search"
+    RowLayout {
       Layout.fillWidth: true
-      Layout.leftMargin: 8
-      placeholderText: "Filter by project, title, path, branch or model"
-      placeholderTextColor: theme.muted
-      color: theme.foreground
-      selectionColor: theme.selection
-      background: Rectangle { radius: 4; color: theme.surface; border.color: search.activeFocus ? theme.accent : theme.selection }
-    }
+      spacing: 8
 
-    Button {
-      objectName: "filter-fleet"
-      visible: page.fleetCount > 0
-      text: (page.hideFleet ? "Show" : "Hide") + " fleet sessions  " + page.fleetCount
-      flat: true
-      onClicked: page.hideFleet = !page.hideFleet
-      contentItem: Label { text: parent.text; color: theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; color: parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"; border.color: theme.selection }
-    }
+      TextField {
+        id: search
+        objectName: "search"
+        Layout.fillWidth: true
+        implicitHeight: 32
+        placeholderText: "Filter by project, title, path, branch or model"
+        placeholderTextColor: theme.muted
+        color: theme.foreground
+        selectionColor: theme.selection
+        background: Rectangle { radius: 4; color: theme.surface; border.color: search.activeFocus ? theme.accent : theme.selection }
+      }
 
-    IconButton {
-      glyph: page.grid ? "󰕰" : "󰕮"
-      tip: page.grid ? "Show as a list" : "Show as a grid"
-      onActivated: page.grid = !page.grid
+      Chip {
+        objectName: "filter-fleet"
+        visible: page.fleetCount > 0
+        text: (page.hideFleet ? "Show" : "Hide") + " fleet  " + page.fleetCount
+        onClicked: page.hideFleet = !page.hideFleet
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: (page.hideFleet ? "Show" : "Hide") + " the sessions omafleet runs"
+      }
+
+      IconButton {
+        glyph: page.grid ? "󰕰" : "󰕮"
+        tip: page.grid ? "Show as a list" : "Show as a grid"
+        onActivated: page.grid = !page.grid
+      }
     }
   }
 
@@ -109,6 +110,7 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: sessions.total === 0
       ? "No agent sessions. They appear here as soon as an agent starts."
@@ -159,20 +161,40 @@ ColumnLayout {
           Layout.fillWidth: true
           spacing: 3
 
+          // Each part shrinks (and elides) before the row grows past the window:
+          // fillWidth lets a layout shrink an item, maximumWidth stops it growing.
           RowLayout {
+            Layout.fillWidth: true
             spacing: 10
-            Label { text: listRow.modelData.project; color: theme.foreground; font.bold: true }
+            Label {
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.ceil(implicitWidth)
+              Layout.minimumWidth: Math.min(Math.ceil(implicitWidth), 100)
+              text: listRow.modelData.project
+              color: theme.foreground
+              font.bold: true
+              elide: Text.ElideRight
+            }
             Label {
               visible: !!listRow.modelData.branch
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.ceil(implicitWidth)
               text: " " + (listRow.modelData.branch || "")
               color: theme.muted
+              elide: Text.ElideMiddle
             }
             Label {
               visible: !!listRow.modelData.modelName
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.ceil(implicitWidth)
               text: listRow.modelData.modelName
               color: theme.muted
+              elide: Text.ElideRight
             }
             Label {
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.ceil(implicitWidth)
+              elide: Text.ElideRight
               objectName: "fleet-chip-" + listRow.modelData.id
               visible: !!listRow.modelData.fleet
               text: "omafleet · " + (listRow.modelData.node || "").replace(/\./g, " ")
@@ -182,6 +204,7 @@ ColumnLayout {
               background: Rectangle { radius: 8; color: "transparent"; border.color: theme.accent }
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openFleet(listRow.modelData.fleet) }
             }
+            Item { Layout.fillWidth: true }
           }
           Label {
             visible: !!listRow.modelData.title
@@ -202,7 +225,7 @@ ColumnLayout {
             Layout.fillWidth: true
             text: listRow.modelData.message || ""
             color: theme.urgent
-            wrapMode: Text.Wrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           }
         }
 

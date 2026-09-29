@@ -28,7 +28,7 @@ ColumnLayout {
       required property var modelData
       Layout.fillWidth: true
       spacing: 8
-      Label { text: modelData.node; color: theme.foreground; font.pixelSize: 12; Layout.preferredWidth: 110; elide: Text.ElideRight }
+      Label { text: modelData.node; color: theme.foreground; font.pixelSize: 12; Layout.fillWidth: true; Layout.preferredWidth: 110; Layout.maximumWidth: 110; elide: Text.ElideRight }
       Item {
         id: lane
         Layout.fillWidth: true
@@ -59,7 +59,10 @@ ColumnLayout {
         text: modelData.waited ? "waited " + modelData.waited + "m" : ""
         color: theme.urgent
         font.pixelSize: 12
+        Layout.fillWidth: true
         Layout.preferredWidth: 80
+        Layout.maximumWidth: 80
+        elide: Text.ElideRight
       }
     }
   }

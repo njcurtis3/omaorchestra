@@ -160,6 +160,42 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(logo.width(), 168)  # the navigation's width inside its margins
         self.assertLess(logo.mapToScene(QPointF(0, 0)).y(), 20)
 
+    def test_nothing_overflows_the_smallest_window(self):
+        # A long title, branch and model, then every page at the minimum size:
+        # no text reaches past the window's right edge (rows elide or wrap,
+        # button rows wrap), and the navigation is down to its glyphs.
+        self.add_session("n1", "needs-input", "/tmp/a-project-with-a-rather-long-name",
+                         branch="feature/a-branch-name-long-enough-to-crowd-the-row",
+                         model="claude-opus-5-5", title="A task title long enough to fill the row twice over " * 2,
+                         message="Claude needs your permission to use Bash: " + "x" * 120)
+        self.assertTrue(wait_for(lambda: self.shown("row-n1")), "row did not appear")
+        self.window.setWidth(640)
+        self.window.setHeight(420)
+        spin(200)
+        self.assertLess(self.find("nav").width(), 100)
+        width = self.window.width()
+
+        def overflowing(item):
+            if not item.isVisible():
+                return []
+            found = []
+            if item.inherits("QQuickText") and item.property("text"):  # Label and Text
+                # Text wider than its box is drawn past it (a centred line on both sides).
+                spill = max(0, (item.property("contentWidth") or 0) - item.width())
+                right = item.mapToScene(QPointF(item.width() + spill, 0)).x()
+                if right > width + 1:
+                    found.append(f"{item.property('text')[:40]!r} ends at {right:.0f}")
+            for child in item.childItems():
+                found += overflowing(child)
+            return found
+
+        pages = [p["id"] for p in self.window.property("pages").toVariant()]
+        self.assertEqual(len(pages), 11)
+        for page in pages:
+            self.window.setProperty("page", page)
+            spin(150)
+            self.assertEqual(overflowing(self.window.property("contentItem")), [], f"{page} overflows")
+
     def test_sessions_detail_filters_and_settings(self):
         # Sessions reported to the daemon appear live.
         self.add_session("w1", "needs-input", "/tmp/website", message="Allow Bash?", model="claude-opus-5-5")

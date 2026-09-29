@@ -56,20 +56,28 @@ ColumnLayout {
       spacing: 12
       IconButton { glyph: "󰁍"; tip: "Back to the history (Esc)"; onActivated: page.selectedKey = "" }
       Rectangle { width: 10; height: 10; radius: 5; color: page.outcomeColor(page.r.outcome) }
-      Label { text: page.r.project || ""; color: theme.foreground; font.pixelSize: 18; font.bold: true }
+      Label {
+        Layout.fillWidth: true
+        Layout.maximumWidth: Math.ceil(implicitWidth)
+        text: page.r.project || ""
+        color: theme.foreground
+        font.pixelSize: 18
+        font.bold: true
+        elide: Text.ElideRight
+      }
       Label {
         Layout.fillWidth: true
         text: page.r.text || ""
         color: theme.muted
         elide: Text.ElideRight
       }
-      Button {
+      AppButton {
         objectName: "history-fleet"
         visible: !!page.r.fleet
         text: "Its fleet run"
         onClicked: page.openFleet(page.r.fleet)
       }
-      Button {
+      AppButton {
         objectName: "history-resume"
         text: "Resume"
         onClicked: page.actionError = sessionHistory.resume(page.selectedKey)
@@ -104,8 +112,8 @@ ColumnLayout {
           required property var modelData
           Layout.columnSpan: 2
           spacing: 16
-          Label { Layout.preferredWidth: 80; text: modelData[0]; color: theme.muted }
-          Label { Layout.fillWidth: true; text: modelData[1]; color: theme.foreground; wrapMode: Text.Wrap }
+          Label { Layout.fillWidth: true; Layout.preferredWidth: 80; Layout.maximumWidth: 80; elide: Text.ElideRight; text: modelData[0]; color: theme.muted }
+          Label { Layout.fillWidth: true; text: modelData[1]; color: theme.foreground; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
         }
       }
     }
@@ -113,7 +121,7 @@ ColumnLayout {
     Label {
       visible: page.actionError !== ""
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.urgent
       text: page.actionError
     }
@@ -168,13 +176,16 @@ ColumnLayout {
           spacing: 12
           Label {
             Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
             Layout.preferredWidth: 20
+            Layout.maximumWidth: 20
+            elide: Text.ElideRight
             text: modelData.kind === "prompt" ? "󰍩" : modelData.kind === "tool" ? "󰒓" : "󰚩"
             color: modelData.kind === "prompt" ? theme.accent : theme.muted
           }
           Label {
             Layout.fillWidth: true
-            wrapMode: Text.Wrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             text: modelData.text
             color: modelData.kind === "tool" ? theme.muted : theme.foreground
           }
@@ -184,7 +195,7 @@ ColumnLayout {
           anchors.centerIn: parent
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           visible: activityList.count === 0
           color: theme.muted
           text: page.r.transcript ? "The transcript is gone; history only ever pointed to it."
@@ -205,39 +216,34 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Filters
-  RowLayout {
+  // The chips, then the search: on one line, or two in a narrow window.
+  GridLayout {
     visible: page.selectedKey === ""
     Layout.fillWidth: true
-    spacing: 8
+    columns: page.width >= 860 ? 2 : 1
+    columnSpacing: 16
+    rowSpacing: 8
 
-    Repeater {
-      model: [
-        { label: "All", outcome: "" },
-        { label: "Finished", outcome: "finished" },
-        { label: "Stopped", outcome: "stopped" },
-        { label: "Crashed", outcome: "crashed" },
-        { label: "Never started", outcome: "never-started" }
-      ]
+    Flow {
+      Layout.fillWidth: page.width < 860
+      spacing: 8
+      Repeater {
+        model: [
+          { label: "All", outcome: "" },
+          { label: "Finished", outcome: "finished" },
+          { label: "Stopped", outcome: "stopped" },
+          { label: "Crashed", outcome: "crashed" },
+          { label: "Never started", outcome: "never-started" }
+        ]
 
-      delegate: Button {
-        required property var modelData
-        objectName: "history-filter-" + (modelData.outcome || "all")
-        readonly property bool selected: page.outcomeFilter === modelData.outcome
-        readonly property int count: { sessionHistory.counts; return sessionHistory.counts[modelData.outcome] || 0 }
-        text: modelData.label + "  " + count
-        flat: true
-        onClicked: page.outcomeFilter = modelData.outcome
-        contentItem: Label {
-          text: parent.text
-          color: parent.selected ? theme.foreground
-                 : (modelData.outcome === "crashed" || modelData.outcome === "never-started") && parent.count > 0
-                   ? theme.urgent : theme.muted
-          horizontalAlignment: Text.AlignHCenter
-        }
-        background: Rectangle {
-          radius: 4
-          color: parent.selected ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
-          border.color: theme.selection
+        delegate: Chip {
+          required property var modelData
+          objectName: "history-filter-" + (modelData.outcome || "all")
+          readonly property int count: { sessionHistory.counts; return sessionHistory.counts[modelData.outcome] || 0 }
+          text: modelData.label + "  " + count
+          selected: page.outcomeFilter === modelData.outcome
+          urgent: (modelData.outcome === "crashed" || modelData.outcome === "never-started") && count > 0
+          onClicked: page.outcomeFilter = modelData.outcome
         }
       }
     }
@@ -246,7 +252,7 @@ ColumnLayout {
       id: search
       objectName: "history-search"
       Layout.fillWidth: true
-      Layout.leftMargin: 8
+      implicitHeight: 32
       placeholderText: "Search tasks, folders, models, branches"
       placeholderTextColor: theme.muted
       color: theme.foreground
@@ -262,7 +268,7 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: sessionHistory.total === 0
       ? "No history yet. Each session is recorded here when it ends."
@@ -325,9 +331,23 @@ ColumnLayout {
           Layout.fillWidth: true
           spacing: 2
           RowLayout {
+            Layout.fillWidth: true
             spacing: 10
-            Label { text: row.modelData.project; color: theme.foreground; font.bold: true }
-            Label { text: row.modelData.agent + (row.modelData.modelName ? " · " + row.modelData.modelName : ""); color: theme.muted }
+            Label {
+              Layout.fillWidth: true
+              Layout.maximumWidth: Math.ceil(implicitWidth)
+              Layout.minimumWidth: Math.min(Math.ceil(implicitWidth), 100)
+              text: row.modelData.project
+              color: theme.foreground
+              font.bold: true
+              elide: Text.ElideRight
+            }
+            Label {
+              Layout.fillWidth: true
+              text: row.modelData.agent + (row.modelData.modelName ? " · " + row.modelData.modelName : "")
+              color: theme.muted
+              elide: Text.ElideRight
+            }
           }
           Label {
             visible: !!row.modelData.text
@@ -336,19 +356,26 @@ ColumnLayout {
             color: theme.foreground
             elide: Text.ElideRight
           }
-          Label { text: row.modelData.place; color: theme.muted; font.pixelSize: 12 }
+          Label { Layout.fillWidth: true; text: row.modelData.place; color: theme.muted; font.pixelSize: 12; elide: Text.ElideMiddle }
         }
 
+        // At most two fifths of the row; its lines elide past that.
         ColumnLayout {
           Layout.alignment: Qt.AlignTop
+          Layout.fillWidth: true
+          Layout.maximumWidth: Math.min(Math.ceil(implicitWidth), rowContent.width * 0.4)
           spacing: 2
           Label {
-            Layout.alignment: Qt.AlignRight
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
             text: row.modelData.outcomeLabel + " · " + row.modelData.time
             color: page.outcomeColor(row.modelData.outcome)
           }
           Label {
-            Layout.alignment: Qt.AlignRight
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
             text: [row.modelData.length + " (" + row.modelData.working + " working)", row.modelData.costText,
                    row.modelData.commitsText].filter(x => !!x).join(" · ")
             color: theme.muted

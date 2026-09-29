@@ -13,6 +13,9 @@ ColumnLayout {
   property string view: "runs"  // runs, roles, fleets
   property string selectedId: ""
   property bool creating: false
+  // Too narrow for the list beside a run: one or the other, with a way back.
+  readonly property bool stacked: width < 720
+  readonly property bool picked: creating || selectedId !== ""
   signal openSession(string sessionId)
   signal openHistory(string sessionId)
   spacing: 12
@@ -37,24 +40,27 @@ ColumnLayout {
   RowLayout {
     Layout.fillWidth: true
     spacing: 6
+    IconButton {
+      objectName: "fleets-back"
+      visible: page.stacked && page.view === "runs" && page.picked && fleets.runs.count > 0
+      Layout.rightMargin: 6
+      glyph: "󰁍"
+      tip: "Back to the runs"
+      onActivated: { page.creating = false; page.selectedId = "" }
+    }
     Repeater {
       model: [{ id: "runs", label: "Runs" }, { id: "roles", label: "Roles" }, { id: "fleets", label: "Fleets" }]
-      delegate: Button {
+      delegate: Chip {
         required property var modelData
         objectName: "fleets-view-" + modelData.id
         text: modelData.label + (modelData.id === "runs" && fleets.needing ? "  " + fleets.needing + "!" : "")
-        flat: true
+        selected: page.view === modelData.id
+        urgent: modelData.id === "runs" && fleets.needing > 0
         onClicked: { page.view = modelData.id; page.creating = false }
-        contentItem: Label {
-          text: parent.text
-          color: page.view === modelData.id ? theme.foreground : modelData.id === "runs" && fleets.needing ? theme.urgent : theme.muted
-          horizontalAlignment: Text.AlignHCenter
-        }
-        background: Rectangle { radius: 4; implicitWidth: 90; color: page.view === modelData.id ? theme.selection : "transparent"; border.color: theme.selection }
       }
     }
     Item { Layout.fillWidth: true }
-    FleetButton {
+    AppButton {
       objectName: "fleets-new"
       primary: true
       text: "New fleet run"
@@ -72,7 +78,8 @@ ColumnLayout {
     ListView {
       id: runList
       objectName: "fleet-runs"
-      visible: fleets.runs.count > 0
+      visible: fleets.runs.count > 0 && !(page.stacked && page.picked)
+      Layout.fillWidth: page.stacked
       Layout.preferredWidth: 300
       Layout.fillHeight: true
       clip: true
@@ -172,14 +179,14 @@ ColumnLayout {
 
     ColumnLayout {
       objectName: "fleets-empty"
-      visible: !page.creating && (fleets.runs.count === 0 || page.selectedId === "")
+      visible: !page.creating && (fleets.runs.count === 0 || page.selectedId === "" && !page.stacked)
       Layout.fillWidth: true
       Layout.fillHeight: true
       spacing: 10
       Item { Layout.preferredHeight: 24 }
       Label {
         Layout.fillWidth: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: theme.foreground
         font.pixelSize: 16
         text: fleets.runs.count === 0 ? "No fleet runs yet." : "Pick a run on the left."
@@ -187,7 +194,7 @@ ColumnLayout {
       Label {
         visible: fleets.runs.count === 0
         Layout.fillWidth: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: theme.muted
         text: "A fleet run puts a scout, an architect, builders and reviewers on one goal. You approve the plan before anything is built, "
               + "and a reviewer who never saw the code written checks each part.\n\n"
@@ -195,7 +202,7 @@ ColumnLayout {
               + "a single task (New task) is cheaper and as good.\n\n"
               + "Fleets are experimental: start with a small goal in a repository you can reset."
       }
-      FleetButton {
+      AppButton {
         visible: fleets.runs.count === 0
         primary: true
         text: "New fleet run"

@@ -46,7 +46,7 @@ ColumnLayout {
           text: modelData.status === "completed" ? "✓" : modelData.status === "in_progress" ? "●" : "○"
           color: modelData.status === "in_progress" ? theme.accent : theme.foreground
         }
-        Label { Layout.fillWidth: true; text: modelData.subject || modelData.id; color: theme.foreground; wrapMode: Text.Wrap }
+        Label { Layout.fillWidth: true; text: modelData.subject || modelData.id; color: theme.foreground; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
         Label {
           text: [modelData.owner, modelData.blockedBy.length ? "after " + modelData.blockedBy.join(", ") : ""].filter(Boolean).join("  ·  ")
           color: theme.muted

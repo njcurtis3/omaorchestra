@@ -38,7 +38,7 @@ Rectangle {
         color: theme.foreground
         font.bold: true
       }
-      FleetButton {
+      AppButton {
         objectName: "node-open-session"
         visible: !!panel.d.session
         text: panel.d.live ? "Open session" : "Open in History"
@@ -48,21 +48,21 @@ Rectangle {
     }
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.muted
       font.pixelSize: 12
       text: [panel.d.status, panel.d.agent, panel.d.length, panel.d.cost ? (panel.d.costReal ? "$" : "~$") + panel.d.cost.toFixed(2) : "",
              panel.d.branch ? "on " + panel.d.branch : ""].filter(Boolean).join("  ·  ")
     }
-    Label { visible: !!panel.d.error; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.urgent; text: panel.d.error || "" }
+    Label { visible: !!panel.d.error; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; color: theme.urgent; text: panel.d.error || "" }
     Label {
       visible: (panel.d.extra || []).length > 0
-      Layout.fillWidth: true; wrapMode: Text.Wrap; color: panel.d.accepted ? theme.muted : theme.urgent
+      Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; color: panel.d.accepted ? theme.muted : theme.urgent
       text: "Outside its files: " + (panel.d.extra || []).join(", ") + (panel.d.accepted ? " (accepted: " + panel.d.accepted + ")" : "")
     }
     Label {
       visible: (panel.d.feedback || []).length > 0
-      Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.accent
+      Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; color: theme.accent
       text: "Your note: " + (panel.d.feedback || []).join("; ")
     }
 
@@ -73,11 +73,11 @@ Rectangle {
         required property var modelData
         Layout.fillWidth: true
         spacing: 8
-        Label { text: modelData.label; color: theme.muted; font.pixelSize: 12; Layout.preferredWidth: 90; Layout.alignment: Qt.AlignTop }
+        Label { text: modelData.label; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; Layout.preferredWidth: 90; Layout.maximumWidth: 90; elide: Text.ElideRight; Layout.alignment: Qt.AlignTop }
         Label {
           text: modelData.text
           Layout.fillWidth: true
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           color: ["blocker", "risk", "plan-killer", "blocked", "escalate"].indexOf(modelData.label) >= 0 ? theme.urgent : theme.foreground
           font.family: modelData.label === "output" ? fontFamily : font.family
           font.pixelSize: modelData.label === "output" ? 12 : 13
@@ -87,7 +87,7 @@ Rectangle {
       }
     }
 
-    FleetButton {
+    AppButton {
       objectName: "node-brief"
       Layout.topMargin: 6
       text: panel.showBrief ? "Hide what it was told" : "What it was told"
@@ -96,7 +96,7 @@ Rectangle {
     Label {
       visible: panel.showBrief
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       text: panel.d.brief || ""
       color: theme.foreground
       font.family: fontFamily

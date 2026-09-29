@@ -27,7 +27,10 @@ ColumnLayout {
         text: modelData
         color: theme.muted
         font.pixelSize: 12
+        Layout.fillWidth: true
         Layout.preferredWidth: board.widths[index]
+        Layout.maximumWidth: board.widths[index]
+        elide: Text.ElideRight
       }
     }
   }
@@ -59,19 +62,25 @@ ColumnLayout {
         spacing: 2
         RowLayout {
           spacing: 8
-          Label { text: boardRow.key; color: theme.foreground; font.bold: true; Layout.preferredWidth: board.widths[0] }
+          Label { text: boardRow.key; color: theme.foreground; font.bold: true; Layout.fillWidth: true; Layout.preferredWidth: board.widths[0]; Layout.maximumWidth: board.widths[0]; elide: Text.ElideRight }
           Label {
             text: boardRow.item.build + (boardRow.item.waiting ? " · you" : boardRow.item.stalled ? " · stalled" : "")
             color: boardRow.item.waiting || boardRow.item.stalled ? theme.urgent : boardRow.item.build === "running" ? theme.accent : theme.foreground
+            Layout.fillWidth: true
             Layout.preferredWidth: board.widths[1]
+            Layout.maximumWidth: board.widths[1]
+            elide: Text.ElideRight
           }
           Label {
             text: boardRow.item.verdict || "-"
             color: boardRow.item.verdict === "REJECT" ? theme.urgent : boardRow.item.verdict === "PASS" ? theme.foreground : theme.muted
+            Layout.fillWidth: true
             Layout.preferredWidth: board.widths[2]
+            Layout.maximumWidth: board.widths[2]
+            elide: Text.ElideRight
           }
-          Label { text: String(boardRow.item.tries); color: theme.muted; Layout.preferredWidth: board.widths[3] }
-          Label { text: "$" + boardRow.item.cost.toFixed(2); color: theme.muted; Layout.preferredWidth: board.widths[4] }
+          Label { text: String(boardRow.item.tries); color: theme.muted; Layout.fillWidth: true; Layout.preferredWidth: board.widths[3]; Layout.maximumWidth: board.widths[3]; elide: Text.ElideRight }
+          Label { text: "$" + boardRow.item.cost.toFixed(2); color: theme.muted; Layout.fillWidth: true; Layout.preferredWidth: board.widths[4]; Layout.maximumWidth: board.widths[4]; elide: Text.ElideRight }
         }
         Label {
           Layout.fillWidth: true
@@ -83,7 +92,7 @@ ColumnLayout {
         Label {
           visible: boardRow.item.extra.length > 0 || !!boardRow.item.blocked
           Layout.fillWidth: true
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           font.pixelSize: 12
           color: boardRow.item.accepted ? theme.muted : theme.urgent
           text: boardRow.item.blocked ? "blocked: " + boardRow.item.blocked

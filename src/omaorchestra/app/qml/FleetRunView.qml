@@ -48,24 +48,30 @@ ScrollView {
         color: theme.foreground
         font.pixelSize: 18
         font.bold: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       }
       Label {
         objectName: "run-status"
         Layout.fillWidth: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         text: (view.r.statusText || "") + (view.r.reason && view.r.status === "held" ? ": " + view.r.reason : "")
         color: view.r.group === "needs-you" ? theme.urgent : view.r.status === "running" ? theme.accent : theme.muted
       }
       Label {
         Layout.fillWidth: true
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere  // a long branch breaks rather than overflows
         color: theme.muted
         font.pixelSize: 12
         text: [view.r.place, view.r.fleet ? view.r.fleet + " fleet" : "", view.r.shape, view.r.branch ? " " + view.r.branch : "",
                view.r.elapsed].filter(Boolean).join("   ·   ")
       }
-      // Spend against the budget.
+      // Spend against the budget, then what can be done: on one line, or
+      // two when the view is narrow.
+      GridLayout {
+        Layout.fillWidth: true
+        columns: view.availableWidth >= 560 ? 2 : 1
+        columnSpacing: 8
+        rowSpacing: 8
       RowLayout {
         Layout.fillWidth: true
         spacing: 8
@@ -77,7 +83,9 @@ ScrollView {
         }
         Rectangle {
           visible: !!view.r.budget
+          Layout.fillWidth: true
           Layout.preferredWidth: 160
+          Layout.maximumWidth: 160
           height: 6
           radius: 3
           color: theme.surface
@@ -89,9 +97,13 @@ ScrollView {
           }
         }
         Item { Layout.fillWidth: true }
+      }
+      RowLayout {
+        Layout.alignment: Qt.AlignRight
+        spacing: 8
         IconButton { glyph: "󰉋"; tip: "Open its folder"; visible: !!view.r.place; onActivated: sessions.openFolder(view.r.folder) }
         IconButton { glyph: "󰆏"; tip: "Copy its branch"; visible: !!view.r.branch; onActivated: sessions.copyPath(view.r.branch) }
-        FleetButton {
+        AppButton {
           objectName: "run-pause"
           visible: !view.r.outside && (view.r.status === "running" || (view.r.status === "held" && view.r.heldBy === "paused"))
           text: view.r.status === "running" ? "Pause" : "Resume"
@@ -100,7 +112,7 @@ ScrollView {
             view.say(result.error || result.message, !!result.error)
           }
         }
-        FleetButton {
+        AppButton {
           objectName: "run-cancel"
           visible: !view.r.outside && view.r.status === "running"
           danger: true
@@ -112,6 +124,7 @@ ScrollView {
             view.say(result.error || result.message, !!result.error)
           }
         }
+      }
       }
     }
 
@@ -127,7 +140,7 @@ ScrollView {
       Label {
         id: outsideText
         anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
-        wrapMode: Text.Wrap
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: theme.muted
         text: "Read-only: " + (view.r.outsideLabel || "an outside run") + ", from " + (view.r.source || "") + ". omaorchestra only watches it; "
               + (view.r.outside === "graph_agents" ? "answer its gates where it runs (its orchestrator's session)." : "talk to it in its lead's session.")
@@ -138,7 +151,7 @@ ScrollView {
       objectName: "run-message"
       visible: !!view.message
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       text: view.message
       color: view.messageBad ? theme.urgent : theme.accent
     }
@@ -165,27 +178,27 @@ ScrollView {
       runId: view.r.outside === "agent-team" ? view.runId : ""
     }
 
-    RowLayout {
+    Flow {
       visible: view.r.outside !== "agent-team"
       Layout.fillWidth: true
       spacing: 6
       Repeater {
         model: [{ id: "graph", label: "Graph" }, { id: "board", label: "Board" }, { id: "timeline", label: "Timeline" },
                 { id: "report", label: "Report" }]
-        delegate: Button {
+        delegate: Chip {
           required property var modelData
           objectName: "run-view-" + modelData.id
           visible: !(view.narrow && modelData.id === "graph")
           text: modelData.label
-          flat: true
+          selected: view.shownMode === modelData.id
           onClicked: view.mode = modelData.id
-          contentItem: Label { text: parent.text; color: view.shownMode === modelData.id ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
-          background: Rectangle { radius: 4; implicitWidth: 80; color: view.shownMode === modelData.id ? theme.selection : "transparent"; border.color: theme.selection }
         }
       }
-      Item { Layout.fillWidth: true }
       Label {
         visible: view.narrow
+        height: 32
+        verticalAlignment: Text.AlignVCenter
+        leftPadding: 6
         text: "(the graph needs a wider window)"
         color: theme.muted
         font.pixelSize: 12

@@ -27,29 +27,24 @@ ColumnLayout {
     function onRefreshDone() { page.refreshing = false }
   }
 
-  component PlainButton: Button {
-    flat: true
-    contentItem: Label { text: parent.text; color: parent.enabled ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
-    background: Rectangle { radius: 4; implicitWidth: 80; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
-  }
-
   RowLayout {
     Layout.fillWidth: true
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.muted
       text: "API providers for models beyond your subscription. Keys go to the system keyring. omaorchestra only lists models and checks keys; your agents do the talking."
     }
-    PlainButton {
+    AppButton {
+      Layout.alignment: Qt.AlignTop
       text: page.refreshing ? "Refreshing…" : "Refresh models"
       enabled: !page.refreshing && providerList.items.length > 0
       onClicked: { page.refreshing = true; providerList.refreshModels() }
     }
   }
 
-  Label { visible: !!providerList.error; color: theme.urgent; text: providerList.error; wrapMode: Text.Wrap; Layout.fillWidth: true }
-  Label { visible: !!page.message; color: theme.urgent; text: page.message; wrapMode: Text.Wrap; Layout.fillWidth: true }
+  Label { visible: !!providerList.error; color: theme.urgent; text: providerList.error; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; Layout.fillWidth: true }
+  Label { visible: !!page.message; color: theme.urgent; text: page.message; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; Layout.fillWidth: true }
 
   // ---------------------------------------------------------- Add
   RowLayout {
@@ -59,6 +54,7 @@ ColumnLayout {
       id: kindBox
       objectName: "provider-kind"
       Layout.preferredWidth: 180
+      implicitHeight: 32
       model: providerList.kinds
       textRole: "label"
       valueRole: "value"
@@ -72,6 +68,7 @@ ColumnLayout {
     TextField {
       id: idField
       objectName: "provider-id"
+      implicitHeight: 32
       Layout.preferredWidth: 140
       placeholderText: "id (optional)"
       placeholderTextColor: theme.muted
@@ -81,13 +78,14 @@ ColumnLayout {
     TextField {
       id: urlField
       objectName: "provider-url"
+      implicitHeight: 32
       Layout.fillWidth: true
       placeholderText: kindBox.currentIndex >= 0 ? providerList.kinds[kindBox.currentIndex].url : ""
       placeholderTextColor: theme.muted
       color: theme.foreground
       background: Rectangle { radius: 4; color: theme.surface; border.color: theme.selection }
     }
-    PlainButton {
+    AppButton {
       objectName: "provider-add"
       text: "Add"
       onClicked: {
@@ -103,6 +101,7 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: 24
     horizontalAlignment: Text.AlignHCenter
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "No providers yet."
   }
@@ -150,7 +149,7 @@ ColumnLayout {
             objectName: "provider-result-" + row.modelData.id
             visible: !!row.result || !!row.modelData.lastError
             Layout.fillWidth: true
-            wrapMode: Text.Wrap
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             font.pixelSize: 12
             color: row.result ? (row.result.ok ? theme.accent : theme.urgent) : theme.urgent
             text: row.result ? row.result.text : row.modelData.lastError
@@ -160,9 +159,9 @@ ColumnLayout {
         Row {
           Layout.alignment: Qt.AlignTop
           spacing: 8
-          PlainButton { text: "Key…"; visible: row.modelData.needsKey; onClicked: { page.keyFor = row.modelData.id; keyField.text = ""; keyDialog.open() } }
-          PlainButton { objectName: "provider-test-" + row.modelData.id; text: "Test"; onClicked: providerList.test(row.modelData.id) }
-          PlainButton { text: "Remove"; onClicked: { page.message = providerList.remove(row.modelData.id) } }
+          AppButton { text: "Key…"; visible: row.modelData.needsKey; onClicked: { page.keyFor = row.modelData.id; keyField.text = ""; keyDialog.open() } }
+          AppButton { objectName: "provider-test-" + row.modelData.id; text: "Test"; onClicked: providerList.test(row.modelData.id) }
+          AppButton { text: "Remove"; onClicked: { page.message = providerList.remove(row.modelData.id) } }
         }
       }
     }
@@ -182,6 +181,7 @@ ColumnLayout {
       Label { text: "Stored in the system keyring, never in a file."; color: theme.muted }
       TextField {
         id: keyField
+        implicitHeight: 32
         Layout.preferredWidth: 420
         echoMode: TextInput.Password
         color: theme.foreground

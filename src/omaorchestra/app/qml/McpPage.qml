@@ -16,13 +16,7 @@ ScrollView {
   function act(error) { message = error }
 
   component Section: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16; topPadding: 10 }
-  component Muted: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
-  component PlainButton: Button {
-    flat: true
-    contentItem: Label { text: parent.text; color: parent.enabled ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
-    background: Rectangle { radius: 4; implicitWidth: 70; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
-  }
-
+  component Muted: Label { color: theme.muted; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
   ColumnLayout {
     width: page.availableWidth
     spacing: 6
@@ -30,14 +24,15 @@ ScrollView {
     RowLayout {
       Layout.fillWidth: true
       Muted { text: "Every MCP server configured for Claude Code, Codex and opencode on this machine. Values of secrets are never shown. Add servers with `omaorchestra mcp add` (it asks for secrets and keeps them in the keyring)." }
-      PlainButton {
+      AppButton {
         objectName: "mcp-check"
+        Layout.alignment: Qt.AlignTop
         text: mcp.checking ? "Checking…" : "Check all"
         enabled: !mcp.checking && mcp.servers.length > 0
         onClicked: mcp.checkAll()
       }
     }
-    Label { visible: !!page.message || !!mcp.error; color: theme.urgent; text: page.message || mcp.error; wrapMode: Text.Wrap; Layout.fillWidth: true }
+    Label { visible: !!page.message || !!mcp.error; color: theme.urgent; text: page.message || mcp.error; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; Layout.fillWidth: true }
 
     Section { text: "Servers" }
     Muted { visible: mcp.servers.length === 0; text: "No MCP servers configured. (claude.ai connectors live in your account, not on this machine, and are not listed.)" }
@@ -88,7 +83,7 @@ ScrollView {
             Label {
               visible: !!row.modelData.healthText
               Layout.fillWidth: true
-              wrapMode: Text.Wrap
+              wrapMode: Text.WrapAtWordBoundaryOrAnywhere
               font.pixelSize: 12
               color: row.h.ok ? theme.muted : theme.urgent
               text: row.h.ok
@@ -109,13 +104,13 @@ ScrollView {
         readonly property var spec: mcp.managed[modelData]
         Layout.fillWidth: true
         spacing: 10
-        Label { Layout.preferredWidth: 160; text: modelData; color: theme.foreground }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 160; Layout.maximumWidth: 160; elide: Text.ElideRight; text: modelData; color: theme.foreground }
         Muted {
           text: (spec.enabled ? "" : "disabled · ") + (spec.targets.length ? "in " + spec.targets.map(t => t.agent + (t.agent === "claude" ? " " + t.scope : "")).join(", ") : "profiles only")
             + ((spec.secret_env || []).concat(spec.secret_headers || []).length ? " · secrets in keyring: " + (spec.secret_env || []).concat(spec.secret_headers || []).join(", ") : "")
         }
-        PlainButton { text: spec.enabled ? "Disable" : "Enable"; visible: spec.targets.length > 0; onClicked: page.act(mcp.setEnabled(modelData, !spec.enabled)) }
-        PlainButton { text: "Remove"; onClicked: page.act(mcp.removeServer(modelData)) }
+        AppButton { text: spec.enabled ? "Disable" : "Enable"; visible: spec.targets.length > 0; onClicked: page.act(mcp.setEnabled(modelData, !spec.enabled)) }
+        AppButton { text: "Remove"; onClicked: page.act(mcp.removeServer(modelData)) }
       }
     }
 
@@ -127,9 +122,9 @@ ScrollView {
         required property string modelData
         Layout.fillWidth: true
         spacing: 10
-        Label { Layout.preferredWidth: 160; text: modelData; color: theme.foreground }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 160; Layout.maximumWidth: 160; elide: Text.ElideRight; text: modelData; color: theme.foreground }
         Muted { text: mcp.profiles[modelData].join(", ") || "(no servers)" }
-        PlainButton { text: "Remove"; onClicked: page.act(mcp.removeProfile(modelData)) }
+        AppButton { text: "Remove"; onClicked: page.act(mcp.removeProfile(modelData)) }
       }
     }
     RowLayout {
@@ -138,6 +133,7 @@ ScrollView {
       TextField {
         id: profileName
         objectName: "mcp-profile-name"
+        implicitHeight: 32
         Layout.preferredWidth: 160
         placeholderText: "new profile"
         placeholderTextColor: theme.muted
@@ -154,7 +150,7 @@ ScrollView {
           contentItem: Label { text: parent.text; color: theme.foreground; leftPadding: parent.indicator.width + 6 }
         }
       }
-      PlainButton {
+      AppButton {
         objectName: "mcp-profile-save"
         text: "Save profile"
         enabled: profileName.text.trim() !== ""

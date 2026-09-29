@@ -103,7 +103,7 @@ ColumnLayout {
   Label {
     visible: detail.gone
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "This session has ended or was dismissed."
   }
@@ -126,7 +126,7 @@ ColumnLayout {
   Label {
     visible: !!detail.actionError
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.urgent
     text: detail.actionError
   }
@@ -142,7 +142,7 @@ ColumnLayout {
       id: waitingText
       anchors.fill: parent
       anchors.margins: 10
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.urgent
       text: detail.gone ? "" : (detail.s.message || "")
     }
@@ -198,20 +198,26 @@ ColumnLayout {
         spacing: 12
         Label {
           Layout.alignment: Qt.AlignTop
+          Layout.fillWidth: true
           Layout.preferredWidth: 70
+          Layout.maximumWidth: 70
+          elide: Text.ElideRight
           text: sessions.isoClock(modelData.at)
           color: theme.muted
           font.pixelSize: 12
         }
         Label {
           Layout.alignment: Qt.AlignTop
+          Layout.fillWidth: true
           Layout.preferredWidth: 20
+          Layout.maximumWidth: 20
+          elide: Text.ElideRight
           text: modelData.kind === "prompt" ? "󰍩" : modelData.kind === "tool" ? "󰒓" : "󰚩"
           color: modelData.kind === "prompt" ? theme.accent : theme.muted
         }
         Label {
           Layout.fillWidth: true
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           text: modelData.text
           color: modelData.kind === "tool" ? theme.muted : theme.foreground
         }
@@ -237,9 +243,9 @@ ColumnLayout {
         required property var modelData
         width: ListView.view.width - 12
         spacing: 12
-        Label { Layout.preferredWidth: 70; text: sessions.clock(modelData.at); color: theme.muted; font.pixelSize: 12 }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 70; Layout.maximumWidth: 70; elide: Text.ElideRight; text: sessions.clock(modelData.at); color: theme.muted; font.pixelSize: 12 }
         Rectangle { width: 10; height: 10; radius: 5; color: detail.statusColor(modelData.status) }
-        Label { Layout.preferredWidth: 90; text: modelData.label; color: theme.foreground }
+        Label { Layout.fillWidth: true; Layout.preferredWidth: 90; Layout.maximumWidth: 90; elide: Text.ElideRight; text: modelData.label; color: theme.foreground }
         Label {
           Layout.fillWidth: true
           color: theme.muted
@@ -258,7 +264,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Label {
           Layout.fillWidth: true
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           color: theme.muted
           text: detail.gone || !detail.s.worktree
             ? "Uncommitted changes in this folder, whoever made them."
@@ -312,7 +318,7 @@ ColumnLayout {
     }
     contentItem: Label {
       width: 360
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.foreground
       text: "This ends the agent process for " + (detail.gone ? "this session" : detail.s.project)
         + ". Its conversation stays in its transcript, but any work in progress stops."

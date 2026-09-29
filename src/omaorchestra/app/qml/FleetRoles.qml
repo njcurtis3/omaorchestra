@@ -19,15 +19,15 @@ ColumnLayout {
 
   Label {
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.muted
     text: "The first role with a name wins: a project's .claude/agents (" + (rolesView.folder || "no folder picked")
           + "), then yours in " + rolesView.data_.dir + ", then the built-in ones. A role file is a Claude Code subagent file, plus `agent`."
   }
-  Label { visible: !!rolesView.message; text: rolesView.message; color: theme.accent; Layout.fillWidth: true; wrapMode: Text.Wrap }
+  Label { visible: !!rolesView.message; text: rolesView.message; color: theme.accent; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
   Repeater {
     model: rolesView.data_.problems
-    delegate: Label { required property string modelData; text: "✗ " + modelData; color: theme.urgent; Layout.fillWidth: true; wrapMode: Text.Wrap }
+    delegate: Label { required property string modelData; text: "✗ " + modelData; color: theme.urgent; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
   }
 
   Repeater {
@@ -55,7 +55,7 @@ ColumnLayout {
                   .filter(Boolean).join("  ·  ")
             elide: Text.ElideRight
           }
-          FleetButton {
+          AppButton {
             objectName: "role-copy-" + modelData.name
             visible: modelData.source !== "yours"
             text: "Copy to mine"
@@ -65,20 +65,20 @@ ColumnLayout {
               rolesView.reload()
             }
           }
-          FleetButton {
+          AppButton {
             visible: modelData.source !== "built-in"
             text: "Open"
             onClicked: fleets.openInEditor(modelData.path)
           }
-          FleetButton {
+          AppButton {
             text: rolesView.open === modelData.name ? "Hide prompt" : "Prompt"
             onClicked: rolesView.open = rolesView.open === modelData.name ? "" : modelData.name
           }
         }
-        Label { text: modelData.description; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: modelData.description; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
         Label {
           text: "tools: " + (modelData.tools ? modelData.tools.join(", ") : "all") + (modelData.disallowed_tools.length ? "  ·  not " + modelData.disallowed_tools.join(", ") : "")
-          color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
+          color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         }
         Label {
           visible: rolesView.open === modelData.name
@@ -87,7 +87,7 @@ ColumnLayout {
           font.family: fontFamily
           font.pixelSize: 12
           Layout.fillWidth: true
-          wrapMode: Text.Wrap
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         }
       }
     }

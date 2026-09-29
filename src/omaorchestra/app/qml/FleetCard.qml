@@ -37,7 +37,7 @@ Rectangle {
   Timer { id: disarm; interval: 4000; onTriggered: card.cancelArmed = false }
 
   component Heading: Label { color: theme.muted; font.pixelSize: 12; Layout.topMargin: 6 }
-  component Para: Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.foreground }
+  component Para: Label { Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; color: theme.foreground }
 
   ColumnLayout {
     id: body
@@ -52,6 +52,7 @@ Rectangle {
         color: card.calm ? theme.accent : theme.urgent
         font.bold: true
         font.pixelSize: 16
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       }
       Label {
         visible: !!card.card_.since
@@ -91,13 +92,13 @@ Rectangle {
               id: sliceText
               Layout.fillWidth: true
               spacing: 2
-              Label { text: modelData.id + "  " + modelData.intent; color: theme.foreground; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
-              Label { text: "files: " + modelData.files.join(", "); color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
-              Label { text: "done when: " + modelData.done_when; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
+              Label { text: modelData.id + "  " + modelData.intent; color: theme.foreground; font.bold: true; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
+              Label { text: "files: " + modelData.files.join(", "); color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
+              Label { text: "done when: " + modelData.done_when; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
               Label {
                 text: "risk " + modelData.risk + ": " + modelData.risk_why
                 color: modelData.risk === "high" ? theme.urgent : theme.muted
-                font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
+                font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere
               }
             }
             IconButton {
@@ -143,7 +144,7 @@ Rectangle {
       Para { text: (card.card_.node || "") + " changed files outside slice " + (card.card_.slice || "") + ":" }
       Repeater {
         model: card.card_.files || []
-        delegate: Label { required property string modelData; text: "  " + modelData; color: theme.foreground; font.family: fontFamily }
+        delegate: Label { required property string modelData; text: "  " + modelData; color: theme.foreground; font.family: fontFamily; Layout.fillWidth: true; elide: Text.ElideMiddle }
       }
       Para { text: "Accept them, with the reason (the reviewer is told), or send the slice to a new builder to undo them."; color: theme.muted }
     }
@@ -167,14 +168,14 @@ Rectangle {
             id: reviewText
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
             Label { text: "Review " + modelData.attempt + ": " + modelData.verdict; color: theme.urgent; font.bold: true }
-            Label { text: modelData.summary; color: theme.foreground; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Label { text: modelData.summary; color: theme.foreground; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
             Repeater {
               model: modelData.findings
               delegate: Label {
                 required property var modelData
                 text: modelData.severity + ": " + modelData.where + ": " + modelData.what
                 color: modelData.severity === "blocker" ? theme.urgent : theme.muted
-                font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap
+                font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere
               }
             }
           }
@@ -187,7 +188,7 @@ Rectangle {
       visible: card.kind === "bad-reply"
       Layout.fillWidth: true
       Para { text: "Try it again (with a note), or answer in its window: ask it to end with the JSON block, and its next reply is read again."; color: theme.muted }
-      FleetButton {
+      AppButton {
         objectName: "card-show-reply"
         text: card.reply ? "Hide its reply" : "Show its reply"
         onClicked: card.reply = card.reply ? "" : (fleets.lastReply(card.runId, card.card_.node) || "(its reply could not be read)")
@@ -202,7 +203,7 @@ Rectangle {
         ScrollView {
           anchors.fill: parent
           anchors.margins: 8
-          Label { id: replyText; text: card.reply; color: theme.foreground; font.family: fontFamily; font.pixelSize: 12; wrapMode: Text.Wrap; width: parent.width }
+          Label { id: replyText; text: card.reply; color: theme.foreground; font.family: fontFamily; font.pixelSize: 12; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; width: parent.width }
         }
       }
     }
@@ -216,6 +217,7 @@ Rectangle {
       TextField {
         id: budgetField
         objectName: "card-budget"
+        implicitHeight: 32
         text: String(card.card_.budget || 0)
         implicitWidth: 80
         color: theme.foreground
@@ -226,6 +228,7 @@ Rectangle {
       TextField {
         id: stepsField
         objectName: "card-steps"
+        implicitHeight: 32
         text: String(card.card_.steps || 30)
         implicitWidth: 60
         color: theme.foreground
@@ -237,7 +240,7 @@ Rectangle {
         text: "spent $" + (card.card_.spent || 0).toFixed(2) + ", " + (card.card_.used || 0) + " steps used"
         color: theme.muted
       }
-      FleetButton {
+      AppButton {
         objectName: "card-limits"
         primary: true
         text: "Raise"
@@ -256,7 +259,7 @@ Rectangle {
           required property var modelData
           text: (modelData.ok ? "✓  " : "✗  ") + modelData.text
           color: modelData.ok ? theme.foreground : theme.urgent
-          Layout.fillWidth: true; wrapMode: Text.Wrap
+          Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         }
       }
     }
@@ -265,6 +268,7 @@ Rectangle {
     TextField {
       id: note
       objectName: "card-note"
+      implicitHeight: 32
       visible: card.sendBackOpen || ["scope", "rejected", "bad-reply", "held"].indexOf(card.kind) >= 0
       Layout.fillWidth: true
       placeholderText: card.kind === "scope" ? "Why they belong (required to accept)"
@@ -280,14 +284,14 @@ Rectangle {
       Layout.topMargin: 4
       spacing: 8
 
-      FleetButton {
+      AppButton {
         objectName: "card-approve"
         visible: card.kind === "plan" || card.kind === "merge"
         primary: true
         text: card.kind === "plan" ? "Approve: builders start" : "Approve the merge"
         onClicked: card.done(fleets.approve(card.runId, card.kind, ""))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-send-back"
         visible: card.kind === "plan"
         text: card.sendBackOpen ? "Send it back" : "Send back…"
@@ -295,26 +299,26 @@ Rectangle {
         onClicked: if (!card.sendBackOpen) { card.sendBackOpen = true; note.forceActiveFocus() }
                    else card.done(fleets.sendBack(card.runId, note.text))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-single-loop"
         visible: card.kind === "plan" && card.card_.shape === "diamond"
         text: "Run as single loop"
         onClicked: card.done(fleets.shape(card.runId, "single-loop"))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-diamond"
         visible: card.kind === "plan" && card.card_.shape !== "diamond"
         text: "Try as diamond"
         onClicked: card.done(fleets.shape(card.runId, "diamond"))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-resume"
         visible: card.kind === "paused"
         primary: true
         text: "Resume"
         onClicked: card.done(fleets.pause(card.runId, false))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-accept"
         visible: card.kind === "scope"
         primary: true
@@ -322,20 +326,20 @@ Rectangle {
         text: "Accept them"
         onClicked: card.done(fleets.acceptFiles(card.runId, card.card_.node, note.text))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-undo"
         visible: card.kind === "scope"
         text: "Send back to undo them"
         onClicked: card.done(fleets.undoFiles(card.runId, card.card_.node))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-retry"
         visible: ["rejected", "bad-reply", "held"].indexOf(card.kind) >= 0
         primary: true
         text: card.kind === "rejected" ? "Another try" : "Try again"
         onClicked: card.done(fleets.retry(card.runId, note.text))
       }
-      FleetButton {
+      AppButton {
         objectName: "card-take-over"
         visible: card.kind === "rejected" && !!card.card_.session
         text: "Take over"
@@ -343,13 +347,13 @@ Rectangle {
         ToolTip.visible: hovered
         ToolTip.text: "Bring the last builder's window forward and work in it yourself; then Another try, or approve its review."
       }
-      FleetButton {
+      AppButton {
         objectName: "card-open-session"
         visible: ["scope", "bad-reply", "held"].indexOf(card.kind) >= 0 && !!card.card_.session
         text: "Open its session"
         onClicked: card.openSession(card.card_.session)
       }
-      FleetButton {
+      AppButton {
         objectName: "card-check"
         visible: card.kind === "close"
         text: "Check it"
@@ -359,7 +363,7 @@ Rectangle {
           card.closeResult = result.error ? null : result
         }
       }
-      FleetButton {
+      AppButton {
         objectName: "card-close"
         visible: card.kind === "close"
         primary: true
@@ -370,7 +374,7 @@ Rectangle {
           card.said(result.error || ("Closed. " + (result.notes || []).join(" ")), !!result.error)
         }
       }
-      FleetButton {
+      AppButton {
         objectName: "card-cancel"
         visible: card.kind !== "close"
         danger: true

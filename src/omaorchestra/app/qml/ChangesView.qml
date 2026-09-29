@@ -19,7 +19,7 @@ ColumnLayout {
   Label {
     visible: !view.loading && !!view.result
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: view.result && view.result.error ? theme.urgent : theme.muted
     text: {
       const r = view.result

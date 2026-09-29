@@ -87,6 +87,7 @@ ColumnLayout {
   component ThemedComboBox: ComboBox {
     // Wide enough for the longest choice, so none is cut off.
     implicitContentWidthPolicy: ComboBox.WidestTextWhenCompleted
+    implicitHeight: 32
     palette.button: theme.surface
     palette.buttonText: theme.foreground
     palette.base: theme.surface
@@ -133,14 +134,13 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Then…
-  Button {
+  AppButton {
     objectName: "task-then-open"
     visible: !page.thenOpen && !page.recipe
     text: "Then…"
-    flat: true
+    quiet: true
+    leftPadding: 0
     onClicked: { page.thenOpen = true; thenText.forceActiveFocus() }
-    contentItem: Label { text: parent.text; color: theme.accent }
-    background: null
     ToolTip.visible: hovered
     ToolTip.delay: 500
     ToolTip.text: "Add a follow-up task that starts in the same worktree once this one finishes"
@@ -175,6 +175,7 @@ ColumnLayout {
     TextField {
       id: folder
       objectName: "task-folder"
+      implicitHeight: 32
       Layout.fillWidth: true
       color: theme.foreground
       selectionColor: theme.selection
@@ -182,12 +183,9 @@ ColumnLayout {
       placeholderTextColor: theme.muted
       background: Rectangle { radius: 4; color: theme.surface; border.color: folder.text && !page.folderOk ? theme.urgent : folder.activeFocus ? theme.accent : theme.selection }
     }
-    Button {
+    AppButton {
       text: "Browse…"
-      flat: true
       onClicked: folderDialog.open()
-      contentItem: Label { text: parent.text; color: theme.foreground; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; color: parent.hovered ? theme.selection : "transparent"; border.color: theme.selection }
     }
   }
   Label {
@@ -234,13 +232,18 @@ ColumnLayout {
       }
     }
 
-    CheckBox {
-      id: rememberBox
-      objectName: "task-remember-model"
-      Layout.alignment: Qt.AlignBottom
-      enabled: page.folderOk && !providerBox.currentValue && (agentBox.currentValue || "claude") === "claude"
-      text: "Remember for this folder"
-      contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6 }
+    // Under an empty label, so it lines up with the model box beside it
+    // (a Flow ignores Layout.alignment).
+    ColumnLayout {
+      FieldLabel { text: " " }
+      CheckBox {
+        id: rememberBox
+        objectName: "task-remember-model"
+        implicitHeight: 32
+        enabled: page.folderOk && !providerBox.currentValue && (agentBox.currentValue || "claude") === "claude"
+        text: "Remember for this folder"
+        contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6; verticalAlignment: Text.AlignVCenter }
+      }
     }
 
     ColumnLayout {
@@ -330,7 +333,7 @@ ColumnLayout {
     }
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: page.inRepo ? theme.foreground : theme.muted
       text: page.inRepo
         ? "Work in a separate git worktree and branch, so parallel agents do not collide. Merge it from the Worktrees page."
@@ -341,50 +344,52 @@ ColumnLayout {
   Label {
     visible: !!page.error
     Layout.fillWidth: true
-    wrapMode: Text.Wrap
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
     color: theme.urgent
     text: page.error
   }
 
-  RowLayout {
+  // The note beside the buttons, or above them in a narrow window.
+  GridLayout {
     Layout.fillWidth: true
+    columns: page.width >= 760 ? 2 : 1
+    columnSpacing: 16
+    rowSpacing: 8
     Label {
       Layout.fillWidth: true
-      wrapMode: Text.Wrap
+      wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.muted
       font.pixelSize: 12
       text: page.chained
         ? "A chain is queued: each step starts once the one before finishes, and one that stops or fails holds the rest. A step that waits for you pauses the chain."
         : "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
     }
-    Button {
-      objectName: "task-as-fleet"
-      text: "Run as fleet…"
-      flat: true
-      onClicked: page.asFleet(prompt.text, folder.text)
-      ToolTip.visible: hovered
-      ToolTip.delay: 500
-      ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
-      contentItem: Label { text: parent.text; color: theme.accent; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.hovered ? theme.selection : "transparent" }
-    }
-    Button {
-      objectName: "task-queue"
-      visible: !page.chained
-      text: "Add to queue"
-      flat: true
-      enabled: page.ready
-      onClicked: page.addToQueue()
-      contentItem: Label { text: parent.text; color: parent.enabled ? theme.foreground : theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.hovered && parent.enabled ? theme.selection : "transparent"; border.color: theme.selection }
-    }
-    Button {
-      objectName: "task-launch"
-      text: page.chained ? "Start chain" : "Launch"
-      enabled: page.ready
-      onClicked: page.launch()
-      contentItem: Label { text: parent.text; color: parent.enabled ? theme.background : theme.muted; horizontalAlignment: Text.AlignHCenter }
-      background: Rectangle { radius: 4; implicitWidth: 120; color: parent.enabled ? theme.accent : "transparent"; border.color: theme.selection }
+    RowLayout {
+      Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+      spacing: 8
+      AppButton {
+        objectName: "task-as-fleet"
+        text: "Run as fleet…"
+        quiet: true
+        onClicked: page.asFleet(prompt.text, folder.text)
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
+      }
+      AppButton {
+        objectName: "task-queue"
+        visible: !page.chained
+        text: "Add to queue"
+        enabled: page.ready
+        onClicked: page.addToQueue()
+      }
+      AppButton {
+        objectName: "task-launch"
+        text: page.chained ? "Start chain" : "Launch"
+        primary: true
+        enabled: page.ready
+        onClicked: page.launch()
+      }
     }
   }
 
