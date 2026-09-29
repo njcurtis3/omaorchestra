@@ -9,6 +9,7 @@ ScrollView {
   id: page
   clip: true
   contentWidth: availableWidth
+  ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
   property string message: ""
 
   onVisibleChanged: if (visible) mcp.reload()

@@ -36,6 +36,9 @@ ApplicationWindow {
   property string page: "sessions"
   // A narrow window: the navigation shows glyphs only.
   readonly property bool compact: width < 880
+  // The page's width, from the window's: what a page switches its layout
+  // on. A page's own width will not do, since a wide layout can hold it wide.
+  readonly property real pageWidth: width - (compact ? 64 + 2 * 16 : 200 + 2 * 24)
 
   // Called from Python when asked to open a session (`app --session <id>`).
   // A prefix is enough; it is matched against the current sessions.
@@ -321,6 +324,7 @@ ApplicationWindow {
         Layout.fillHeight: true
         clip: true
         contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff  // never wider than its view; a hidden bar still takes clicks along the bottom
 
         NewTaskPage {
           width: newTaskScroll.availableWidth

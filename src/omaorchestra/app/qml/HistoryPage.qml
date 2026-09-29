@@ -14,6 +14,8 @@ ColumnLayout {
   property var changesResult: null
   property bool changesLoading: false
   property string actionError: ""
+  // The width to lay out for (the window's pageWidth; see Main.qml).
+  readonly property real room: ApplicationWindow.window ? ApplicationWindow.window.pageWidth : width
 
   spacing: 16
 
@@ -206,6 +208,7 @@ ColumnLayout {
       ScrollView {
         clip: true
         contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ChangesView {
           width: parent.width
           result: page.changesResult
@@ -220,12 +223,12 @@ ColumnLayout {
   GridLayout {
     visible: page.selectedKey === ""
     Layout.fillWidth: true
-    columns: page.width >= 860 ? 2 : 1
+    columns: page.room >= 860 ? 2 : 1
     columnSpacing: 16
     rowSpacing: 8
 
     Flow {
-      Layout.fillWidth: page.width < 860
+      Layout.fillWidth: page.room < 860
       spacing: 8
       Repeater {
         model: [

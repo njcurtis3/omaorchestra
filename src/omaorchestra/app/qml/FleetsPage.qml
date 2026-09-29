@@ -14,7 +14,7 @@ ColumnLayout {
   property string selectedId: ""
   property bool creating: false
   // Too narrow for the list beside a run: one or the other, with a way back.
-  readonly property bool stacked: width < 720
+  readonly property bool stacked: (ApplicationWindow.window ? ApplicationWindow.window.pageWidth : width) < 720
   readonly property bool picked: creating || selectedId !== ""
   signal openSession(string sessionId)
   signal openHistory(string sessionId)
@@ -158,6 +158,7 @@ ColumnLayout {
       Layout.fillHeight: true
       clip: true
       contentWidth: availableWidth
+      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
       NewFleetForm {
         id: form
         width: formScroll.availableWidth
@@ -220,6 +221,7 @@ ColumnLayout {
     Layout.fillHeight: true
     clip: true
     contentWidth: availableWidth
+    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     FleetRoles {
       width: rolesScroll.availableWidth
       folder: page.selectedId ? fleets.state(page.selectedId).folder || "" : ""
@@ -232,6 +234,7 @@ ColumnLayout {
     Layout.fillHeight: true
     clip: true
     contentWidth: availableWidth
+    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     FleetTemplates { width: templatesScroll.availableWidth }
   }
 }

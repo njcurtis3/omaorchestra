@@ -80,6 +80,7 @@ ColumnLayout {
     Layout.fillHeight: true
     clip: true
     contentWidth: availableWidth
+    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
     ColumnLayout {
       width: parent.width

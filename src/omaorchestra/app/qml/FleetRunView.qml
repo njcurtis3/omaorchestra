@@ -32,6 +32,7 @@ ScrollView {
 
   clip: true
   contentWidth: availableWidth
+  ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
   ColumnLayout {
     width: view.availableWidth

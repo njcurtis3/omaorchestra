@@ -130,9 +130,23 @@ class UiFlowTest(unittest.TestCase):
         item = self.find(name)
         self.assertIsNotNone(item, f"no item {name}")
         self.assertTrue(item.isVisible(), f"{name} is not visible")
+        self.scroll_to(item)
         point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2)).toPoint()
         QTest.mouseClick(self.window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
         spin()
+
+    def scroll_to(self, item):
+        """Scroll the view it is in until the item shows, as a user would
+        before clicking it (a tall form scrolls)."""
+        flick = item.parentItem()
+        while flick is not None and flick.property("contentY") is None:
+            flick = flick.parentItem()
+        if flick is None:
+            return
+        below = item.mapToScene(QPointF(0, item.height())).y() - flick.mapToScene(QPointF(0, flick.height())).y()
+        if below > 0:
+            flick.setProperty("contentY", flick.property("contentY") + below + 16)
+            spin()
 
     def choose(self, name, steps):
         """Pick the entry `steps` below the current one in a dropdown, with the
@@ -169,6 +183,12 @@ class UiFlowTest(unittest.TestCase):
                          model="claude-opus-5-5", title="A task title long enough to fill the row twice over " * 2,
                          message="Claude needs your permission to use Bash: " + "x" * 120)
         self.assertTrue(wait_for(lambda: self.shown("row-n1")), "row did not appear")
+        # Wide first, with every page laid out, then shrunk: a layout that sized
+        # itself from its own width could hold the page wide.
+        self.window.setWidth(1600)
+        for page in [p["id"] for p in self.window.property("pages").toVariant()]:
+            self.window.setProperty("page", page)
+            spin(50)
         self.window.setWidth(640)
         self.window.setHeight(420)
         spin(200)

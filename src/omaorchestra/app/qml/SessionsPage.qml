@@ -10,6 +10,8 @@ ColumnLayout {
   property real now: Date.now() / 1000
   property string statusFilter: ""
   property bool hideFleet: false
+  // The width to lay out for (the window's pageWidth; see Main.qml).
+  readonly property real room: ApplicationWindow.window ? ApplicationWindow.window.pageWidth : width
   signal openFleet(string runId)
   property bool grid: false
   // The session shown in detail, or "" for the list.
@@ -44,12 +46,12 @@ ColumnLayout {
   GridLayout {
     visible: page.selectedId === ""
     Layout.fillWidth: true
-    columns: page.width >= 780 ? 2 : 1
+    columns: page.room >= 780 ? 2 : 1
     columnSpacing: 16
     rowSpacing: 8
 
     Flow {
-      Layout.fillWidth: page.width < 780
+      Layout.fillWidth: page.room < 780
       spacing: 8
       Repeater {
         model: [
