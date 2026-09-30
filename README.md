@@ -29,6 +29,7 @@
 </h4>
 
 <p align="center">
+  <a href="https://njcurtis3.github.io/omaorchestra/"><b>Website</b></a> ·
   <a href="#install">Install</a> ·
   <a href="#setup">Setup</a> ·
   <a href="docs/guide.md">User guide</a> ·
