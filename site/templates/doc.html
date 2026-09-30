@@ -1,0 +1,28 @@
+<div class="docs">
+  <aside class="sidebar" data-sidebar>
+    <nav aria-label="Documentation">
+{{nav}}
+    </nav>
+  </aside>
+  <article class="doc">
+    <header class="page-head">
+      <p class="eyebrow">{{group}}</p>
+      <h1>{{title}} {{badge}}</h1>
+      {{lede}}
+    </header>
+    {{extra_top}}
+    <div class="prose">
+{{body}}
+    </div>
+    <footer class="doc-foot">
+      <a class="edit-link" href="{{edit_url}}">
+        <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M10.5 2.5 13.5 5.5 5.5 13.5H2.5V10.5Z"/></svg>
+        Edit this page on GitHub
+      </a>
+      {{pager}}
+    </footer>
+  </article>
+  <aside class="toc-rail">
+    {{toc}}
+  </aside>
+</div>

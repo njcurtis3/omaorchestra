@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="{{canonical}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="omaorchestra">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta property="og:image" content="{{og_image}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<link rel="icon" href="{{base}}assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="{{base}}assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="{{base}}static/site.css">
+<script>
+  // Before first paint, so a saved theme never flashes the other one.
+  try { var t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<script defer src="{{base}}static/site.js"></script>
+</head>
+<body data-base="{{base}}">
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="{{base}}" aria-label="omaorchestra home">
+      <img class="logo logo-dark" src="{{base}}assets/logo-dark.svg" alt="omaorchestra" width="151" height="24">
+      <img class="logo logo-light" src="{{base}}assets/logo-light.svg" alt="omaorchestra" width="151" height="24">
+    </a>
+    <nav class="header-nav" aria-label="Main">
+      <a href="{{base}}docs/guide/"{{nav_docs}}>Docs</a>
+      <a href="{{base}}docs/install/"{{nav_install}}>Install</a>
+      <a href="{{base}}releases/"{{nav_releases}}>Releases</a>
+    </nav>
+    <div class="header-actions">
+      <button class="search-button" type="button" data-search-open aria-label="Search the docs">
+        <svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+        <span>Search</span>
+        <kbd>/</kbd>
+      </button>
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle light and dark theme">
+        <svg class="icon-sun" aria-hidden="true" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg>
+        <svg class="icon-moon" aria-hidden="true" viewBox="0 0 16 16"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z"/></svg>
+      </button>
+      <a class="icon-button" href="{{github}}" aria-label="omaorchestra on GitHub">
+        <svg aria-hidden="true" viewBox="0 0 16 16" class="icon-fill"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+      <button class="icon-button menu-button" type="button" data-menu-toggle aria-label="Open the docs menu" aria-expanded="false">
+        <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="{{main_class}}">
+{{body}}
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <img class="logo logo-dark" src="{{base}}assets/logo-dark.svg" alt="omaorchestra" width="126" height="20">
+      <img class="logo logo-light" src="{{base}}assets/logo-light.svg" alt="omaorchestra" width="126" height="20">
+      <p>Conduct your AI coding agents on Omarchy.</p>
+    </div>
+    <div class="footer-cols">
+      <div>
+        <p class="footer-heading">Product</p>
+        <a href="{{base}}docs/install/">Install</a>
+        <a href="{{base}}releases/">Releases</a>
+        <a href="{{base}}docs/fleets/">Fleets</a>
+      </div>
+      <div>
+        <p class="footer-heading">Docs</p>
+        <a href="{{base}}docs/guide/">User guide</a>
+        <a href="{{base}}docs/commands/">Commands</a>
+        <a href="{{base}}docs/troubleshooting/">Troubleshooting</a>
+      </div>
+      <div>
+        <p class="footer-heading">Project</p>
+        <a href="{{github}}">GitHub</a>
+        <a href="{{github}}/issues">Issues</a>
+        <a href="{{base}}docs/security/">Security</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-legal">
+    <p>MIT licensed. An independent, third-party project, not part of or endorsed by Omarchy or any agent's vendor.</p>
+  </div>
+</footer>
+
+<div class="search" data-search hidden>
+  <div class="search-backdrop" data-search-close></div>
+  <div class="search-dialog" role="dialog" aria-modal="true" aria-label="Search the docs">
+    <div class="search-field">
+      <svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+      <input type="search" placeholder="Search the docs" autocomplete="off" spellcheck="false" data-search-input aria-label="Search">
+      <kbd>Esc</kbd>
+    </div>
+    <ul class="search-results" data-search-results role="listbox"></ul>
+  </div>
+</div>
+</body>
+</html>

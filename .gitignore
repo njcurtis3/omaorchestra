@@ -20,3 +20,6 @@ docs/ROADMAP.md
 /packaging/pkg/
 /packaging/omaorchestra/
 /packaging/*.pkg.tar.*
+
+# site/build.py output
+_site/

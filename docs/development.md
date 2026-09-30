@@ -1,7 +1,7 @@
 # Development
 
 <!-- sections -->
-**Sections:** [Design](#design) · [Layout](#layout) · [Tests](#tests) · [Continuous integration](#continuous-integration) · [Screenshots](#screenshots) · [The commands page](#the-commands-page) · [Releasing](#releasing)
+**Sections:** [Design](#design) · [Layout](#layout) · [Tests](#tests) · [Continuous integration](#continuous-integration) · [Screenshots](#screenshots) · [The commands page](#the-commands-page) · [Website](#website) · [Releasing](#releasing)
 <!-- /sections -->
 
 How omaorchestra is built, tested and released. The design notes and the
@@ -32,6 +32,7 @@ See [docs/architecture.md](architecture.md).
 | `plugin/` | Omarchy shell bar widget and panel (QML) |
 | `scripts/` | dev install, screenshots, the commands page, the logo, AUR publishing |
 | `packaging/` | PKGBUILD, systemd user unit, desktop entry, Omarchy snippets |
+| `site/` | the website: build script, templates, styles |
 | `config.example.toml` | documented configuration |
 
 ## Tests
@@ -82,6 +83,23 @@ sections. `scripts/doc-sections` writes it (between `<!-- sections -->`
 markers, so it is safe to rerun); run it after adding, renaming or removing
 a section, or a test fails. The commands page gets its line from
 `scripts/commands`.
+
+## Website
+
+`site/build.py` turns the README and `docs/` into the website on GitHub
+Pages: every doc except `ROADMAP.md`, the README's Install and Setup
+sections as the Install page, and a Releases page from the GitHub API. The
+docs stay the only copy; the site's anchors match GitHub's, so links into
+either keep working. The homepage is `site/templates/home.html`.
+
+```bash
+python -m venv /tmp/site && /tmp/site/bin/pip install -r site/requirements.txt
+/tmp/site/bin/python site/build.py --serve     # http://localhost:8000
+```
+
+[.github/workflows/pages.yml](../.github/workflows/pages.yml) rebuilds and
+deploys it when the docs or the site change on `main`, and when a release is
+published or edited; pull requests build it without deploying.
 
 ## Releasing
 
