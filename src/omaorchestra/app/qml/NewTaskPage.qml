@@ -195,17 +195,16 @@ ColumnLayout {
   }
   Flow {
     Layout.fillWidth: true
-    spacing: 6
+    spacing: 8
     Repeater {
       id: recentList
       model: []
-      delegate: Button {
+      delegate: Chip {
         required property string modelData
         text: modelData.replace(/^\/home\/[^/]+/, "~")
-        flat: true
+        selected: folder.text === modelData
         onClicked: folder.text = modelData
-        contentItem: Label { text: parent.text; color: folder.text === modelData ? theme.foreground : theme.muted; font.pixelSize: 12 }
-        background: Rectangle { radius: 4; color: folder.text === modelData ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"; border.color: theme.selection }
+        width: Math.min(implicitWidth, parent.width)
       }
     }
   }

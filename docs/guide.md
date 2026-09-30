@@ -245,8 +245,10 @@ as a playing video, keeps you at the desk too. The lock screen is checked
 again right before each push, so locking and walking off loses nothing.
 `remote test` always sends.
 
-The app's sidebar has an **Auto / Away / Here** switch, the bar widget's
-panel an auto / on / off one, and `omaorchestra top` switches with **a**.
+The app's sidebar has an away switch at its foot: it shows whether you
+are **At the desk** or **Away** (just 󰄜 when the window is narrow), and its
+list has **Auto**, **Away** and **At the desk**. The bar widget's panel has
+an auto / on / off one, and `omaorchestra top` switches with **a**.
 While you are away the bar shows 󰄜 beside its count. The switches show
 whenever being away changes something (push or remote answers on, which is
 the default), and the mode is remembered across restarts.

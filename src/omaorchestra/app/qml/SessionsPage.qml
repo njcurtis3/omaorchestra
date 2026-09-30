@@ -238,12 +238,29 @@ ColumnLayout {
         }
 
         Row {
+          visible: page.room >= 700
           Layout.alignment: Qt.AlignTop
           spacing: 12
           IconButton { glyph: "󰁔"; tip: "Jump to its terminal"; onActivated: sessions.focus(listRow.modelData.id) }
           IconButton { glyph: "󰆏"; tip: "Copy path"; visible: !!listRow.modelData.cwd; onActivated: sessions.copyPath(listRow.modelData.cwd) }
           IconButton { glyph: "󰉋"; tip: "Open folder"; visible: !!listRow.modelData.cwd; onActivated: sessions.openFolder(listRow.modelData.cwd) }
           IconButton { glyph: "󰅖"; tip: "Dismiss (returns if the agent reports again)"; onActivated: sessions.dismiss(listRow.modelData.id) }
+        }
+        // The same, in a menu, when the page is narrow: the row keeps its room for the title.
+        IconButton {
+          objectName: "row-menu-" + listRow.modelData.id
+          visible: page.room < 700
+          Layout.alignment: Qt.AlignTop
+          glyph: "󰇘"
+          tip: "Jump, copy path, open folder, dismiss"
+          onActivated: rowMenu.popup()
+          Menu {
+            id: rowMenu
+            MenuItem { text: "Jump to its terminal"; onTriggered: sessions.focus(listRow.modelData.id) }
+            MenuItem { text: "Copy path"; enabled: !!listRow.modelData.cwd; onTriggered: sessions.copyPath(listRow.modelData.cwd) }
+            MenuItem { text: "Open folder"; enabled: !!listRow.modelData.cwd; onTriggered: sessions.openFolder(listRow.modelData.cwd) }
+            MenuItem { text: "Dismiss"; onTriggered: sessions.dismiss(listRow.modelData.id) }
+          }
         }
       }
     }

@@ -70,7 +70,8 @@ ScrollView {
       // two when the view is narrow.
       GridLayout {
         Layout.fillWidth: true
-        columns: view.availableWidth >= 560 ? 2 : 1
+        // Two lines only when there are buttons to make room for.
+        columns: view.availableWidth >= 560 || !(pauseButton.visible || cancelButton.visible) ? 2 : 1
         columnSpacing: 8
         rowSpacing: 8
       RowLayout {
@@ -105,6 +106,7 @@ ScrollView {
         IconButton { glyph: "󰉋"; tip: "Open its folder"; visible: !!view.r.place; onActivated: sessions.openFolder(view.r.folder) }
         IconButton { glyph: "󰆏"; tip: "Copy its branch"; visible: !!view.r.branch; onActivated: sessions.copyPath(view.r.branch) }
         AppButton {
+          id: pauseButton
           objectName: "run-pause"
           visible: !view.r.outside && (view.r.status === "running" || (view.r.status === "held" && view.r.heldBy === "paused"))
           text: view.r.status === "running" ? "Pause" : "Resume"
@@ -114,6 +116,7 @@ ScrollView {
           }
         }
         AppButton {
+          id: cancelButton
           objectName: "run-cancel"
           visible: !view.r.outside && view.r.status === "running"
           danger: true

@@ -47,12 +47,18 @@ ColumnLayout {
   Label { visible: !!page.message; color: theme.urgent; text: page.message; wrapMode: Text.WrapAtWordBoundaryOrAnywhere; Layout.fillWidth: true }
 
   // ---------------------------------------------------------- Add
-  RowLayout {
+  // One line, or two in a narrow window (kind and id, then the URL and Add).
+  GridLayout {
+    id: addRow
+    readonly property bool narrow: (ApplicationWindow.window ? ApplicationWindow.window.pageWidth : page.width) < 700
     Layout.fillWidth: true
-    spacing: 8
+    columns: narrow ? 2 : 4
+    columnSpacing: 8
+    rowSpacing: 8
     ComboBox {
       id: kindBox
       objectName: "provider-kind"
+      Layout.fillWidth: addRow.narrow
       Layout.preferredWidth: 180
       implicitHeight: 32
       model: providerList.kinds
@@ -87,6 +93,7 @@ ColumnLayout {
     }
     AppButton {
       objectName: "provider-add"
+      Layout.alignment: Qt.AlignRight
       text: "Add"
       onClicked: {
         const r = providerList.add(kindBox.currentValue, idField.text.trim(), urlField.text.trim())
@@ -167,22 +174,20 @@ ColumnLayout {
     }
   }
 
-  Dialog {
+  AppDialog {
     id: keyDialog
-    anchors.centerIn: Overlay.overlay
-    modal: true
+    objectName: "provider-key-dialog"
     title: "API key for " + page.keyFor
-    standardButtons: Dialog.Cancel | Dialog.Save
+    acceptText: "Save"
+    acceptEnabled: keyField.text !== ""
     onAccepted: { page.message = providerList.setKey(page.keyFor, keyField.text); keyField.text = "" }
     onRejected: keyField.text = ""
-    background: Rectangle { color: theme.surface; radius: 8; border.color: theme.selection }
-    header: Label { text: keyDialog.title; padding: 16; color: theme.foreground; font.bold: true }
     contentItem: ColumnLayout {
       Label { text: "Stored in the system keyring, never in a file."; color: theme.muted }
       TextField {
         id: keyField
         implicitHeight: 32
-        Layout.preferredWidth: 420
+        Layout.fillWidth: true
         echoMode: TextInput.Password
         color: theme.foreground
         background: Rectangle { radius: 4; color: theme.background; border.color: theme.selection }

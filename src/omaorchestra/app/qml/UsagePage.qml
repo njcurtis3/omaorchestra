@@ -116,19 +116,12 @@ ScrollView {
       Item { Layout.fillWidth: true }
       Repeater {
         model: [{ days: 7, label: "7 days" }, { days: 30, label: "30 days" }, { days: 0, label: "All" }]
-        delegate: Button {
+        delegate: Chip {
           required property var modelData
           objectName: "stats-" + modelData.days
-          readonly property bool selected: page.statsDays === modelData.days
           text: modelData.label
-          flat: true
+          selected: page.statsDays === modelData.days
           onClicked: page.statsDays = modelData.days
-          contentItem: Label { text: parent.text; color: parent.selected ? theme.foreground : theme.muted; font.pixelSize: 12 }
-          background: Rectangle {
-            radius: 4
-            color: parent.selected ? theme.selection : parent.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
-            border.color: theme.selection
-          }
         }
       }
     }

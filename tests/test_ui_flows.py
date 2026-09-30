@@ -193,6 +193,10 @@ class UiFlowTest(unittest.TestCase):
         self.window.setHeight(420)
         spin(200)
         self.assertLess(self.find("nav").width(), 100)
+        # A row's four icons fold into one menu.
+        self.window.setProperty("page", "sessions")
+        spin(150)
+        self.assertTrue(self.shown("row-menu-n1"), "no row menu in a narrow window")
         width = self.window.width()
 
         def overflowing(item):
@@ -348,15 +352,15 @@ class UiFlowTest(unittest.TestCase):
         self.client.request({"cmd": "reload"})
         self.assertTrue(wait_for(lambda: self.shown("away")), "away switch did not come back")
         self.assertEqual(self.away.mode, "auto")
-        self.choose("away-mode", 1)  # Away
+        self.choose("away", 1)  # Away
         self.assertTrue(wait_for(lambda: self.away.away), "not away after choosing Away")
         self.assertEqual(self.client.request({"cmd": "away"})["away"]["mode"], "on")
-        self.assertEqual(self.find("away-mode").property("currentText"), "Away")
-        self.choose("away-mode", 1)  # At the desk, one further down
+        self.assertEqual(self.find("away").property("currentText"), "Away")
+        self.choose("away", 1)  # At the desk, one further down
         self.assertTrue(wait_for(lambda: self.away.mode == "off" and not self.away.away))
         # Changed elsewhere (the CLI, top, the bar): the dropdown follows.
         self.client.request({"cmd": "away", "mode": "auto"})
-        self.assertTrue(wait_for(lambda: self.find("away-mode").property("currentText").startswith("Auto")))
+        self.assertTrue(wait_for(lambda: self.find("away").property("currentText").startswith("Auto")))
         self.assertEqual(self.warnings, [])
 
     def test_history_page(self):

@@ -40,6 +40,14 @@ ColumnLayout {
   Shortcut { sequence: "Escape"; enabled: detail.visible; onActivated: detail.back() }
 
   // ---------------------------------------------------------- Header
+  // The buttons beside the title, or under it in a narrow window (the
+  // window's width decides: see Main.pageWidth).
+  GridLayout {
+    Layout.fillWidth: true
+    columns: (ApplicationWindow.window ? ApplicationWindow.window.pageWidth : detail.width) >= 760 ? 2 : 1
+    columnSpacing: 12
+    rowSpacing: 8
+
   RowLayout {
     Layout.fillWidth: true
     spacing: 12
@@ -47,10 +55,14 @@ ColumnLayout {
     IconButton { glyph: "󰁍"; tip: "Back to sessions (Esc)"; onActivated: detail.back() }
     Rectangle { visible: !detail.gone; width: 10; height: 10; radius: 5; color: detail.statusColor(detail.s.status) }
     Label {
+      Layout.fillWidth: true
+      Layout.maximumWidth: Math.ceil(implicitWidth)
+      Layout.minimumWidth: Math.min(Math.ceil(implicitWidth), 100)
       text: detail.gone ? "Session ended" : detail.s.project
       color: theme.foreground
       font.pixelSize: 18
       font.bold: true
+      elide: Text.ElideRight
     }
     Label {
       visible: !detail.gone && !!detail.s.title
@@ -60,9 +72,11 @@ ColumnLayout {
       elide: Text.ElideRight
     }
     Item { visible: detail.gone || !detail.s.title; Layout.fillWidth: true }
+  }
 
     Row {
       visible: !detail.gone
+      Layout.alignment: Qt.AlignRight
       spacing: 8
       Repeater {
         model: [
@@ -71,10 +85,11 @@ ColumnLayout {
           { label: "Stop", tip: "End the agent process", action: "stop" },
           { label: "Dismiss", tip: "Remove from the list (returns if the agent reports again)", action: "dismiss" }
         ]
-        delegate: Button {
+        delegate: AppButton {
           required property var modelData
+          objectName: "detail-" + modelData.action
           text: modelData.label
-          flat: true
+          danger: modelData.action === "stop"
           ToolTip.visible: hovered
           ToolTip.text: modelData.tip
           ToolTip.delay: 500
@@ -84,16 +99,6 @@ ColumnLayout {
             else if (modelData.action === "stop") stopDialog.open()
             else if (modelData.action === "handoff") handoffMenu.popup()
             else { sessions.dismiss(detail.sessionId); detail.back() }
-          }
-          contentItem: Label {
-            text: parent.text
-            color: modelData.action === "stop" ? theme.urgent : theme.foreground
-            horizontalAlignment: Text.AlignHCenter
-          }
-          background: Rectangle {
-            radius: 4
-            color: parent.hovered ? theme.selection : "transparent"
-            border.color: theme.selection
           }
         }
       }
@@ -301,23 +306,16 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Stop confirmation
-  Dialog {
+  AppDialog {
     id: stopDialog
-    anchors.centerIn: Overlay.overlay
-    modal: true
+    objectName: "stop-dialog"
     title: "Stop this agent?"
-    standardButtons: Dialog.Cancel | Dialog.Ok
+    acceptText: "Stop it"
+    danger: true
     onAccepted: detail.actionError = sessions.stop(detail.sessionId)
 
-    background: Rectangle { color: theme.surface; radius: 8; border.color: theme.urgent }
-    header: Label {
-      text: stopDialog.title
-      padding: 16
-      color: theme.foreground
-      font.bold: true
-    }
     contentItem: Label {
-      width: 360
+      width: stopDialog.bodyWidth
       wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: theme.foreground
       text: "This ends the agent process for " + (detail.gone ? "this session" : detail.s.project)

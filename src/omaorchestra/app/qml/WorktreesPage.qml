@@ -214,12 +214,11 @@ ColumnLayout {
     }
   }
 
-  Dialog {
+  AppDialog {
     id: confirm
     objectName: "worktree-confirm"
-    anchors.centerIn: Overlay.overlay
-    modal: true
-    standardButtons: Dialog.Cancel | Dialog.Ok
+    acceptText: page.pending && page.pending.action === "merge" ? "Merge" : "Remove"
+    danger: !!(page.pending && page.pending.force)
     title: page.pending && page.pending.action === "merge" ? "Merge this task?" : "Remove this worktree?"
     onAccepted: {
       const p = page.pending
@@ -227,10 +226,8 @@ ColumnLayout {
       page.report(p.action === "merge" ? worktrees.merge(p.path) : worktrees.remove(p.path, p.force))
       page.pending = null
     }
-    background: Rectangle { color: theme.surface; radius: 8; border.color: page.pending && page.pending.force ? theme.urgent : theme.selection }
-    header: Label { text: confirm.title; padding: 16; color: theme.foreground; font.bold: true }
     contentItem: Label {
-      width: 420
+      width: confirm.bodyWidth
       wrapMode: Text.WrapAtWordBoundaryOrAnywhere
       color: page.pending && page.pending.force ? theme.urgent : theme.foreground
       text: {

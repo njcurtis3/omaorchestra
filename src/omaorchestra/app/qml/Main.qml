@@ -153,6 +153,7 @@ ApplicationWindow {
                 objectName: "nav-" + modelData.id
                 Layout.fillWidth: true
                 highlighted: window.page === modelData.id
+                implicitHeight: 38  // all eleven fit a 600-high window
                 onClicked: window.page = modelData.id
                 ToolTip.visible: window.compact && hovered
                 ToolTip.delay: 300
@@ -195,63 +196,58 @@ ApplicationWindow {
           }
         }
 
-        // Away mode (`omaorchestra away`): pushes and remote answers happen only while away.
-        ColumnLayout {
+        // Away mode (`omaorchestra away`): pushes and remote answers happen only
+        // while away. One row: where you are and the mode, the choices in its
+        // list; just the glyph when the navigation is narrow.
+        ComboBox {
+          id: awayBox
           objectName: "away"
-          visible: !window.compact && awayMode.known && awayMode.active && sessions.connected
+          visible: awayMode.known && awayMode.active && sessions.connected
           Layout.fillWidth: true
           Layout.topMargin: 8
-          Layout.bottomMargin: 12
-          spacing: 6
-
-          Label {
-            text: "Away mode"
-            color: theme.muted
-            font.pixelSize: 12
+          implicitHeight: 32
+          font.pixelSize: 12
+          model: [{ value: "auto", text: "Auto" },
+                  { value: "on", text: "Away" },
+                  { value: "off", text: "At the desk" }]
+          textRole: "text"
+          valueRole: "value"
+          currentIndex: indexOfValue(awayMode.mode)
+          displayText: window.compact ? "󰄜" : "󰄜  " + (awayMode.away ? "Away" : "At the desk")
+          indicator.visible: !window.compact
+          contentItem: Label {
+            leftPadding: window.compact ? 0 : 10
+            text: awayBox.displayText
+            color: awayMode.away ? theme.accent : theme.muted
+            font: awayBox.font
+            horizontalAlignment: window.compact ? Text.AlignHCenter : Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
           }
-
-          ComboBox {
-            id: awayBox
-            objectName: "away-mode"
-            Layout.fillWidth: true
-            implicitHeight: 30
-            font.pixelSize: 12
-            model: [{ value: "auto", text: "Auto" },
-                    { value: "on", text: "Away" },
-                    { value: "off", text: "At the desk" }]
-            textRole: "text"
-            valueRole: "value"
-            currentIndex: indexOfValue(awayMode.mode)
-            // Choosing sets the mode; the daemon's answer (or a change made
-            // elsewhere) sets what is shown.
-            onActivated: awayMode.setMode(currentValue)
-            Connections {
-              target: awayMode
-              function onChanged() { awayBox.currentIndex = awayBox.indexOfValue(awayMode.mode) }
-            }
-            ToolTip.visible: hovered
-            ToolTip.delay: 500
-            ToolTip.text: "Auto: away once the screen locks or after a while without input. Pushes go out, "
-                          + "and permission prompts can be answered remotely, only while you are away."
-            palette.button: theme.background
-            palette.buttonText: theme.foreground
-            palette.base: theme.surface
-            palette.text: theme.foreground
-            palette.window: theme.surface
-            palette.windowText: theme.foreground
-            palette.highlight: theme.selection
-            palette.highlightedText: theme.foreground
-            palette.mid: theme.selection
-            palette.dark: theme.muted
+          background: Rectangle { radius: 4; color: awayBox.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"; border.color: theme.selection }
+          popup.width: Math.max(awayBox.width, 160)
+          // Choosing sets the mode; the daemon's answer (or a change made
+          // elsewhere) sets what is shown.
+          onActivated: awayMode.setMode(currentValue)
+          Connections {
+            target: awayMode
+            function onChanged() { awayBox.currentIndex = awayBox.indexOfValue(awayMode.mode) }
           }
-
-          Label {
-            text: "󰄜  " + awayMode.text
-            color: awayMode.away ? theme.foreground : theme.muted
-            font.pixelSize: 12
-            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-            Layout.fillWidth: true
-          }
+          ToolTip.visible: hovered && !popup.visible
+          ToolTip.delay: 500
+          ToolTip.text: awayMode.text + ". Mode: " + awayBox.currentText
+                        + ".\n\nAuto is away once the screen locks or after a while without input. "
+                        + "Pushes go out, and permission prompts can be answered remotely, only while you are away."
+          palette.button: theme.background
+          palette.buttonText: theme.foreground
+          palette.base: theme.surface
+          palette.text: theme.foreground
+          palette.window: theme.surface
+          palette.windowText: theme.foreground
+          palette.highlight: theme.selection
+          palette.highlightedText: theme.foreground
+          palette.mid: theme.selection
+          palette.dark: theme.muted
         }
 
         Label {

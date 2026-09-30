@@ -19,6 +19,7 @@ Button {
     color: chip.selected ? theme.foreground : chip.urgent ? theme.urgent : theme.muted
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
+    elide: Text.ElideMiddle
   }
   background: Rectangle {
     radius: 4
