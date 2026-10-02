@@ -83,22 +83,6 @@ ColumnLayout {
   }
 
   component FieldLabel: Label { color: theme.muted }
-  // A ComboBox in theme colours (the Basic style's own is grey), popup included.
-  component ThemedComboBox: ComboBox {
-    // Wide enough for the longest choice, so none is cut off.
-    implicitContentWidthPolicy: ComboBox.WidestTextWhenCompleted
-    implicitHeight: 32
-    palette.button: theme.surface
-    palette.buttonText: theme.foreground
-    palette.base: theme.surface
-    palette.text: theme.foreground
-    palette.window: theme.surface
-    palette.windowText: theme.foreground
-    palette.highlight: theme.selection
-    palette.highlightedText: theme.foreground
-    palette.mid: theme.selection
-    palette.dark: theme.muted
-  }
   component Field: Rectangle {
     radius: 4
     color: theme.surface
@@ -218,7 +202,7 @@ ColumnLayout {
 
     ColumnLayout {
       FieldLabel { text: "Model" }
-      ThemedComboBox {
+      AppComboBox {
         id: modelBox
         objectName: "task-model"
         Layout.preferredWidth: 220
@@ -235,19 +219,18 @@ ColumnLayout {
     // (a Flow ignores Layout.alignment).
     ColumnLayout {
       FieldLabel { text: " " }
-      CheckBox {
+      AppCheckBox {
         id: rememberBox
         objectName: "task-remember-model"
         implicitHeight: 32
         enabled: page.folderOk && !providerBox.currentValue && (agentBox.currentValue || "claude") === "claude"
         text: "Remember for this folder"
-        contentItem: Label { text: rememberBox.text; color: rememberBox.enabled ? theme.foreground : theme.muted; leftPadding: rememberBox.indicator.width + 6; verticalAlignment: Text.AlignVCenter }
       }
     }
 
     ColumnLayout {
       FieldLabel { text: "Recipe" }
-      ThemedComboBox {
+      AppComboBox {
         id: recipeBox
         objectName: "task-recipe"
         model: queue.recipeChoices()
@@ -261,7 +244,7 @@ ColumnLayout {
 
     ColumnLayout {
       FieldLabel { text: "Permissions" }
-      ThemedComboBox {
+      AppComboBox {
         id: permissionBox
         objectName: "task-permissions"
         model: sessions.permissionChoices
@@ -272,7 +255,7 @@ ColumnLayout {
 
     ColumnLayout {
       FieldLabel { text: "Agent" }
-      ThemedComboBox {
+      AppComboBox {
         id: agentBox
         objectName: "task-agent"
         model: [{ value: "claude", label: "Claude Code", routing: true, mcpProfile: true }]
@@ -283,7 +266,7 @@ ColumnLayout {
 
     ColumnLayout {
       FieldLabel { text: "MCP servers" }
-      ThemedComboBox {
+      AppComboBox {
         id: mcpBox
         objectName: "task-mcp"
         enabled: page.mcpProfiles
@@ -295,7 +278,7 @@ ColumnLayout {
 
     ColumnLayout {
       FieldLabel { text: "Runs on" }
-      ThemedComboBox {
+      AppComboBox {
         id: providerBox
         objectName: "task-provider"
         enabled: page.routing

@@ -97,7 +97,28 @@ ScrollView {
     }
 
     Section { text: "Managed by omaorchestra" }
-    Muted { visible: Object.keys(mcp.managed).length === 0; text: "None yet." }
+    Rectangle {
+      objectName: "mcp-managed-empty"
+      visible: Object.keys(mcp.managed).length === 0
+      Layout.fillWidth: true
+      implicitHeight: emptyRow.implicitHeight + 24
+      radius: 6
+      color: Qt.alpha(theme.surface, 0.5)
+      border.color: theme.selection
+      Row {
+        id: emptyRow
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+        spacing: 12
+        Label { text: "󰚥"; color: theme.muted; opacity: 0.6; font.pixelSize: 22; anchors.verticalCenter: parent.verticalCenter }
+        Label {
+          width: parent.width - 40
+          anchors.verticalCenter: parent.verticalCenter
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+          color: theme.muted
+          text: "None yet. `omaorchestra mcp add` adds one, its secrets kept in the keyring; managed servers can go in a profile."
+        }
+      }
+    }
     Repeater {
       model: Object.keys(mcp.managed)
       delegate: RowLayout {
@@ -144,11 +165,10 @@ ScrollView {
       Repeater {
         id: memberChecks
         model: Object.keys(mcp.managed)
-        delegate: CheckBox {
+        delegate: AppCheckBox {
           required property string modelData
           objectName: "mcp-member-" + modelData
           text: modelData
-          contentItem: Label { text: parent.text; color: theme.foreground; leftPadding: parent.indicator.width + 6 }
         }
       }
       AppButton {

@@ -55,21 +55,14 @@ ColumnLayout {
     columns: narrow ? 2 : 4
     columnSpacing: 8
     rowSpacing: 8
-    ComboBox {
+    AppComboBox {
       id: kindBox
       objectName: "provider-kind"
       Layout.fillWidth: addRow.narrow
       Layout.preferredWidth: 180
-      implicitHeight: 32
       model: providerList.kinds
       textRole: "label"
       valueRole: "value"
-      palette.button: theme.surface
-      palette.buttonText: theme.foreground
-      palette.window: theme.surface
-      palette.windowText: theme.foreground
-      palette.highlight: theme.selection
-      palette.highlightedText: theme.foreground
     }
     TextField {
       id: idField

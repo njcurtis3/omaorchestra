@@ -44,20 +44,6 @@ ColumnLayout {
   }
 
   component FieldLabel: Label { color: theme.muted }
-  component ThemedComboBox: ComboBox {
-    implicitContentWidthPolicy: ComboBox.WidestTextWhenCompleted
-    implicitHeight: 32
-    palette.button: theme.surface
-    palette.buttonText: theme.foreground
-    palette.base: theme.surface
-    palette.text: theme.foreground
-    palette.window: theme.surface
-    palette.windowText: theme.foreground
-    palette.highlight: theme.selection
-    palette.highlightedText: theme.foreground
-    palette.mid: theme.selection
-    palette.dark: theme.muted
-  }
 
   RowLayout {
     spacing: 10
@@ -134,11 +120,11 @@ ColumnLayout {
     spacing: 16
     ColumnLayout {
       FieldLabel { text: "Fleet" }
-      ThemedComboBox { id: fleetBox; objectName: "fleet-template"; textRole: "label"; valueRole: "value" }
+      AppComboBox { id: fleetBox; objectName: "fleet-template"; textRole: "label"; valueRole: "value" }
     }
     ColumnLayout {
       FieldLabel { text: "Shape" }
-      ThemedComboBox {
+      AppComboBox {
         id: shapeBox
         objectName: "fleet-shape"
         textRole: "label"

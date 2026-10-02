@@ -219,7 +219,7 @@ ColumnLayout {
                   spacing: 12
                   Repeater {
                     model: fieldRow.modelData.options || []
-                    delegate: CheckBox {
+                    delegate: AppCheckBox {
                       required property string modelData
                       text: modelData
                       checked: (fieldRow.current || []).indexOf(modelData) >= 0
@@ -227,24 +227,6 @@ ColumnLayout {
                         const now = (fieldRow.current || []).filter(a => a !== modelData)
                         if (checked) now.push(modelData)
                         page.setValue(fieldRow.modelData, now)
-                      }
-                      id: box
-                      contentItem: Label { text: box.text; color: theme.foreground; leftPadding: box.indicator.width + 6 }
-                      indicator: Rectangle {
-                        implicitWidth: 18
-                        implicitHeight: 18
-                        x: box.leftPadding
-                        y: (box.height - height) / 2
-                        radius: 3
-                        color: box.checked ? theme.accent : "transparent"
-                        border.color: box.checked ? theme.accent : theme.muted
-                        Label {
-                          anchors.centerIn: parent
-                          visible: box.checked
-                          text: "󰄬"
-                          color: theme.background
-                          font.pixelSize: 14
-                        }
                       }
                     }
                   }

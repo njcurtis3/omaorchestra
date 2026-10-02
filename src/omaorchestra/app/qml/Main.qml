@@ -32,6 +32,9 @@ ApplicationWindow {
   palette.placeholderText: theme.muted
   palette.mid: theme.selection
   palette.dark: theme.muted
+  // Tooltips: Qt's own are white with black text, in every theme.
+  palette.toolTipBase: theme.surface
+  palette.toolTipText: theme.foreground
 
   property string page: "sessions"
   // A narrow window: the navigation shows glyphs only.
@@ -97,7 +100,7 @@ ApplicationWindow {
     { id: "worktrees", glyph: "󰙅", label: "Worktrees" },
     { id: "providers", glyph: "󰒍", label: "Providers" },
     { id: "usage", glyph: "󰄨", label: "Usage" },
-    { id: "mcp", glyph: "󰒓", label: "MCP" },
+    { id: "mcp", glyph: "󰚥", label: "MCP" },
     { id: "permissions", glyph: "󰌾", label: "Permissions" },
     { id: "settings", glyph: "󰒓", label: "Settings" }
   ]
@@ -214,6 +217,7 @@ ApplicationWindow {
                   color: navItem.highlighted ? theme.selection : navItem.hovered ? Qt.alpha(theme.selection, 0.5) : Qt.alpha(theme.selection, 0)
                   Behavior on color { ColorAnimation { duration: 120 } }
                   Stripe { shown: navItem.highlighted; color: theme.accent }
+                  FocusRing { control: navItem; gap: 1 }
                 }
               }
             }
@@ -223,7 +227,7 @@ ApplicationWindow {
         // Away mode (`omaorchestra away`): pushes and remote answers happen only
         // while away. One row: where you are and the mode, the choices in its
         // list; just the glyph when the navigation is narrow.
-        ComboBox {
+        AppComboBox {
           id: awayBox
           objectName: "away"
           visible: awayMode.known && awayMode.active && sessions.connected
@@ -248,7 +252,14 @@ ApplicationWindow {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
           }
-          background: Rectangle { radius: 4; color: awayBox.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"; border.color: theme.selection }
+          background: Rectangle {
+            radius: 4
+            color: awayBox.hovered || awayBox.popup.visible ? Qt.alpha(theme.selection, 0.5) : Qt.alpha(theme.selection, 0)
+            border.color: awayBox.popup.visible ? theme.accent : theme.selection
+            Behavior on color { ColorAnimation { duration: 120 } }
+            FocusRing { control: awayBox }
+          }
+          implicitContentWidthPolicy: ComboBox.ContentItemImplicitWidth
           popup.width: Math.max(awayBox.width, 160)
           // Choosing sets the mode; the daemon's answer (or a change made
           // elsewhere) sets what is shown.
@@ -262,16 +273,6 @@ ApplicationWindow {
           ToolTip.text: awayMode.text + ". Mode: " + awayBox.currentText
                         + ".\n\nAuto is away once the screen locks or after a while without input. "
                         + "Pushes go out, and permission prompts can be answered remotely, only while you are away."
-          palette.button: theme.background
-          palette.buttonText: theme.foreground
-          palette.base: theme.surface
-          palette.text: theme.foreground
-          palette.window: theme.surface
-          palette.windowText: theme.foreground
-          palette.highlight: theme.selection
-          palette.highlightedText: theme.foreground
-          palette.mid: theme.selection
-          palette.dark: theme.muted
         }
 
         Label {

@@ -13,9 +13,9 @@ Flickable {
   property string chosen: ""  // a node key
   signal pick(string key)
 
-  readonly property int colWidth: 150
-  readonly property int laneHeight: 72
-  readonly property int boxWidth: 128
+  readonly property int colWidth: 152
+  readonly property int laneHeight: 74
+  readonly property int boxWidth: 132
   readonly property int boxHeight: 48
   property var layout: ({ nodes: [], edges: [], columns: 0, lanes: 1 })
 
@@ -28,10 +28,11 @@ Flickable {
     return n ? { x: 16 + n.col * colWidth, y: 16 + n.lane * laneHeight } : null
   }
 
-  // Shrunk to fit the width, down to 70%; wider than that, it scrolls.
+  // Shrunk to fit the width, down to 85% so its text stays readable; wider
+  // than that, it scrolls, with a fade at the side that has more.
   readonly property real fullWidth: 32 + Math.max(1, layout.columns) * colWidth
   readonly property real fullHeight: 40 + Math.max(1, layout.lanes) * laneHeight
-  readonly property real zoom: Math.max(0.7, Math.min(1, width / fullWidth))
+  readonly property real zoom: Math.max(0.85, Math.min(1, width / fullWidth))
   clip: true
   contentWidth: fullWidth * zoom
   contentHeight: fullHeight * zoom
@@ -71,7 +72,18 @@ Flickable {
           ctx.stroke()
           ctx.beginPath()
           ctx.moveTo(x2, y); ctx.lineTo(x2 - 4, y + 7); ctx.lineTo(x2 + 4, y + 7); ctx.closePath(); ctx.fill()
-          ctx.fillText(e.label, (x1 + x2) / 2 - 18, y + 22)
+          // The label sits on the curve's lowest point, over a patch of
+          // background, so the line does not run through it.
+          const mx = (x1 + x2) / 2, my = y + 16
+          const tw = ctx.measureText(e.label).width
+          ctx.fillStyle = theme.background
+          ctx.fillRect(mx - tw / 2 - 5, my - 8, tw + 10, 16)
+          ctx.fillStyle = theme.urgent
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          ctx.fillText(e.label, mx, my)
+          ctx.textAlign = "start"
+          ctx.textBaseline = "alphabetic"
           continue
         }
         if (e.kind === "next") {
@@ -119,9 +131,9 @@ Flickable {
       radius: item.key.endsWith("gate") ? height / 2 : 6
       readonly property bool bad: ["rejected", "failed", "held", "you", "stalled"].indexOf(item.state) >= 0
       color: graphView.chosen === key ? theme.selection : theme.surface
-      border.width: item.state === "queued" || item.state === "skipped" ? 1 : 2
+      border.width: bad || item.state === "running" ? 2 : 1.5
       border.color: bad ? theme.urgent : item.state === "running" ? theme.accent
-                    : item.state === "passed" ? theme.foreground : theme.selection
+                    : item.state === "passed" ? Qt.alpha(theme.foreground, 0.45) : theme.selection
       opacity: item.state === "skipped" ? 0.45 : 1
       Behavior on x { NumberAnimation { duration: 200 } }
       Behavior on y { NumberAnimation { duration: 200 } }
@@ -142,7 +154,7 @@ Flickable {
           color: box.bad ? theme.urgent : theme.foreground
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight
-          font.pixelSize: 13
+          font.pixelSize: 14
         }
         Label {
           width: parent.width
@@ -150,7 +162,7 @@ Flickable {
           color: box.bad ? theme.urgent : theme.muted
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight
-          font.pixelSize: 11
+          font.pixelSize: 12
         }
       }
 
@@ -163,4 +175,20 @@ Flickable {
     }
   }
   }
+
+  // More to see that way: the edge fades into the page.
+  component EdgeFade: Rectangle {
+    property bool atRight: true
+    parent: graphView
+    z: 2  // over the scrolled content
+    width: 36
+    anchors { top: parent.top; bottom: parent.bottom; left: atRight ? undefined : parent.left; right: atRight ? parent.right : undefined }
+    gradient: Gradient {
+      orientation: Gradient.Horizontal
+      GradientStop { position: 0; color: Qt.alpha(theme.background, atRight ? 0 : 1) }
+      GradientStop { position: 1; color: Qt.alpha(theme.background, atRight ? 1 : 0) }
+    }
+  }
+  EdgeFade { objectName: "graph-fade-right"; atRight: true; visible: graphView.contentX + graphView.width < graphView.contentWidth - 1 }
+  EdgeFade { objectName: "graph-fade-left"; atRight: false; visible: graphView.contentX > 1 }
 }

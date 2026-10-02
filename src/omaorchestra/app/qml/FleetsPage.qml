@@ -148,8 +148,9 @@ ColumnLayout {
           }
           Label {
             Layout.fillWidth: true
-            text: [runRow.item.project, runRow.item.shape, sessions.duration(runRow.item.created, page.now),
-                   "$" + runRow.item.spent.toFixed(2)].filter(Boolean).join("  ·  ")
+            // Cost before time and shape: what a narrow card keeps.
+            text: [runRow.item.project, "$" + runRow.item.spent.toFixed(2), sessions.duration(runRow.item.created, page.now),
+                   runRow.item.shape].filter(Boolean).join("  ·  ")
             color: theme.muted
             font.pixelSize: 12
             elide: Text.ElideRight

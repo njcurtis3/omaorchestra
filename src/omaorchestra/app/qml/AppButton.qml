@@ -38,5 +38,6 @@ Button {
     border.color: button.quiet || button.primary && button.enabled ? "transparent"
                   : button.danger ? theme.urgent : button.active ? theme.accent : theme.selection
     Behavior on color { ColorAnimation { duration: 120 } }
+    FocusRing { control: button }
   }
 }

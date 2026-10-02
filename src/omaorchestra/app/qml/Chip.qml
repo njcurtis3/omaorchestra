@@ -45,5 +45,6 @@ Button {
     color: chip.selected ? theme.selection : chip.hovered ? Qt.alpha(theme.selection, 0.5) : Qt.alpha(theme.selection, 0)
     border.color: theme.selection
     Behavior on color { ColorAnimation { duration: 120 } }
+    FocusRing { control: chip }
   }
 }
