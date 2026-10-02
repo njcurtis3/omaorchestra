@@ -17,6 +17,19 @@ DEFAULTS = {
     "mode": "dark",
 }
 
+# The built-in light palette, for "light" in the app's settings when the
+# Omarchy theme is dark: the same hues as DEFAULTS, darkened for contrast.
+LIGHT = {
+    "background": "#f4f5f6",
+    "surface": "#e8ebed",
+    "foreground": "#1e2326",
+    "accent": "#3d7286",
+    "muted": "#5f6870",
+    "selection": "#d3d9dd",
+    "urgent": "#b03a3a",
+    "mode": "light",
+}
+
 HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 
@@ -52,6 +65,15 @@ def palette(colors):
     if colors.get("mode") in ("dark", "light"):
         result["mode"] = colors["mode"]
     return result
+
+
+def for_mode(colors, mode):
+    """The palette to draw with for the app's appearance setting: the
+    theme's own for "system" or when it is already that mode, otherwise
+    the built-in one for the mode asked for."""
+    if mode not in ("light", "dark") or colors["mode"] == mode:
+        return colors
+    return dict(LIGHT if mode == "light" else DEFAULTS)
 
 
 def load(path=None):

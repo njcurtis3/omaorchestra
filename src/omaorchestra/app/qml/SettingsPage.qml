@@ -183,6 +183,22 @@ ColumnLayout {
                   onTextEdited: page.setValue(fieldRow.modelData, text.trim())
                 }
 
+                // One of a few values (light or dark): a row of chips.
+                Row {
+                  visible: fieldRow.modelData.kind === "choice"
+                  spacing: 6
+                  Repeater {
+                    model: fieldRow.modelData.kind === "choice" ? fieldRow.modelData.options : []
+                    delegate: Chip {
+                      required property string modelData
+                      objectName: "setting-" + fieldRow.modelData.section + "." + fieldRow.modelData.key + "-" + modelData
+                      text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
+                      selected: fieldRow.current === modelData
+                      onClicked: page.setValue(fieldRow.modelData, modelData)
+                    }
+                  }
+                }
+
                 // A list of free text (folders): comma separated.
                 TextField {
                   implicitHeight: 32

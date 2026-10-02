@@ -2,6 +2,12 @@
 # the values below are the defaults. Check your file with
 # `omaorchestra config check`.
 
+[appearance]
+# The app's look: "system" follows the Omarchy theme, light or dark as it
+# is; "light" or "dark" keeps the theme's colours when it is already that,
+# otherwise uses omaorchestra's built-in light or dark palette
+mode = "system"
+
 [daemon]
 # Seconds between checks for sessions whose agent process has died
 prune_interval = 30

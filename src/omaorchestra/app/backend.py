@@ -30,29 +30,36 @@ def monospace_family():
 
 
 class Theme(QObject):
-    """Omarchy theme colours, reloaded when the theme changes."""
+    """Omarchy theme colours, as the app's appearance setting (light, dark or
+    system) asks for them; reloaded when the theme or the setting changes."""
 
     changed = Signal()
 
     def __init__(self, path=None, parent=None):
         super().__init__(parent)
         self.path = path or theme_file.colors_path()
-        self.colors = theme_file.load(self.path)
+        self.colors = self._load()
         self.watcher = QFileSystemWatcher(self)
         self.watcher.fileChanged.connect(self.reload)
         self.watcher.directoryChanged.connect(self.reload)
         self._watch()
 
+    def _load(self):
+        mode = config.load_or_defaults()["appearance"]["mode"]
+        return theme_file.for_mode(theme_file.load(self.path), mode)
+
     def _watch(self):
-        # A theme switch may replace the file or the whole directory, which
-        # drops it from the watcher, so re-add whatever exists each time.
-        for p in (self.path, self.path.parent, self.path.parent.parent):
+        # A theme switch may replace the file or the whole directory, and a
+        # settings save replaces the config file, which drops them from the
+        # watcher, so re-add whatever exists each time.
+        settings = config.path()
+        for p in (self.path, self.path.parent, self.path.parent.parent, settings, settings.parent):
             if p.exists() and str(p) not in self.watcher.files() + self.watcher.directories():
                 self.watcher.addPath(str(p))
 
     @Slot()
     def reload(self, *_):
-        colors = theme_file.load(self.path)
+        colors = self._load()
         self._watch()
         if colors != self.colors:
             self.colors = colors

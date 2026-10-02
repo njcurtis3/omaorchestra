@@ -268,6 +268,15 @@ class UiFlowTest(unittest.TestCase):
         self.assertTrue(wait_for(lambda: "verbose=True" in (Path(self.tmp.name) / "daemon.log").read_text()),
                         "daemon did not reload")
 
+        # Appearance: pick Light and save; the window redraws in it.
+        from omaorchestra.app import theme as theme_file
+        self.click("setting-appearance.mode-light")
+        self.click("settings-save")
+        self.assertIn('mode = "light"', self.config_path.read_text())
+        self.assertTrue(wait_for(lambda: self.theme.background == theme_file.LIGHT["background"]),
+                        "the app did not turn light")
+        self.assertFalse(self.theme.dark)
+
         self.assertEqual(self.warnings, [])
 
     def test_new_task_form_launches_and_opens_the_session(self):

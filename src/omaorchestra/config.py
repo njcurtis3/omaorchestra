@@ -45,6 +45,7 @@ def _agents(value):
         return f"unknown agent {', '.join(unknown)} (known: {', '.join(KNOWN_AGENTS)})"
 
 
+APPEARANCE_MODES = ("system", "light", "dark")
 REMOTE_EVENTS = ("needs-you", "finished", "failed", "usage-limit", "queue-blocked", "fleet")
 CONTENT_LEVELS = ("minimal", "summary", "full")
 
@@ -77,6 +78,8 @@ def _server(value):
 
 # Multiple-choice list settings and what they may contain.
 OPTIONS = {("agents", "enabled"): KNOWN_AGENTS, ("remote", "events"): REMOTE_EVENTS}
+# Text settings that take exactly one of a few values.
+ONE_OF = {("appearance", "mode"): APPEARANCE_MODES}
 
 _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_after"): (0, 86400),
            ("tasks", "max_parallel"): (1, 64), ("tasks", "pause_at_usage"): (0, 100),
@@ -85,6 +88,10 @@ _RANGES = {("daemon", "prune_interval"): (5, 3600), ("notifications", "finished_
 
 # section -> key -> (default, validator)
 SCHEMA = {
+    "appearance": {
+        "mode": ("system", lambda v: None if v in APPEARANCE_MODES else
+                 f"must be one of {', '.join(APPEARANCE_MODES)}"),
+    },
     "daemon": {
         "prune_interval": (30, _int_between(*_RANGES[("daemon", "prune_interval")])),
         "verbose": (False, _bool),
@@ -129,6 +136,15 @@ SCHEMA = {
 
 # What each setting means, for the app's settings screen and `config set`.
 METADATA = {
+    "appearance": {
+        "title": "Appearance",
+        "help": "How the app looks. The bar widget follows the Omarchy shell.",
+        "keys": {
+            "mode": ("Light or dark", "system: the Omarchy theme as it is, light or dark. light or dark: the "
+                                      "theme's own colours when it is already that, otherwise omaorchestra's "
+                                      "built-in light or dark palette."),
+        },
+    },
     "daemon": {
         "title": "Daemon",
         "help": "The background service that tracks sessions.",
@@ -236,6 +252,8 @@ def describe(config):
                 kind = "bool"
             elif isinstance(default, int):
                 kind = "int"
+            elif (section, key) in ONE_OF:
+                kind = "choice"
             elif isinstance(default, str):
                 kind = "text"
             elif (section, key) in OPTIONS:
@@ -248,6 +266,8 @@ def describe(config):
                 field["min"], field["max"] = _RANGES[(section, key)]
             if kind == "choices":
                 field["options"] = list(OPTIONS[(section, key)])
+            if kind == "choice":
+                field["options"] = list(ONE_OF[(section, key)])
             fields.append(field)
         sections.append({"section": section, "title": meta["title"], "help": meta["help"], "fields": fields})
     return sections

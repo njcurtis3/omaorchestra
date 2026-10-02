@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -54,6 +55,17 @@ class PaletteTest(unittest.TestCase):
         self.assertEqual((p["background"], p["foreground"], p["mode"]),
                          (theme_file.DEFAULTS["background"], "#abc", "dark"))
 
+    def test_appearance_setting_picks_the_palette(self):
+        dark_theme = theme_file.palette({"background": "#111c18", "mode": "dark"})
+        light_theme = theme_file.palette({"background": "#fafafa", "mode": "light"})
+        # system, or a mode the theme is already in: the theme's own colours.
+        for colors, mode in ((dark_theme, "system"), (light_theme, "system"), (dark_theme, "dark"),
+                             (light_theme, "light")):
+            self.assertEqual(theme_file.for_mode(colors, mode), colors)
+        # The other mode: the built-in palette for it.
+        self.assertEqual(theme_file.for_mode(dark_theme, "light"), theme_file.LIGHT)
+        self.assertEqual(theme_file.for_mode(light_theme, "dark"), theme_file.DEFAULTS)
+
 
 def wait_for(condition, timeout=5.0):
     loop = QEventLoop()
@@ -72,7 +84,8 @@ class QtTest(unittest.TestCase):
 
     def test_theme_reloads_when_the_file_changes(self):
         from omaorchestra.app.backend import Theme
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"OMAORCHESTRA_CONFIG": str(Path(tmp) / "none.toml")}):
             path = Path(tmp) / "theme" / "colors.toml"
             path.parent.mkdir()
             path.write_text(OMARCHY_COLORS)
@@ -86,6 +99,25 @@ class QtTest(unittest.TestCase):
             os.replace(tmp_file, path)
             self.assertTrue(wait_for(lambda: seen), "no change signal")
             self.assertEqual(t.background, "#000000")
+
+    def test_theme_follows_the_appearance_setting(self):
+        from omaorchestra.app.backend import Theme
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "omaorchestra" / "config.toml"
+            settings.parent.mkdir()
+            settings.write_text('[appearance]\nmode = "light"\n')
+            path = Path(tmp) / "theme" / "colors.toml"
+            path.parent.mkdir()
+            path.write_text(OMARCHY_COLORS)  # a dark theme
+            with mock.patch.dict(os.environ, {"OMAORCHESTRA_CONFIG": str(settings)}):
+                t = Theme(path)
+                self.assertEqual((t.background, t.dark), (theme_file.LIGHT["background"], False))
+                # Saved from the settings page (replacing the file): the theme's own colours again.
+                new = settings.with_suffix(".new")
+                new.write_text('[appearance]\nmode = "dark"\n')
+                os.replace(new, settings)
+                self.assertTrue(wait_for(lambda: t.background == "#111c18"), "did not follow the setting")
+                self.assertTrue(t.dark)
 
     def test_sessions_follow_snapshot_and_events(self):
         from omaorchestra.app.backend import Sessions

@@ -73,6 +73,13 @@ by itself when the daemon restarts, and keeps a single window (launching it
 again focuses the open one). Open it from the app launcher, the button at the
 top of the bar panel, the Omarchy menu, or a keybinding.
 
+Light or dark is the app's own setting (Settings > Appearance, or
+`appearance.mode` in the config): **System**, the default, follows the
+Omarchy theme as it is; **Light** or **Dark** keeps the theme's colours when
+it is already that, and otherwise uses omaorchestra's built-in light or dark
+palette. It changes as soon as it is saved. The bar widget always follows the
+Omarchy shell.
+
 The **Sessions** page lists every session, waiting first: project, title,
 git branch, model, the waiting message, and how long it has been in its
 current state. Filter by status or by text, switch between a list and a grid,

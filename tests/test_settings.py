@@ -87,6 +87,14 @@ class SaveTest(unittest.TestCase):
             with self.assertRaises(config.ConfigError):
                 config.parse_value(section, key, text)
 
+    def test_appearance_is_one_of_three(self):
+        described = config.describe(config.defaults())
+        mode = next(f for s in described for f in s["fields"] if (f["section"], f["key"]) == ("appearance", "mode"))
+        self.assertEqual((mode["kind"], mode["options"], mode["value"]), ("choice", ["system", "light", "dark"], "system"))
+        self.assertEqual(config.validate({"appearance": {"mode": "light"}})["appearance"]["mode"], "light")
+        with self.assertRaises(config.ConfigError):
+            config.validate({"appearance": {"mode": "blue"}})
+
     def test_describe_covers_the_schema(self):
         described = config.describe(config.defaults())
         names = {(f["section"], f["key"]) for s in described for f in s["fields"]}
