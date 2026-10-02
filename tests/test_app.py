@@ -40,7 +40,7 @@ class PaletteTest(unittest.TestCase):
             path.write_text(OMARCHY_COLORS)
             p = theme_file.load(path)
         self.assertEqual(p, {"background": "#111c18", "surface": "#23372B", "foreground": "#C1C497",
-                             "accent": "#509475", "muted": "#53685B", "selection": "#32473B",
+                             "accent": "#509475", "muted": "#849176", "selection": "#32473B",
                              "urgent": "#FF5345", "mode": "dark"})
 
     def test_missing_or_broken_theme_uses_defaults(self):
@@ -54,6 +54,22 @@ class PaletteTest(unittest.TestCase):
         p = theme_file.palette({"background": "blue", "foreground": "#abc", "mode": "sepia"})
         self.assertEqual((p["background"], p["foreground"], p["mode"]),
                          (theme_file.DEFAULTS["background"], "#abc", "dark"))
+
+    def test_muted_is_made_readable_but_stays_secondary(self):
+        # Kanagawa-like: a comment colour at 1.8:1 on the background.
+        faint = {"background": "#1f1f28", "surface": "#2a2a37", "foreground": "#dcd7ba", "muted": "#3e3e4e"}
+        muted = theme_file.readable_muted(faint)
+        self.assertGreaterEqual(min(theme_file.contrast(muted, faint["background"]),
+                                    theme_file.contrast(muted, faint["surface"])), 4.5)
+        self.assertGreaterEqual(theme_file.contrast(muted, faint["foreground"]), 1.8)
+        # A low-contrast theme: brighter, but never as bright as the text itself.
+        soft = {"background": "#faf4ed", "surface": "#f2e9e1", "foreground": "#575279", "muted": "#dfdad9"}
+        muted = theme_file.readable_muted(soft)
+        self.assertGreater(theme_file.contrast(muted, soft["background"]), theme_file.contrast("#dfdad9", soft["background"]) * 2)
+        self.assertGreaterEqual(theme_file.contrast(muted, soft["foreground"]), 1.8)
+        # Already readable: left as it is, and so are the built-in palettes.
+        for colors in ({**faint, "muted": "#9a9aa8"}, theme_file.DEFAULTS, theme_file.LIGHT):
+            self.assertEqual(theme_file.readable_muted(colors), colors["muted"])
 
     def test_appearance_setting_picks_the_palette(self):
         dark_theme = theme_file.palette({"background": "#111c18", "mode": "dark"})

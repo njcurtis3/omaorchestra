@@ -11,7 +11,7 @@ DEFAULTS = {
     "surface": "#1a1f22",
     "foreground": "#cacccc",
     "accent": "#6e9fb0",
-    "muted": "#707880",
+    "muted": "#82898f",  # readable on background and surface (see readable_muted)
     "selection": "#2a3136",
     "urgent": "#a55555",
     "mode": "dark",
@@ -42,6 +42,43 @@ def colors_path():
     return theme_dir() / "colors.toml"
 
 
+def _rgb(value):
+    h = value.lstrip("#")
+    h = "".join(c * 2 for c in h) if len(h) == 3 else h[:6]
+    return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+
+
+def _luminance(value):
+    c = [x / 255 for x in _rgb(value)]
+    c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+def contrast(a, b):
+    """WCAG contrast ratio between two colours, 1 to 21."""
+    a, b = _luminance(a), _luminance(b)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+def _mix(a, b, t):
+    return "#%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(_rgb(a), _rgb(b)))
+
+
+def readable_muted(colors, target=4.5, keep=1.8):
+    """The theme's muted colour, moved toward the foreground until secondary
+    text reads on the background and on rows (surface). Themes make muted
+    for code comments, often under 2:1, which is too faint for paths and
+    labels. It stops short of `keep` from the foreground, so secondary text
+    still looks secondary in a low-contrast theme."""
+    muted, step = colors["muted"], 0
+    while step < 20 and min(contrast(muted, colors["background"]), contrast(muted, colors["surface"])) < target:
+        nearer = _mix(colors["muted"], colors["foreground"], (step + 1) / 20)
+        if contrast(nearer, colors["foreground"]) < keep:
+            break
+        muted, step = nearer, step + 1
+    return muted
+
+
 def palette(colors):
     """Map an Omarchy colors.toml onto the few roles the app uses."""
     def pick(*names):
@@ -64,6 +101,7 @@ def palette(colors):
         result[role] = pick(*names) or DEFAULTS[role]
     if colors.get("mode") in ("dark", "light"):
         result["mode"] = colors["mode"]
+    result["muted"] = readable_muted(result)
     return result
 
 
