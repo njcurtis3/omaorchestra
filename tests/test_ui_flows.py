@@ -86,6 +86,10 @@ class UiFlowTest(unittest.TestCase):
             ctx.setContextProperty(name, value)
         self.engine.load(QUrl.fromLocalFile(str(ROOT / "src" / "omaorchestra" / "app" / "qml" / "Main.qml")))
         self.window = self.engine.rootObjects()[0]
+        # Shortcuts (Ctrl+N) fire only in the active window, and offscreen a
+        # new window becomes active some time after it is shown.
+        self.window.requestActivate()
+        self.assertTrue(wait_for(self.window.isActive), "window did not become active")
         self.sessions.start()
         self.assertTrue(wait_for(lambda: self.sessions.connected), "app did not connect")
 
