@@ -61,6 +61,18 @@ ApplicationWindow {
     if (initialFleet) showFleet(initialFleet)
   }
   Shortcut { sequence: "Ctrl+N"; onActivated: window.page = "new" }
+  // A new page fades in rather than appearing at once.
+  onPageChanged: pageFade.restart()
+  NumberAnimation {
+    id: pageFade
+    targets: [sessionsPage, newTaskScroll, fleetsPage, queuePage, historyPage, worktreesPage,
+              providersPage, usagePage, mcpPage, permissionsPage, settingsPage]
+    property: "opacity"
+    from: 0
+    to: 1
+    duration: 140
+    easing.type: Easing.OutCubic
+  }
   Connections {
     // At startup the session list has not arrived yet, so a prefix cannot be
     // matched; match it once the first snapshot lands.
@@ -161,12 +173,22 @@ ApplicationWindow {
 
                 contentItem: RowLayout {
                   spacing: 0
+                  // The glyph takes the accent on the page you are on.
                   Label {
-                    Layout.fillWidth: true
+                    Layout.fillWidth: window.compact
                     horizontalAlignment: window.compact ? Text.AlignHCenter : Text.AlignLeft
-                    text: window.compact ? navItem.modelData.glyph : navItem.modelData.glyph + "  " + navItem.modelData.label
-                    color: navItem.highlighted ? theme.foreground : theme.muted
+                    text: navItem.modelData.glyph
+                    color: navItem.highlighted ? theme.accent : navItem.hovered ? theme.foreground : theme.muted
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                  }
+                  Label {
+                    visible: !window.compact
+                    Layout.fillWidth: true
+                    leftPadding: 10
+                    text: navItem.modelData.label
+                    color: navItem.highlighted || navItem.hovered ? theme.foreground : theme.muted
                     elide: Text.ElideRight
+                    Behavior on color { ColorAnimation { duration: 120 } }
                   }
                   // Runs that need you: at a gate, held, or a node waiting.
                   Label {
@@ -189,7 +211,9 @@ ApplicationWindow {
                 }
                 background: Rectangle {
                   radius: 4
-                  color: navItem.highlighted ? theme.selection : navItem.hovered ? Qt.alpha(theme.selection, 0.5) : "transparent"
+                  color: navItem.highlighted ? theme.selection : navItem.hovered ? Qt.alpha(theme.selection, 0.5) : Qt.alpha(theme.selection, 0)
+                  Behavior on color { ColorAnimation { duration: 120 } }
+                  Stripe { shown: navItem.highlighted; color: theme.accent }
                 }
               }
             }
@@ -290,7 +314,20 @@ ApplicationWindow {
         }
       }
 
-      Rectangle { Layout.fillWidth: true; height: 1; color: theme.selection }
+      Item {
+        Layout.fillWidth: true
+        implicitHeight: 2
+        Rectangle {
+          anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+          height: 1
+          gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0; color: theme.selection }
+            GradientStop { position: 1; color: Qt.alpha(theme.selection, 0) }
+          }
+        }
+        Rectangle { width: 32; height: 2; radius: 1; color: theme.accent }
+      }
 
       // Sessions
       Label {
@@ -343,6 +380,7 @@ ApplicationWindow {
 
       // Queue
       QueuePage {
+        id: queuePage
         onOpenFleet: id => window.showFleet(id)
         visible: window.page === "queue"
         Layout.fillWidth: true
@@ -360,6 +398,7 @@ ApplicationWindow {
 
       // Worktrees
       WorktreesPage {
+        id: worktreesPage
         onOpenFleet: id => window.showFleet(id)
         visible: window.page === "worktrees"
         Layout.fillWidth: true
@@ -368,6 +407,7 @@ ApplicationWindow {
 
       // Providers
       ProvidersPage {
+        id: providersPage
         visible: window.page === "providers"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -375,6 +415,7 @@ ApplicationWindow {
 
       // Usage
       UsagePage {
+        id: usagePage
         visible: window.page === "usage"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -382,6 +423,7 @@ ApplicationWindow {
 
       // MCP
       McpPage {
+        id: mcpPage
         visible: window.page === "mcp"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -389,6 +431,7 @@ ApplicationWindow {
 
       // Permissions
       PermissionsPage {
+        id: permissionsPage
         visible: window.page === "permissions"
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -396,6 +439,7 @@ ApplicationWindow {
 
       // Settings
       SettingsPage {
+        id: settingsPage
         visible: window.page === "settings"
         Layout.fillWidth: true
         Layout.fillHeight: true

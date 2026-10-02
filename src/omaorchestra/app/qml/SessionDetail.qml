@@ -141,8 +141,9 @@ ColumnLayout {
     Layout.fillWidth: true
     implicitHeight: waitingText.implicitHeight + 20
     radius: 6
-    color: Qt.alpha(theme.urgent, 0.12)
-    border.color: theme.urgent
+    color: Qt.alpha(theme.urgent, 0.10)
+    border.color: Qt.alpha(theme.urgent, 0.3)
+    Stripe { color: theme.urgent }
     Label {
       id: waitingText
       anchors.fill: parent

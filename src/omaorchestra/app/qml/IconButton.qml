@@ -11,6 +11,7 @@ Label {
   text: glyph
   color: mouse.containsMouse ? theme.foreground : theme.muted
   font.pixelSize: 16
+  Behavior on color { ColorAnimation { duration: 120 } }
 
   ToolTip.visible: tip !== "" && mouse.containsMouse
   ToolTip.text: tip

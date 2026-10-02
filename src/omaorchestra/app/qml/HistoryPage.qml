@@ -242,10 +242,11 @@ ColumnLayout {
         delegate: Chip {
           required property var modelData
           objectName: "history-filter-" + (modelData.outcome || "all")
-          readonly property int count: { sessionHistory.counts; return sessionHistory.counts[modelData.outcome] || 0 }
-          text: modelData.label + "  " + count
+          readonly property int n: { sessionHistory.counts; return sessionHistory.counts[modelData.outcome] || 0 }
+          text: modelData.label
+          count: String(n)
           selected: page.outcomeFilter === modelData.outcome
-          urgent: (modelData.outcome === "crashed" || modelData.outcome === "never-started") && count > 0
+          urgent: (modelData.outcome === "crashed" || modelData.outcome === "never-started") && n > 0
           onClicked: page.outcomeFilter = modelData.outcome
         }
       }
@@ -266,13 +267,11 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Empty
-  Label {
+  EmptyState {
     visible: page.selectedKey === "" && sessionHistory.rows.length === 0
     Layout.fillWidth: true
-    Layout.topMargin: 24
-    horizontalAlignment: Text.AlignHCenter
-    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-    color: theme.muted
+    Layout.topMargin: 40
+    glyph: sessionHistory.total === 0 ? "󰋚" : "󰍉"
     text: sessionHistory.total === 0
       ? "No history yet. Each session is recorded here when it ends."
       : "No sessions match."

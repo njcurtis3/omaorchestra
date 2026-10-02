@@ -30,6 +30,11 @@ ColumnLayout {
   function statusColor(status) {
     return status === "needs-input" ? theme.urgent : status === "working" ? theme.accent : theme.muted
   }
+  // A row's fill: a waiting one carries a faint wash of the urgent colour.
+  function rowColor(status, hovered) {
+    const base = hovered ? theme.selection : theme.surface
+    return status === "needs-input" ? Qt.tint(base, Qt.alpha(theme.urgent, 0.08)) : base
+  }
 
   SessionDetail {
     objectName: "detail"
@@ -64,7 +69,8 @@ ColumnLayout {
         delegate: Chip {
           required property var modelData
           objectName: "filter-" + (modelData.status || "all")
-          text: modelData.label + "  " + modelData.count
+          text: modelData.label
+          count: String(modelData.count)
           selected: page.statusFilter === modelData.status
           urgent: modelData.status === "needs-input" && modelData.count > 0
           onClicked: page.statusFilter = modelData.status
@@ -91,7 +97,8 @@ ColumnLayout {
       Chip {
         objectName: "filter-fleet"
         visible: page.fleetCount > 0
-        text: (page.hideFleet ? "Show" : "Hide") + " fleet  " + page.fleetCount
+        text: (page.hideFleet ? "Show" : "Hide") + " fleet"
+        count: String(page.fleetCount)
         onClicked: page.hideFleet = !page.hideFleet
         ToolTip.visible: hovered
         ToolTip.delay: 500
@@ -107,13 +114,11 @@ ColumnLayout {
   }
 
   // ---------------------------------------------------------- Empty states
-  Label {
+  EmptyState {
     visible: page.selectedId === "" && page.shown.length === 0
     Layout.fillWidth: true
-    Layout.topMargin: 24
-    horizontalAlignment: Text.AlignHCenter
-    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-    color: theme.muted
+    Layout.topMargin: 40
+    glyph: sessions.total === 0 ? "󰚩" : "󰍉"
     text: sessions.total === 0
       ? "No agent sessions. They appear here as soon as an agent starts."
       : "No sessions match."
@@ -137,7 +142,10 @@ ColumnLayout {
       width: ListView.view.width
       height: listContent.implicitHeight + 20
       radius: 6
-      color: rowMouse.containsMouse ? theme.selection : theme.surface
+      color: page.rowColor(modelData.status, rowMouse.containsMouse)
+      Behavior on color { ColorAnimation { duration: 120 } }
+
+      Stripe { shown: listRow.modelData.status === "needs-input"; color: theme.urgent }
 
       MouseArea {
         id: rowMouse
@@ -152,11 +160,10 @@ ColumnLayout {
         anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 14 }
         spacing: 14
 
-        Rectangle {
+        StatusDot {
           Layout.alignment: Qt.AlignTop
           Layout.topMargin: 6
-          width: 10; height: 10; radius: 5
-          color: page.statusColor(listRow.modelData.status)
+          status: listRow.modelData.status
         }
 
         ColumnLayout {
@@ -289,8 +296,10 @@ ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
         radius: 6
-        color: cardMouse.containsMouse ? theme.selection : theme.surface
-        border.color: cell.modelData.status === "needs-input" ? theme.urgent : "transparent"
+        color: page.rowColor(cell.modelData.status, cardMouse.containsMouse)
+        Behavior on color { ColorAnimation { duration: 120 } }
+
+        Stripe { shown: cell.modelData.status === "needs-input"; color: theme.urgent }
 
         MouseArea {
           id: cardMouse
@@ -307,7 +316,7 @@ ColumnLayout {
 
           RowLayout {
             Layout.fillWidth: true
-            Rectangle { width: 10; height: 10; radius: 5; color: page.statusColor(cell.modelData.status) }
+            StatusDot { status: cell.modelData.status }
             Label {
               Layout.fillWidth: true
               text: cell.modelData.project

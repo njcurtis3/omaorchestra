@@ -39,8 +39,9 @@ ColumnLayout {
     Layout.fillWidth: true
     implicitHeight: blockedLabel.implicitHeight + 20
     radius: 6
-    color: Qt.alpha(theme.urgent, 0.12)
-    border.color: theme.urgent
+    color: Qt.alpha(theme.urgent, 0.10)
+    border.color: Qt.alpha(theme.urgent, 0.3)
+    Stripe { color: theme.urgent }
     Label {
       id: blockedLabel
       anchors.fill: parent
@@ -59,13 +60,11 @@ ColumnLayout {
     text: page.message
   }
 
-  Label {
+  EmptyState {
     visible: queue.tasks.length === 0
     Layout.fillWidth: true
-    Layout.topMargin: 24
-    horizontalAlignment: Text.AlignHCenter
-    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-    color: theme.muted
+    Layout.topMargin: 40
+    glyph: "󰒲"
     text: "No queued tasks. Use Add to queue on the New task page, or `omaorchestra queue add`."
   }
 
@@ -89,8 +88,9 @@ ColumnLayout {
       radius: 6
       readonly property bool chained: !!(modelData.after || modelData.parent_session)
       readonly property bool waiting: modelData.state === "waiting"
-      color: theme.surface
-      border.color: modelData.state === "failed" || modelData.state === "held" ? theme.urgent : "transparent"
+      readonly property bool bad: modelData.state === "failed" || modelData.state === "held"
+      color: bad ? Qt.tint(theme.surface, Qt.alpha(theme.urgent, 0.08)) : theme.surface
+      Stripe { shown: parent.bad; color: theme.urgent }
       opacity: modelData.state === "paused" || waiting ? 0.7 : 1
 
       // A fleet run's nodes waiting to start: one row, opening the run.

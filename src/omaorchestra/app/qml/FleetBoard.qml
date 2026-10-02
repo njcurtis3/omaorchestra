@@ -45,8 +45,20 @@ ColumnLayout {
       Layout.fillWidth: true
       implicitHeight: rowBody.implicitHeight + 14
       radius: 4
-      color: board.chosen === key ? theme.selection : rowMouse.containsMouse ? Qt.alpha(theme.selection, 0.5) : theme.surface
-      border.color: item.extra.length && !item.accepted || item.blocked ? theme.urgent : "transparent"
+      readonly property bool bad: item.extra.length && !item.accepted || !!item.blocked
+      // Not started yet: dimmed, so progress shows before reading a word.
+      readonly property bool pending: item.build === "not started"
+      readonly property color base: board.chosen === key ? theme.selection
+                                    : rowMouse.containsMouse ? Qt.tint(theme.surface, Qt.alpha(theme.selection, 0.5)) : theme.surface
+      color: bad || item.waiting || item.stalled ? Qt.tint(base, Qt.alpha(theme.urgent, 0.08)) : base
+      opacity: pending && board.chosen !== key && !rowMouse.containsMouse ? 0.6 : 1
+      Behavior on color { ColorAnimation { duration: 120 } }
+      Behavior on opacity { NumberAnimation { duration: 120 } }
+
+      Stripe {
+        shown: boardRow.bad || boardRow.item.waiting || boardRow.item.stalled || board.chosen === boardRow.key
+        color: boardRow.bad || boardRow.item.waiting || boardRow.item.stalled ? theme.urgent : theme.accent
+      }
 
       MouseArea {
         id: rowMouse
@@ -72,8 +84,8 @@ ColumnLayout {
             elide: Text.ElideRight
           }
           Label {
-            text: boardRow.item.verdict || "-"
-            color: boardRow.item.verdict === "REJECT" ? theme.urgent : boardRow.item.verdict === "PASS" ? theme.foreground : theme.muted
+            text: boardRow.item.verdict === "PASS" ? "✓ PASS" : boardRow.item.verdict === "REJECT" ? "✗ REJECT" : boardRow.item.verdict || "-"
+            color: boardRow.item.verdict === "REJECT" ? theme.urgent : boardRow.item.verdict === "PASS" ? theme.accent : theme.muted
             Layout.fillWidth: true
             Layout.preferredWidth: board.widths[2]
             Layout.maximumWidth: board.widths[2]

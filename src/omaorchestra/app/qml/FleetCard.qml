@@ -21,7 +21,8 @@ Rectangle {
   radius: 6
   readonly property bool calm: kind === "close" || kind === "paused"
   color: Qt.alpha(calm ? theme.accent : theme.urgent, 0.08)
-  border.color: calm ? theme.accent : theme.urgent
+  border.color: Qt.alpha(calm ? theme.accent : theme.urgent, 0.35)
+  Stripe { color: card.calm ? theme.accent : theme.urgent }
 
   function done(result) {
     if (result.error) card.said(result.error, true)

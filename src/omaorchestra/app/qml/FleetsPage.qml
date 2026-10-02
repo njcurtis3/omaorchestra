@@ -53,7 +53,8 @@ ColumnLayout {
       delegate: Chip {
         required property var modelData
         objectName: "fleets-view-" + modelData.id
-        text: modelData.label + (modelData.id === "runs" && fleets.needing ? "  " + fleets.needing + "!" : "")
+        text: modelData.label
+        count: modelData.id === "runs" && fleets.needing ? String(fleets.needing) : ""
         selected: page.view === modelData.id
         urgent: modelData.id === "runs" && fleets.needing > 0
         onClicked: { page.view = modelData.id; page.creating = false }
@@ -106,9 +107,16 @@ ColumnLayout {
         width: ListView.view.width
         height: rowBody.implicitHeight + 18
         radius: 6
-        color: page.selectedId === key && !page.creating ? theme.selection : runMouse.containsMouse ? Qt.alpha(theme.selection, 0.5) : theme.surface
-        border.color: item.group === "needs-you" ? theme.urgent : "transparent"
+        readonly property color base: page.selectedId === key && !page.creating ? theme.selection
+                                      : runMouse.containsMouse ? Qt.tint(theme.surface, Qt.alpha(theme.selection, 0.5)) : theme.surface
+        color: item.group === "needs-you" ? Qt.tint(base, Qt.alpha(theme.urgent, 0.08)) : base
+        Behavior on color { ColorAnimation { duration: 120 } }
         opacity: item.outside ? 0.85 : 1
+
+        Stripe {
+          shown: runRow.item.group === "needs-you" || page.selectedId === runRow.key && !page.creating
+          color: runRow.item.group === "needs-you" ? theme.urgent : theme.accent
+        }
 
         MouseArea {
           id: runMouse
@@ -185,6 +193,12 @@ ColumnLayout {
       Layout.fillHeight: true
       spacing: 10
       Item { Layout.preferredHeight: 24 }
+      Label {
+        text: fleets.runs.count === 0 ? "󰡉" : "󰁍"
+        color: theme.muted
+        opacity: 0.45
+        font.pixelSize: 44
+      }
       Label {
         Layout.fillWidth: true
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere

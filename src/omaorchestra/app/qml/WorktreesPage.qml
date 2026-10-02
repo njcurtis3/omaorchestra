@@ -69,13 +69,11 @@ ColumnLayout {
     loading: page.reviewLoading
   }
 
-  Label {
+  EmptyState {
     visible: !page.reviewing && worktrees.items.length === 0
     Layout.fillWidth: true
-    Layout.topMargin: 24
-    horizontalAlignment: Text.AlignHCenter
-    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-    color: theme.muted
+    Layout.topMargin: 40
+    glyph: "󰙅"
     text: "No task worktrees. Start a task in a git repository with a separate worktree to get one."
   }
 
