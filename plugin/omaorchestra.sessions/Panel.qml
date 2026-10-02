@@ -57,6 +57,49 @@ Panel {
     }
   }
 
+  // A session's state as a dot, as in the app: working breathes, waiting
+  // sends out a soft ring, idle sits still, and only while `animate` (the
+  // panel is open). Inline, so it cannot see `root`: the row passes it in.
+  component StatusDot: Item {
+    id: dot
+    property string status: "idle"
+    property bool animate: false
+    readonly property color tint: status === "needs-input" ? Color.urgent : status === "working" ? Color.accent : Color.muted
+    readonly property int size: Style.space(8)
+    implicitWidth: size
+    implicitHeight: size
+
+    Rectangle {
+      id: ring
+      anchors.centerIn: parent
+      width: dot.size; height: width; radius: width / 2
+      color: "transparent"
+      border.color: dot.tint
+      border.width: 1.5
+      opacity: 0
+      visible: dot.status === "needs-input"
+      ParallelAnimation {
+        running: ring.visible && dot.animate
+        loops: Animation.Infinite
+        NumberAnimation { target: ring; property: "width"; from: dot.size; to: dot.size * 2.2; duration: 1600; easing.type: Easing.OutCubic }
+        NumberAnimation { target: ring; property: "opacity"; from: 0.6; to: 0; duration: 1600; easing.type: Easing.OutCubic }
+      }
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      radius: width / 2
+      color: dot.tint
+      SequentialAnimation on opacity {
+        running: dot.status === "working" && dot.animate
+        loops: Animation.Infinite
+        alwaysRunToEnd: true  // back to full once it stops
+        NumberAnimation { to: 0.4; duration: 900; easing.type: Easing.InOutSine }
+        NumberAnimation { to: 1; duration: 900; easing.type: Easing.InOutSine }
+      }
+    }
+  }
+
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
@@ -245,9 +288,18 @@ Panel {
               width: parent.width
               height: Math.max(nameText.implicitHeight, statusText.implicitHeight)
 
+              StatusDot {
+                id: statusDot
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                status: row.modelData.status
+                animate: root.opened
+              }
+
               Text {
                 id: nameText
-                anchors.left: parent.left
+                anchors.left: statusDot.right
+                anchors.leftMargin: Style.space(8)
                 anchors.right: statusText.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
@@ -277,6 +329,7 @@ Panel {
               Text {
                 id: metaText
                 anchors.left: parent.left
+                anchors.leftMargin: statusDot.width + Style.space(8)  // under the name, past the dot
                 anchors.right: actions.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
@@ -328,7 +381,8 @@ Panel {
             }
 
             Text {
-              width: parent.width
+              x: statusDot.width + Style.space(8)
+              width: parent.width - x
               visible: row.waiting && !!row.modelData.message
               text: String(row.modelData.message || "")
               wrapMode: Text.Wrap
