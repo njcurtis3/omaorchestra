@@ -68,6 +68,17 @@ class StdioProbeTest(unittest.TestCase):
         self.assertIn("no answer", slow["error"])
         self.assertLess(slow["seconds"], 5)
 
+    def test_leaves_nothing_open(self):
+        # Each probe once left its two pipes to the server open.
+        import gc
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ResourceWarning)
+            probe.stdio(str(ROOT / "bin" / "omaorchestra"), ["mcp", "serve"])
+            probe.stdio("true")
+            gc.collect()
+        self.assertEqual([str(w.message) for w in caught if w.category is ResourceWarning], [])
+
 
 class FakeHttpMcp(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -111,6 +122,7 @@ class HttpProbeTest(unittest.TestCase):
             denied = probe.http(url, {})
         finally:
             server.shutdown()
+            server.server_close()
         self.assertTrue(ok["ok"], ok["error"])
         self.assertEqual(([t["name"] for t in ok["tools"]], ok["server"]), (["a", "b"], "fake"))
         self.assertIn("needs authentication", denied["error"])

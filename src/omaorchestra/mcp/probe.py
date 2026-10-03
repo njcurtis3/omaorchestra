@@ -123,7 +123,14 @@ def stdio(command, args=(), env=None, timeout=TIMEOUT):
                 except (ProcessLookupError, subprocess.TimeoutExpired):
                     try:
                         os.killpg(proc.pid, signal.SIGKILL)
-                    except ProcessLookupError:
+                        proc.wait(timeout=3)
+                    except (ProcessLookupError, subprocess.TimeoutExpired):
+                        pass
+                # Its pipes too, or every probe leaves two open files behind.
+                for pipe in (proc.stdin, proc.stdout):
+                    try:
+                        pipe.close()
+                    except OSError:
                         pass
 
 
