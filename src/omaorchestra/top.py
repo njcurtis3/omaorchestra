@@ -8,7 +8,8 @@ app.
 
 Only what makes sense from afar is here: answer a permission prompt (in
 away mode, approvals.py), dismiss, stop (after a yes), hand off, the
-queue (add, pause, resume, cancel, hold, release), and fleet runs: read a
+queue (add, pause, resume, cancel, hold, release) and the schedules above it
+(add, run now, pause, resume, remove), and fleet runs: read a
 plan and answer its gate (approve, send back with a note, drop a slice,
 choose the shape, cancel). Focusing a window would happen on a desk
 nobody is at.
@@ -24,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import approvals, client, config, control, fleet, launch, recent
+from . import approvals, client, config, control, fleet, launch, recent, schedules
 from .app import present
 
 AWAY_NEXT = {"auto": "on", "on": "off", "off": "auto"}
@@ -105,6 +106,7 @@ class Top:
         self.background = background or (lambda work: threading.Thread(target=work, daemon=True).start())
         self.sessions = {}
         self.queue = {"held": False, "busy": 0, "limit": 0, "blocked": None, "tasks": []}
+        self.schedules = {"enabled": True, "schedules": []}
         self.away = None
         self.approvals = []  # permission prompts waiting for a remote answer
         self.fleets = {}  # run id -> its state
@@ -127,6 +129,7 @@ class Top:
         if "sessions" in message:
             self.sessions = {s["id"]: s for s in message["sessions"]}
             self.queue = message.get("queue") or self.queue
+            self.schedules = message.get("schedules") or self.schedules
             self.away = message.get("away")
             self.approvals = message.get("approvals") or []
             self.fleets = {s["id"]: s for s in message.get("fleets") or []}
@@ -139,6 +142,8 @@ class Top:
             self.sessions.pop(message.get("id"), None)
         elif kind == "queue":
             self.queue = message["queue"]
+        elif kind == "schedules":
+            self.schedules = message["schedules"]
         elif kind == "away":
             self.away = message["away"]
         elif kind == "approvals":
@@ -152,7 +157,11 @@ class Top:
         tab = tab or self.tab
         if tab == "fleets":
             return sorted(self.fleets.values(), key=lambda s: (RUN_ORDER.get(s["status"], 3), -s.get("updated", 0)))
-        return present.ordered(self.sessions.values()) if tab == "sessions" else list(self.queue.get("tasks") or [])
+        if tab == "sessions":
+            return present.ordered(self.sessions.values())
+        # The queue tab: schedules first (marked), then the queued tasks.
+        return [{**s, "schedule_row": True} for s in self.schedules.get("schedules") or []] + \
+            list(self.queue.get("tasks") or [])
 
     def selected(self):
         rows = self.rows()
@@ -183,6 +192,8 @@ class Top:
             return None
         if "queue" in response:
             self.queue = response["queue"]
+        if "schedules" in response:
+            self.schedules = response["schedules"]
         if "away" in response:
             self.away = response["away"]
         return response
@@ -264,8 +275,14 @@ class Top:
             if self.send({"cmd": "queue-release" if held else "queue-hold"}):
                 self.tell("queue released" if held else "queue held: nothing new starts")
             return
+        if key == "w":
+            self.new_task(schedule=True)
+            return
         task = self.selected()
         if task is None:
+            return
+        if task.get("schedule_row"):
+            self.schedule_key(key, task)
             return
         title = clip(one_line(task["task"]), 30)
         if key == "p":
@@ -274,6 +291,23 @@ class Top:
                 self.tell(("resumed " if resume else "paused ") + title)
         elif key == "x":
             self.ask = {"kind": "confirm", "question": f"Cancel \"{title}\"?", "then": lambda: self.cancel(task)}
+
+    def schedule_key(self, key, s):
+        title = clip(one_line(s["title"]), 30)
+        if key == "r":
+            if self.send({"cmd": "schedule-run", "id": s["id"]}, timeout=30):
+                self.tell("queued " + title)
+        elif key == "p":
+            if self.send({"cmd": "schedule-resume" if s["paused"] else "schedule-pause", "id": s["id"]}):
+                self.tell(("resumed " if s["paused"] else "paused ") + title)
+        elif key == "x":
+            self.ask = {"kind": "confirm", "question": f"Remove the schedule \"{title}\"?",
+                        "then": lambda: self.remove_schedule(s)}
+
+    def remove_schedule(self, s):
+        if self.send({"cmd": "schedule-remove", "id": s["id"]}):
+            self.tell("removed " + clip(one_line(s["title"]), 30))
+            self.detail = False
 
     def fleet_key(self, key):
         run = self.selected()
@@ -433,9 +467,10 @@ class Top:
         folders = recent.load()
         return folders[0] if folders else str(Path.home())
 
-    def new_task(self):
+    def new_task(self, schedule=False):
+        """The new-task form: task, folder, and for a schedule, when."""
         self.ask = {"kind": "text", "field": "task", "question": "Task", "value": "", "task": None,
-                    "folder": self.default_folder()}
+                    "folder": self.default_folder(), "schedule": schedule}
 
     def form_next(self):
         ask = self.ask
@@ -444,17 +479,31 @@ class Top:
                 return
             ask.update(field="folder", question="Folder", task=ask["value"].strip(), value=present.place(ask["folder"]))
             return
-        folder = Path(ask["value"].strip() or "~").expanduser()
-        if not folder.is_dir():
-            self.tell(f"no folder {folder}", "urgent")
-            return
-        task = ask["task"]
+        if ask["field"] == "folder":
+            folder = Path(ask["value"].strip() or "~").expanduser()
+            if not folder.is_dir():
+                self.tell(f"no folder {folder}", "urgent")
+                return
+            ask["folder"] = folder
+            if ask["schedule"]:
+                ask.update(field="when", question="When", value="")
+                self.tell("daily 09:00, weekdays 09:00, mon,thu 18:30, every 6h", "dim")
+                return
+        else:  # when
+            try:
+                schedules.parse_when(ask["value"])
+            except schedules.ScheduleError as e:
+                self.tell(str(e), "urgent")
+                return
+            ask["when"] = ask["value"].strip()
+        task, folder, when = ask["task"], ask["folder"], ask.get("when")
+        add = (lambda agent: self.add_schedule(task, folder, when, agent)) if when else \
+            (lambda agent: self.add_task(task, folder, agent))
         if len(self.agents) == 1:
             self.ask = None
-            self.add_task(task, folder, self.agents[0])
+            add(self.agents[0])
             return
-        self.ask = {"kind": "choice", "question": "Start it with", "options": list(self.agents),
-                    "then": lambda agent: self.add_task(task, folder, agent)}
+        self.ask = {"kind": "choice", "question": "Start it with", "options": list(self.agents), "then": add}
 
     def add_task(self, task, folder, agent):
         item = {"task": task, "cwd": str(folder.resolve()), "worktree": None, "extra": [], "agent": agent,
@@ -463,6 +512,15 @@ class Top:
             self.tell("queued " + clip(one_line(task), 30))
             self.switch("queue")
             self.index["queue"] = len(self.rows()) - 1
+
+    def add_schedule(self, task, folder, when, agent):
+        item = {"task": task, "cwd": str(folder.resolve()), "worktree": None, "extra": [], "agent": agent,
+                **launch.agent_environment(agent)}
+        response = self.send({"cmd": "schedule-add", "when": when, "items": [item], "task": task})
+        if response:
+            self.tell(f"scheduled: {schedules.describe(response['schedule']['when'])}")
+            self.switch("queue")
+            self.index["queue"] = len(self.schedules.get("schedules") or []) - 1
 
     # ------------------------------------------------------------ drawing
 
@@ -572,16 +630,24 @@ class Top:
         if q.get("blocked"):
             screen.line((clip("waiting: " + (q["blocked"].get("text") or ""), screen.width), "work"))
             room -= 1
+        if self.schedules.get("schedules") and not self.schedules.get("enabled", True):
+            screen.line((clip("schedules are off (schedules.enabled)", screen.width), "urgent"))
+            room -= 1
         rows = self.rows()
         if not rows:
-            screen.line(("No queued tasks. n adds one.", "dim"))
+            screen.line(("No queued tasks. n adds one,", "dim"))
+            screen.line(("w a schedule.", "dim"))
             return
         self.selected()
         first, fit = self.visible(len(rows), room)
         for i in range(first, min(len(rows), first + fit)):
             t = rows[i]
             chosen = i == self.index["queue"]
-            screen.line((("▸ " if chosen else "  ") + f"{i + 1}. " + one_line(t["task"]),
+            if t.get("schedule_row"):
+                self.schedule_row(screen, t, i, chosen)
+                continue
+            number = i + 1 - len(self.schedules.get("schedules") or [])
+            screen.line((("▸ " if chosen else "  ") + f"{number}. " + one_line(t["task"]),
                          "chosen" if chosen else "bold"))
             screen.row_hit(("row", i))
             word = TASK_WORD.get(t["state"], t["state"])
@@ -590,6 +656,22 @@ class Top:
             screen.line((f"  {present.project(t.get('cwd'))} · {t.get('agent') or 'claude'} · ", "dim"),
                         (word, TASK_STYLE.get(t["state"], "dim") or "dim"))
             screen.row_hit(("row", i))
+
+    def schedule_row(self, screen, s, i, chosen):
+        """A schedule in the queue tab: its title and next time, then when,
+        where and how its last run went."""
+        width = screen.width
+        when = "paused" if s["paused"] else present.day_time(s.get("next"), self.now())
+        tail = f" {when} "
+        screen.line((("▸ " if chosen else "  ") + "⟳ " + clip(one_line(s["title"]), width - len(tail) - 5),
+                     "chosen" if chosen else "bold"), right=(tail, "dim" if s["paused"] else "work"))
+        screen.row_hit(("row", i))
+        status = s.get("status") or ""
+        last = f" · last: {status}" if s.get("last") and status else ""
+        bad = status.startswith(("failed", "held", "could not"))
+        screen.line(("  " + clip(f"{s['whenText']} · {present.project(s.get('cwd'))}{last}", width - 2),
+                     "urgent" if bad else "dim"))
+        screen.row_hit(("row", i))
 
     def fleet_list(self, screen, room):
         rows = self.rows()
@@ -699,7 +781,25 @@ class Top:
                 for n, text in enumerate(textwrap.wrap(one_line(value), width - 2) or [""]):
                     lines.append(((label + ": " if n == 0 else "  ") + text if label else text, style))
 
-        if self.tab == "sessions":
+        if item.get("schedule_row"):
+            lines.append((item["title"], "bold"))
+            lines.append(("paused" if item["paused"] else "next " + present.day_time(item.get("next"), self.now()),
+                          "dim" if item["paused"] else "work"))
+            field("when", item["whenText"])
+            if item.get("last"):
+                status = item.get("status") or item.get("last_note") or ""
+                field("last", f"{present.day_time(item['last'], self.now())}: {status}",
+                      "urgent" if status.startswith(("failed", "held", "could not")) else "")
+            if item.get("name"):
+                field("task", item.get("task"))
+            field("recipe", item.get("recipe"))
+            field("in", present.place(item.get("cwd")))
+            first = (item.get("items") or [{}])[0]
+            field("agent", " · ".join(x for x in (first.get("agent") or "claude", first.get("model")) if x))
+            field("", "r queues it now, whatever the time; p pauses or resumes it; x removes it (what it already "
+                      "queued stays queued).", "dim")
+            field("id", item["id"][:8])
+        elif self.tab == "sessions":
             status = STATUS_WORD.get(item.get("status"), "")
             lines.append((item["project"], "bold"))
             lines.append((f"{status} for {present.duration(self.now() - item['since'])}",
@@ -735,7 +835,9 @@ class Top:
                 return [(f"{i} {o}", ("choose", i - 1)) for i, o in enumerate(ask["options"], 1)] + [("esc", "esc")]
             if ask["kind"] == "note":
                 return [("⏎ Send", "enter"), ("esc Cancel", "esc")]
-            return [("⏎ " + ("Next" if ask["field"] == "task" else "Queue it"), "enter"), ("esc Cancel", "esc")]
+            last = "Schedule it" if ask["field"] == "when" else \
+                "Next" if ask["field"] == "task" or ask["schedule"] else "Queue it"
+            return [("⏎ " + last, "enter"), ("esc Cancel", "esc")]
         items = []
         if self.selected():
             items.append(("⏎ Back" if self.detail else "⏎ More", "enter"))
@@ -760,11 +862,15 @@ class Top:
                 items.append(("c Close…", "c"))
         if self.tab == "queue":
             task = self.selected()
-            if task:
+            if task and task.get("schedule_row"):
+                items += [("r Run now", "r"), ("p Resume" if task["paused"] else "p Pause", "p"), ("x Remove", "x")]
+            elif task:
                 items.append(("p Resume" if task["state"] in ("paused", "failed") else "p Pause", "p"))
                 items.append(("x Cancel", "x"))
             items.append(("H Release" if self.queue.get("held") else "H Hold", "H"))
         items.append(("n New task", "n"))
+        if self.tab == "queue":
+            items.append(("w New schedule", "w"))
         if self.away_active():
             items.append((f"a Away: {self.away['mode']}", "a"))
         items.append(("q Quit", "q"))

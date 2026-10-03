@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from omaorchestra import client, control, top
+from omaorchestra import client, control, schedules, top
 
 ROOT = Path(__file__).resolve().parent.parent
 NOW = 10_000
@@ -27,6 +27,13 @@ def session(sid, status, cwd, since=NOW - 180, **extra):
 def task(tid, text, state="pending", **extra):
     return {"id": tid, "task": text, "cwd": "/w/api", "state": state, **extra}
 
+
+def schedule(sid, title, when_text, **extra):
+    return {"id": sid, "title": title, "task": title, "whenText": when_text, "paused": False, "next": NOW + 3600,
+            "last": None, "status": "", "cwd": "/w/api", "items": [{"task": title, "cwd": "/w/api"}], **extra}
+
+
+SCHEDULE = schedule("sc1", "Update the dependencies", "weekdays at 09:00", last=NOW - 86400, status="finished")
 
 SNAPSHOT = {
     "ok": True,
@@ -56,6 +63,10 @@ class Daemon:
         if cmd == "queue-add":
             tasks = SNAPSHOT["queue"]["tasks"] + [task("t3", payload["item"]["task"])]
             return {"ok": True, "item": tasks[-1], "queue": {**SNAPSHOT["queue"], "tasks": tasks}}
+        if cmd == "schedule-add":
+            made = schedule("sc2", payload["task"], schedules.describe(schedules.parse_when(payload["when"])))
+            return {"ok": True, "schedule": {**made, "when": schedules.parse_when(payload["when"])},
+                    "schedules": {"enabled": True, "schedules": [SCHEDULE, made]}}
         if cmd == "handoff":
             return {"ok": True, "session_id": "new", "agent": payload["agent"], "stopped": False}
         if cmd == "queue-cancel" and payload["id"] == "gone":
@@ -168,6 +179,58 @@ class TopTest(unittest.TestCase):
         self.assertEqual(self.daemon.requests[-1], {"cmd": "queue-resume", "id": "t2"})
         self.tap("H Hold")
         self.assertEqual(self.daemon.requests[-1], {"cmd": "queue-hold"})
+
+    def test_schedules_sit_above_the_queue(self):
+        self.t.apply({**SNAPSHOT, "schedules": {"enabled": True, "schedules": [SCHEDULE]}})
+        self.t.switch("queue")
+        text = self.screen()
+        self.assertTrue(all(len(line) <= 40 for line in text.splitlines()))
+        self.assertIn("weekdays at 09:00 · api · last:", text)
+        self.assertRegex(text, r"▸ ⟳ Update the depend\S* +today \d\d:\d\d", "its next time beside it")
+        self.assertLess(text.index("Update the depend"), text.index("1. Refactor the parser"),
+                        "schedules first; the tasks are still numbered from 1")
+        self.assertIn(" r Run now ", text)
+        self.t.key("r")
+        self.assertEqual(self.daemon.requests[-1], {"cmd": "schedule-run", "id": "sc1"})
+        self.t.key("p")
+        self.assertEqual(self.daemon.requests[-1], {"cmd": "schedule-pause", "id": "sc1"})
+        self.t.key("enter")
+        self.assertIn("when: weekdays at 09:00", self.screen())
+        self.t.key("esc")
+        self.t.key("x")
+        self.assertIn('Remove the schedule "Update', self.screen())
+        self.t.key("y")
+        self.assertEqual(self.daemon.requests[-1], {"cmd": "schedule-remove", "id": "sc1"})
+        self.t.key("down")
+        self.assertIn(" x Cancel ", self.screen(), "a task row keeps its own keys")
+        # Live: a schedules event replaces the list.
+        self.t.apply({"event": "schedules", "schedules": {"enabled": False, "schedules": [SCHEDULE]}})
+        self.assertIn("schedules are off", self.screen())
+
+    def test_new_schedule_form(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.t.switch("queue")
+            self.t.key("w")
+            for ch in "Update deps":
+                self.t.key(ch)
+            self.t.key("enter")
+            self.t.ask["value"] = folder
+            self.t.key("enter")
+            self.assertIn("When:", self.screen())
+            for ch in "sometime":
+                self.t.key(ch)
+            self.t.key("enter")
+            self.assertIn("say when", self.screen())
+            self.assertEqual(self.t.ask["field"], "when", "the form stays open to fix it")
+            self.t.ask["value"] = "weekdays 09:00"
+            self.assertIn("⏎ Schedule it", self.screen())
+            self.t.key("enter")
+            self.tap("1 claude")
+        request = self.daemon.requests[-1]
+        self.assertEqual((request["cmd"], request["when"], request["task"], request["items"][0]["cwd"]),
+                         ("schedule-add", "weekdays 09:00", "Update deps", str(Path(folder).resolve())))
+        self.assertIn("scheduled: weekdays at 09:00", self.screen())
+        self.assertEqual(self.t.selected()["id"], "sc2", "the new schedule is selected")
 
     def test_cancel_asks_first_and_shows_errors(self):
         self.t.switch("queue")

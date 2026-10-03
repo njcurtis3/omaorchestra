@@ -10,8 +10,8 @@ omaorchestra has two ways to reach you while you are away from the desk:
   [On your phone](guide.md#on-your-phone) and [away mode](guide.md#away-mode)).
 - **`omaorchestra top` over SSH** lets you look and act: which agents are
   waiting and what they ask, answer a permission prompt (allow or deny that
-  one request), dismiss or stop one, hand its work to another agent, and add
-  to, pause or hold the queue.
+  one request), dismiss or stop one, hand its work to another agent, add
+  to, pause or hold the queue, and add, run, pause or remove schedules.
 
 This page is about the second: getting a terminal on this machine from a
 phone, safely. omaorchestra opens no port itself and never will; SSH is the

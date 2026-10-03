@@ -149,7 +149,8 @@ from Termius or Blink it is the way to check on agents while you are away.
 that can run `top` and nothing else.
 
 - Three tabs, **Sessions** (waiting ones first, with what they are asking),
-  **Queue**, and **Fleets** (runs waiting for you first; on a narrow screen
+  **Queue** (the [schedules](#schedules) first, marked ⟳, then the queued
+  tasks), and **Fleets** (runs waiting for you first; on a narrow screen
   the tab bar shortens to S, Q, F). Tab or ←/→ switches; ↑/↓ (or j/k)
   picks; Enter shows everything about the picked one.
 - On a session asking for permission while you are away: **y** allows that
@@ -158,7 +159,9 @@ that can run `top` and nothing else.
   hands its work to another agent.
 - On the queue: **p** pauses or resumes a task (resume also retries a failed
   one), **x** cancels it (after a yes), **H** holds or releases the whole
-  queue.
+  queue. On a schedule: **r** queues it now, whatever the time, **p**
+  pauses or resumes it, **x** removes it (after a yes); its row shows when
+  it runs next and how its last run went.
 - On a fleet run waiting at its plan gate, Enter shows the plan (↑/↓
   scroll it): the shape, each slice with its files, "done when" and risk,
   and what is not being done. **y** approves it (after a yes) and the
@@ -176,7 +179,9 @@ that can run `top` and nothing else.
   what it has spent, and a node that waits for you or looks stalled.
   Answers from inside an agent, and closing, are refused.
 - **n** queues a new task: type it, then the folder (the picked session's, or
-  the last one you used), then pick the agent.
+  the last one you used), then pick the agent. On the Queue tab, **w** adds
+  a schedule the same way, asking when (`weekdays 09:00`, `every 6h`...)
+  after the folder.
 - **a** switches [away mode](#away-mode); the top right
   says whether you count as away.
 - **q** quits.

@@ -187,7 +187,7 @@ Then:
 ```bash
 omaorchestra app                                  # the app
 omaorchestra ls                                   # sessions, in the terminal
-omaorchestra top                                  # sessions and the queue, live (phone-sized, for SSH)
+omaorchestra top                                  # sessions, the queue and schedules, live (phone-sized, for SSH)
 omaorchestra run "fix the flaky test" --in ~/code/app
 omaorchestra queue add "update the dependencies" --in ~/code/app
 ```
