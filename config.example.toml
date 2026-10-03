@@ -80,6 +80,11 @@ keep_days = 90
 # false: keep no task titles or prompts in the records (and remove any kept)
 titles = true
 
+[schedules]
+# Let schedules (`omaorchestra schedule`) queue their tasks; when off, a
+# time missed meanwhile runs once on turning it back on
+enabled = true
+
 [fleets]
 # Fleet runs from elsewhere, shown in omafleet read-only (omaorchestra never
 # writes to them). Folders with graph_agents runs (.graph/runs), or the folder

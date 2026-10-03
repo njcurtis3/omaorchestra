@@ -26,7 +26,9 @@ FIELDS = ("task", "cwd", "model", "permission_mode", "worktree", "extra", "agent
           # gets a brief of it, or reviews it; and where it stands in the chain
           "after", "parent_session", "same_worktree", "brief", "review", "chain", "step", "recipe", "worktree_path",
           # fleets: the run and the node it is
-          "fleet", "node")
+          "fleet", "node",
+          # the schedule that queued it (schedules.py)
+          "schedule")
 
 
 class QueueError(Exception):

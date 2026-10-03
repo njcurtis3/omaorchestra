@@ -118,6 +118,26 @@ def clock(timestamp):
     return time.strftime("%H:%M:%S", time.localtime(timestamp)) if timestamp else ""
 
 
+def day_time(timestamp, now=None):
+    """`today 09:00`, `tomorrow 09:00`, `Mon 09:00` within a week, else
+    `12 Oct 09:00`: when a schedule runs next, or last ran."""
+    if not timestamp:
+        return ""
+    at = datetime.fromtimestamp(timestamp)
+    today = datetime.fromtimestamp(time.time() if now is None else now).date()
+    days = (at.date() - today).days
+    clock_text = at.strftime("%H:%M")
+    if days == 0:
+        return f"today {clock_text}"
+    if days == 1:
+        return f"tomorrow {clock_text}"
+    if days == -1:
+        return f"yesterday {clock_text}"
+    if -6 <= days <= 6:
+        return f"{at.strftime('%a')} {clock_text}"
+    return f"{at.day} {at.strftime('%b')} {clock_text}"
+
+
 def iso_clock(iso):
     """Local time of day for a transcript timestamp such as 2026-09-23T21:17:03.511Z."""
     try:

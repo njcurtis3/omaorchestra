@@ -11,7 +11,8 @@ from pathlib import Path
 from . import (__version__, adapters, catalog, claude_settings, client, config, control, daemon, fleet, fleet_graph,
                fleet_outside, fleet_report,
                hooks, keys, launch,
-               history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, service, setup, windows,
+               history, modeldefaults, procs, providers, recipes, remote, remote_access, roles, schedules, service, setup,
+               windows,
                worktrees)
 from .mcp import registry as mcp_registry
 
@@ -262,6 +263,76 @@ def cmd_queue_move(args):
     if position is None:
         position = args.position - 1  # people count from 1
     print_queue(queue_request({"cmd": "queue-move", "id": match[0], "position": position})["queue"])
+    return 0
+
+
+def schedule_request(payload):
+    try:
+        response = client.request(payload, timeout=30)
+    except client.DaemonUnavailable:
+        raise schedules.ScheduleError("omaorchestrad is not running; schedules live in the daemon") from None
+    if not response.get("ok"):
+        raise schedules.ScheduleError(response.get("error") or "the daemon refused")
+    return response
+
+
+def print_schedules(snapshot):
+    import datetime
+    if not snapshot["enabled"]:
+        print("schedules are off (schedules.enabled); none queues anything")
+    if not snapshot["schedules"]:
+        print("no schedules")
+    for s in snapshot["schedules"]:
+        when = datetime.datetime.fromtimestamp(s["next"]).strftime("%a %d %b %H:%M")
+        nxt = "paused" if s["paused"] else f"next {when}"
+        print(f"{s['id'][:8]}  {s['whenText']:<20} {nxt}")
+        last = ""
+        if s.get("last"):
+            at = datetime.datetime.fromtimestamp(s["last"]).strftime("%a %H:%M")
+            last = f"   last {at}: {s['status'] or s.get('last_note') or ''}"
+        print(f"          {launch.short(s['title'], 60)}  ({s['cwd']}){last}")
+
+
+def cmd_schedule_list(args):
+    print_schedules(schedule_request({"cmd": "schedule-list"})["schedules"])
+    return 0
+
+
+def cmd_schedule_add(args):
+    cwd = launch.Path(args.dir).expanduser().resolve()
+    schedules.parse_when(args.when)  # a bad time is refused before anything else
+    if args.provider:
+        try:
+            launch.routing.claude_code_env(providers.get(args.provider), args.model)
+        except launch.routing.RoutingError as e:
+            raise launch.LaunchError(str(e)) from e
+    if args.mcp_profile and args.mcp_profile != mcp_registry.NONE_PROFILE \
+            and args.mcp_profile not in mcp_registry.profiles():
+        raise mcp_registry.McpError(f"no profile {args.mcp_profile}")
+    if args.recipe:
+        steps = recipes.items(args.recipe, args.task, str(cwd),
+                              base={"worktree": args.worktree, "provider": args.provider, "model": args.model})
+        items = [{**step, **launch.agent_environment(step["agent"])} for step in steps]
+    else:
+        agent = role_agent(args)
+        items = [{"task": args.task, "cwd": str(cwd), "model": args.model, "permission_mode": args.permission_mode,
+                  "worktree": args.worktree, "extra": args.agent_args, "provider": args.provider,
+                  "mcp_profile": args.mcp_profile, "agent": agent, "role": args.role,
+                  **launch.agent_environment(agent)}]
+    response = schedule_request({"cmd": "schedule-add", "when": args.when, "items": items, "name": args.name,
+                                 "task": args.task})
+    print(f"scheduled {response['schedule']['id'][:8]}: {schedules.describe(response['schedule']['when'])}")
+    print_schedules(response["schedules"])
+    return 0
+
+
+def cmd_schedule_action(args):
+    cmd = {"remove": "schedule-remove", "pause": "schedule-pause", "resume": "schedule-resume",
+           "run": "schedule-run"}[args.schedule_command]
+    response = schedule_request({"cmd": cmd, "id": args.id})
+    if cmd == "schedule-run":
+        print("queued; it starts when a slot is free (`omaorchestra queue`)")
+    print_schedules(response["schedules"])
     return 0
 
 
@@ -1622,6 +1693,36 @@ def build_parser():
         p.add_argument("id", help="queued task id or prefix")
         p.set_defaults(func=cmd_queue_move)
 
+    sc = sub.add_parser("schedule", help="tasks that queue themselves on a timetable")
+    sc.set_defaults(func=cmd_schedule_list)
+    sc_sub = sc.add_subparsers(dest="schedule_command")
+    sc_sub.add_parser("list", help="every schedule, its next time and how its last run went").set_defaults(
+        func=cmd_schedule_list)
+    sa = sc_sub.add_parser("add", help="queue a task on a timetable (anything after -- goes to the agent)")
+    sa.add_argument("task", help="what the agent should do")
+    sa.add_argument("--when", required=True,
+                    help="'daily 09:00', 'weekdays 09:00', 'weekends 10:00', 'mon,thu 18:30', 'every 6h' or "
+                         "'every 30m' (local time)")
+    sa.add_argument("--in", dest="dir", default=".", help="folder to work in (default: here)")
+    sa.add_argument("--name", help="a short name for lists (default: the task)")
+    sa.add_argument("--recipe", help="run it as this recipe's chained steps (see `recipe list`)")
+    sa.add_argument("--model", help="model to use, passed to the agent")
+    sa.add_argument("--permission-mode", help="the agent's permission mode (default: its own setting)")
+    sa.add_argument("--worktree", dest="worktree", action="store_true", default=None,
+                    help="work in a separate git worktree (default: tasks.isolate_with_worktrees)")
+    sa.add_argument("--no-worktree", dest="worktree", action="store_false", help="work in the folder itself")
+    sa.add_argument("--provider", help="run through this API provider instead of the subscription")
+    sa.add_argument("--mcp-profile", help="only this profile's MCP servers ('none' for none)")
+    sa.add_argument("--agent", choices=list(adapters.ADAPTERS), help="which agent (default: the role's, else claude)")
+    sa.add_argument("--role", help="run as this role (see `role list`)")
+    sa.set_defaults(func=cmd_schedule_add, agent_args=[])
+    for name, text in (("remove", "delete a schedule (what it already queued stays queued)"),
+                       ("pause", "skip its times until resumed"), ("resume", "run on its times again"),
+                       ("run", "queue its task now, whatever the time")):
+        p = sc_sub.add_parser(name, help=text)
+        p.add_argument("id", help="schedule id or prefix")
+        p.set_defaults(func=cmd_schedule_action)
+
     ho = sub.add_parser("handoff", help="start another agent (or model) on a session's work, with a brief")
     ho.add_argument("session", help="session id or prefix")
     ho.add_argument("--agent", choices=list(adapters.ADAPTERS), help="default: tasks.fallback_agent, else claude")
@@ -1979,7 +2080,7 @@ def main(argv=None):
         args = parser.parse_args(argv)
         args.server_command = server_command
         return run_command(args)
-    if (argv[:1] == ["run"] or argv[:2] == ["queue", "add"]) and "--" in argv:
+    if (argv[:1] == ["run"] or argv[:2] in (["queue", "add"], ["schedule", "add"])) and "--" in argv:
         split = argv.index("--")
         argv, agent_args = argv[:split], argv[split + 1:]
     args = parser.parse_args(argv)
@@ -1999,7 +2100,7 @@ def run_command(args, parser=None):
             control.ControlError, launch.LaunchError, worktrees.WorktreeError, providers.ProviderError,
             keys.KeyError_, mcp_registry.McpError, setup.SetupError, remote.RemoteError,
             remote_access.RemoteAccessError, history.HistoryError, recipes.RecipeError, roles.RoleError,
-            fleet.RunError, fleet_graph.FleetError) as e:
+            fleet.RunError, fleet_graph.FleetError, schedules.ScheduleError) as e:
         print(f"omaorchestra: {e}", file=sys.stderr)
         return 1
 

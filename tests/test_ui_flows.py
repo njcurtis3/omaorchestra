@@ -71,6 +71,7 @@ class UiFlowTest(unittest.TestCase):
         self.theme, self.sessions, self.settings = backend.Theme(), backend.Sessions(), backend.Settings()
         self.worktrees = backend.Worktrees()
         self.queue = backend.Queue(self.sessions)
+        self.schedules = backend.Schedules(self.sessions)
         self.away = backend.Away(self.sessions)
         self.history = backend.History(self.sessions)
         self.providers = backend.Providers()
@@ -80,7 +81,7 @@ class UiFlowTest(unittest.TestCase):
         self.engine = QQmlApplicationEngine()
         ctx = self.engine.rootContext()
         for name, value in (("theme", self.theme), ("sessions", self.sessions), ("settings", self.settings),
-                            ("worktrees", self.worktrees), ("queue", self.queue), ("awayMode", self.away), ("sessionHistory", self.history), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp), ("fleets", self.fleets),
+                            ("worktrees", self.worktrees), ("queue", self.queue), ("schedules", self.schedules), ("awayMode", self.away), ("sessionHistory", self.history), ("providerList", self.providers), ("spend", self.spend), ("mcp", self.mcp), ("fleets", self.fleets),
                             ("fontFamily", "monospace"), ("appVersion", "test"), ("initialSession", ""),
                             ("initialFleet", "")):
             ctx.setContextProperty(name, value)
@@ -316,6 +317,38 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(modeldefaults.for_folder(self.tmp.name), ("opus", "folder"), "not remembered")
         self.assertEqual(self.page().property("selectedId"), "new-1")
         self.assertEqual(self.find("task-prompt").property("text"), "", "form not cleared after launching")
+        self.assertEqual(self.warnings, [])
+
+    def test_schedule_a_task_then_pause_and_remove_it(self):
+        self.client.request({"cmd": "queue-hold"})  # a "run now" stays queued, not launched
+        QTest.keyClick(self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+        self.assertTrue(wait_for(lambda: self.shown("task-prompt")), "Ctrl+N did not open the form")
+        self.find("task-prompt").setProperty("text", "update the dependencies")
+        self.find("task-folder").setProperty("text", self.tmp.name)
+        self.click("task-schedule-open")
+        self.assertTrue(wait_for(lambda: self.shown("task-when")), "Schedule… did not open")
+        when = self.find("task-when")
+        when.setProperty("text", "whenever")
+        spin()
+        self.assertFalse(self.find("task-schedule-save").property("enabled"), "a time it cannot read was allowed")
+        self.assertIn("say when", self.find("task-when-check").property("text"))
+        when.setProperty("text", "weekdays 09:00")
+        spin()
+        self.assertIn("weekdays at 09:00", self.find("task-when-check").property("text"))
+        self.click("task-schedule-save")
+        # Saved: the Queue page shows it, and the daemon has it.
+        self.assertTrue(wait_for(lambda: self.shown("schedule-0")), "the schedule is not on the Queue page")
+        (saved,) = self.client.request({"cmd": "schedule-list"})["schedules"]["schedules"]
+        self.assertEqual((saved["task"], saved["whenText"], saved["items"][0]["cwd"]),
+                         ("update the dependencies", "weekdays at 09:00", self.tmp.name))
+        self.click("schedule-run-0")
+        self.assertTrue(wait_for(lambda: len(self.queue.property("tasks")) == 1), "run now did not queue it")
+        self.click("schedule-pause-0")
+        self.assertTrue(wait_for(lambda: self.client.request({"cmd": "schedule-list"})
+                                 ["schedules"]["schedules"][0]["paused"]), "not paused")
+        self.click("schedule-remove-0")
+        self.assertTrue(wait_for(lambda: not self.shown("schedule-0")), "not removed")
+        self.assertEqual(self.client.request({"cmd": "schedule-list"})["schedules"]["schedules"], [])
         self.assertEqual(self.warnings, [])
 
     def test_worktrees_page_merge_and_remove(self):

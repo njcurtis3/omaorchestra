@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Tasks waiting for a free agent slot, in the order they will start. A
-// chained task (the next step of a chain) is indented under the one it
-// follows and waits for it to finish. `queue` and `theme` come from Python.
+// Schedules, then the tasks waiting for a free agent slot, in the order they
+// will start. A chained task (the next step of a chain) is indented under the
+// one it follows and waits for it to finish. `queue`, `schedules` and `theme`
+// come from Python.
 ColumnLayout {
   id: page
   spacing: 12
@@ -60,12 +61,99 @@ ColumnLayout {
     text: page.message
   }
 
+  // ---------------------------------------------------------- Schedules
+  // Tasks that queue themselves on a timetable; what they queue joins the
+  // list below when its time comes.
+  component Heading: Label { color: theme.foreground; font.bold: true; font.pixelSize: 16 }
+
+  Heading { visible: schedules.rows.length > 0; text: "Schedules" }
+  Label {
+    objectName: "schedules-off"
+    visible: schedules.rows.length > 0 && !schedules.enabled
+    Layout.fillWidth: true
+    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+    color: theme.urgent
+    text: "Schedules are off in Settings: none queues anything until they are turned back on."
+  }
+  ColumnLayout {
+    Layout.fillWidth: true
+    spacing: 6
+  Repeater {
+    model: schedules.rows
+    delegate: Rectangle {
+      id: srow
+      required property var modelData
+      required property int index
+      objectName: "schedule-" + index
+      readonly property bool bad: /^(failed|held|could not)/.test(modelData.status || "")
+      Layout.fillWidth: true
+      implicitHeight: scheduleContent.implicitHeight + 20
+      radius: 6
+      color: bad ? Qt.tint(theme.surface, Qt.alpha(theme.urgent, 0.08)) : theme.surface
+      opacity: modelData.paused ? 0.7 : 1
+      Stripe { shown: srow.bad; color: theme.urgent }
+
+      RowLayout {
+        id: scheduleContent
+        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+        spacing: 14
+        Label { Layout.alignment: Qt.AlignTop; text: "󰃰"; color: srow.modelData.paused ? theme.muted : theme.accent }
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 3
+          Label { Layout.fillWidth: true; text: srow.modelData.title; color: theme.foreground; elide: Text.ElideRight }
+          Label {
+            Layout.fillWidth: true
+            text: [srow.modelData.whenText, srow.modelData.paused ? "paused" : "next " + srow.modelData.nextText,
+                   srow.modelData.place].filter(Boolean).join("   ·   ")
+            color: theme.muted
+            font.pixelSize: 12
+            elide: Text.ElideRight
+          }
+        }
+        Label {
+          objectName: "schedule-status-" + srow.index
+          Layout.alignment: Qt.AlignTop
+          visible: !!srow.modelData.lastText
+          text: (srow.modelData.status || "ran") + " · " + srow.modelData.lastText
+          color: srow.bad ? theme.urgent : srow.modelData.status === "running" ? theme.accent : theme.muted
+          elide: Text.ElideRight
+          Layout.maximumWidth: 260
+        }
+        Row {
+          Layout.alignment: Qt.AlignTop
+          spacing: 12
+          IconButton {
+            objectName: "schedule-run-" + srow.index
+            glyph: "󰑮"
+            tip: "Queue it now, whatever the time"
+            onActivated: page.act(schedules.runNow(srow.modelData.id))
+          }
+          IconButton {
+            objectName: "schedule-pause-" + srow.index
+            glyph: srow.modelData.paused ? "󰐊" : "󰏤"
+            tip: srow.modelData.paused ? "Resume: run on its times again" : "Pause: skip its times until resumed"
+            onActivated: page.act(schedules.setPaused(srow.modelData.id, !srow.modelData.paused))
+          }
+          IconButton {
+            objectName: "schedule-remove-" + srow.index
+            glyph: "󰅖"
+            tip: "Delete the schedule (what it already queued stays queued)"
+            onActivated: page.act(schedules.remove(srow.modelData.id))
+          }
+        }
+      }
+    }
+  }
+  }
+  Heading { visible: schedules.rows.length > 0; text: "Queued"; Layout.topMargin: 6 }
+
   EmptyState {
     visible: queue.tasks.length === 0
     Layout.fillWidth: true
     Layout.topMargin: 40
     glyph: "󰒲"
-    text: "No queued tasks. Use Add to queue on the New task page, or `omaorchestra queue add`."
+    text: "No queued tasks. Use Add to queue or Schedule… on the New task page, or `omaorchestra queue add`."
   }
 
   ListView {

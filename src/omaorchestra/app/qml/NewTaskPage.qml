@@ -24,6 +24,8 @@ ColumnLayout {
     prompt.text = ""
     thenText.text = ""
     thenOpen = false
+    scheduleOpen = false
+    whenField.text = ""
     rememberBox.checked = false
     error = ""
     prompt.forceActiveFocus()
@@ -50,6 +52,21 @@ ColumnLayout {
     const result = queue.add(prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
                              page.inRepo && worktreeSwitch.checked, false, page.routing ? providerBox.currentValue || "" : "",
                              page.mcpProfiles ? mcpBox.currentValue || "" : "", agentBox.currentValue || "claude")
+    if (result.error) { error = result.error; return }
+    reset()
+    queued()
+  }
+  // Schedule: queue it on a timetable instead (schedules.py). A recipe is
+  // scheduled as its chain; a "Then…" follow-up is not.
+  property bool scheduleOpen: false
+  readonly property var whenCheck: schedules.check(whenField.text)
+  readonly property bool canSchedule: ready && thenText.text.trim() === "" && !whenCheck.error
+  function addSchedule() {
+    if (!canSchedule) return
+    const result = schedules.add(whenField.text, prompt.text, folder.text, modelBox.value, permissionBox.currentValue,
+                                 page.inRepo && worktreeSwitch.checked, page.routing ? providerBox.currentValue || "" : "",
+                                 page.mcpProfiles ? mcpBox.currentValue || "" : "", agentBox.currentValue || "claude",
+                                 recipe)
     if (result.error) { error = result.error; return }
     reset()
     queued()
@@ -331,6 +348,59 @@ ColumnLayout {
     text: page.error
   }
 
+  // When to run it, while Schedule… is open.
+  Rectangle {
+    objectName: "task-schedule"
+    visible: page.scheduleOpen
+    Layout.fillWidth: true
+    implicitHeight: scheduleRow.implicitHeight + 24
+    radius: 6
+    color: Qt.alpha(theme.surface, 0.6)
+    border.color: theme.selection
+    GridLayout {
+      id: scheduleRow
+      anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+      columns: page.width >= 760 ? 3 : 1
+      columnSpacing: 12
+      rowSpacing: 8
+      TextField {
+        id: whenField
+        objectName: "task-when"
+        Layout.preferredWidth: 220
+        implicitHeight: 32
+        placeholderText: "weekdays 09:00"
+        placeholderTextColor: theme.muted
+        color: theme.foreground
+        selectionColor: theme.selection
+        background: Rectangle {
+          radius: 4
+          color: theme.surface
+          border.color: whenField.text && page.whenCheck.error ? theme.urgent : whenField.activeFocus ? theme.accent : theme.selection
+        }
+        Keys.onReturnPressed: page.addSchedule()
+        Keys.onEnterPressed: page.addSchedule()
+      }
+      Label {
+        objectName: "task-when-check"
+        Layout.fillWidth: true
+        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+        font.pixelSize: 12
+        color: whenField.text && page.whenCheck.error ? theme.urgent : theme.muted
+        text: !whenField.text ? "daily 09:00, weekdays 09:00, mon,thu 18:30, every 6h, every 30m (local time)"
+              : page.whenCheck.error ? page.whenCheck.error
+              : thenText.text.trim() !== "" ? "A \"Then…\" follow-up cannot be scheduled; a recipe can."
+              : page.whenCheck.text + ", first on " + page.whenCheck.next + ". Each time it joins the queue like any task."
+      }
+      AppButton {
+        objectName: "task-schedule-save"
+        text: "Schedule"
+        primary: true
+        enabled: page.canSchedule
+        onClicked: page.addSchedule()
+      }
+    }
+  }
+
   // The note beside the buttons, or above them in a narrow window.
   GridLayout {
     Layout.fillWidth: true
@@ -357,6 +427,18 @@ ColumnLayout {
         ToolTip.visible: hovered
         ToolTip.delay: 500
         ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
+      }
+      AppButton {
+        objectName: "task-schedule-open"
+        text: page.scheduleOpen ? "No schedule" : "Schedule…"
+        quiet: true
+        onClicked: {
+          page.scheduleOpen = !page.scheduleOpen
+          if (page.scheduleOpen) whenField.forceActiveFocus()
+        }
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Queue this task on a timetable: daily, on weekdays, or every few hours."
       }
       AppButton {
         objectName: "task-queue"

@@ -1,7 +1,7 @@
 # Commands
 
 <!-- sections -->
-**Sections:** [At a glance](#at-a-glance) · [omaorchestra daemon](#omaorchestra-daemon) · [omaorchestra ping](#omaorchestra-ping) · [omaorchestra ls](#omaorchestra-ls) · [omaorchestra focus](#omaorchestra-focus) · [omaorchestra app](#omaorchestra-app) · [omaorchestra watch](#omaorchestra-watch) · [omaorchestra top](#omaorchestra-top) · [omaorchestra run](#omaorchestra-run) · [omaorchestra queue](#omaorchestra-queue) · [omaorchestra handoff](#omaorchestra-handoff) · [omaorchestra permissions](#omaorchestra-permissions) · [omaorchestra spend](#omaorchestra-spend) · [omaorchestra mcp](#omaorchestra-mcp) · [omaorchestra provider](#omaorchestra-provider) · [omaorchestra models](#omaorchestra-models) · [omaorchestra worktree](#omaorchestra-worktree) · [omaorchestra recipe](#omaorchestra-recipe) · [omaorchestra fleet](#omaorchestra-fleet) · [omaorchestra role](#omaorchestra-role) · [omaorchestra stop](#omaorchestra-stop) · [omaorchestra dismiss](#omaorchestra-dismiss) · [omaorchestra hook](#omaorchestra-hook) · [omaorchestra hooks](#omaorchestra-hooks) · [omaorchestra remote](#omaorchestra-remote) · [omaorchestra history](#omaorchestra-history) · [omaorchestra resume](#omaorchestra-resume) · [omaorchestra approvals](#omaorchestra-approvals) · [omaorchestra approve](#omaorchestra-approve) · [omaorchestra deny](#omaorchestra-deny) · [omaorchestra away](#omaorchestra-away) · [omaorchestra config](#omaorchestra-config) · [omaorchestra service](#omaorchestra-service) · [omaorchestra setup](#omaorchestra-setup) · [omaorchestra teardown](#omaorchestra-teardown)
+**Sections:** [At a glance](#at-a-glance) · [omaorchestra daemon](#omaorchestra-daemon) · [omaorchestra ping](#omaorchestra-ping) · [omaorchestra ls](#omaorchestra-ls) · [omaorchestra focus](#omaorchestra-focus) · [omaorchestra app](#omaorchestra-app) · [omaorchestra watch](#omaorchestra-watch) · [omaorchestra top](#omaorchestra-top) · [omaorchestra run](#omaorchestra-run) · [omaorchestra queue](#omaorchestra-queue) · [omaorchestra schedule](#omaorchestra-schedule) · [omaorchestra handoff](#omaorchestra-handoff) · [omaorchestra permissions](#omaorchestra-permissions) · [omaorchestra spend](#omaorchestra-spend) · [omaorchestra mcp](#omaorchestra-mcp) · [omaorchestra provider](#omaorchestra-provider) · [omaorchestra models](#omaorchestra-models) · [omaorchestra worktree](#omaorchestra-worktree) · [omaorchestra recipe](#omaorchestra-recipe) · [omaorchestra fleet](#omaorchestra-fleet) · [omaorchestra role](#omaorchestra-role) · [omaorchestra stop](#omaorchestra-stop) · [omaorchestra dismiss](#omaorchestra-dismiss) · [omaorchestra hook](#omaorchestra-hook) · [omaorchestra hooks](#omaorchestra-hooks) · [omaorchestra remote](#omaorchestra-remote) · [omaorchestra history](#omaorchestra-history) · [omaorchestra resume](#omaorchestra-resume) · [omaorchestra approvals](#omaorchestra-approvals) · [omaorchestra approve](#omaorchestra-approve) · [omaorchestra deny](#omaorchestra-deny) · [omaorchestra away](#omaorchestra-away) · [omaorchestra config](#omaorchestra-config) · [omaorchestra service](#omaorchestra-service) · [omaorchestra setup](#omaorchestra-setup) · [omaorchestra teardown](#omaorchestra-teardown)
 <!-- /sections -->
 
 Every `omaorchestra` command, with its options. `omaorchestra <command> --help`
@@ -26,6 +26,7 @@ Anything after `--` goes on unchanged: to the agent with `run` and
 | [`top`](#omaorchestra-top) | sessions and the queue in the terminal, sized for a phone over SSH; keys or taps |
 | [`run`](#omaorchestra-run) | start an agent on a task in a new terminal window |
 | [`queue`](#omaorchestra-queue) | tasks waiting for a free agent slot |
+| [`schedule`](#omaorchestra-schedule) | tasks that queue themselves on a timetable |
 | [`handoff`](#omaorchestra-handoff) | start another agent (or model) on a session's work, with a brief |
 | [`permissions`](#omaorchestra-permissions) | what agents may do without asking, and what they asked |
 | [`spend`](#omaorchestra-spend) | provider spend today, subscription limits, and what sessions cost |
@@ -303,6 +304,98 @@ omaorchestra queue down id
 | Argument | Meaning |
 |---|---|
 | `id` | queued task id or prefix |
+
+## `omaorchestra schedule`
+
+Tasks that queue themselves on a timetable.
+
+```
+omaorchestra schedule <command> ...
+```
+
+### `omaorchestra schedule list`
+
+Every schedule, its next time and how its last run went.
+
+```
+omaorchestra schedule list
+```
+
+### `omaorchestra schedule add`
+
+Queue a task on a timetable (anything after -- goes to the agent).
+
+```
+omaorchestra schedule add --when WHEN [--in DIR] [--name NAME] [--recipe RECIPE]
+                          [--model MODEL] [--permission-mode PERMISSION_MODE] [--worktree]
+                          [--no-worktree] [--provider PROVIDER] [--mcp-profile MCP_PROFILE]
+                          [--agent {claude,codex,opencode}] [--role ROLE]
+                          task
+```
+
+| Argument | Meaning |
+|---|---|
+| `task` | what the agent should do |
+| `--when WHEN` | 'daily 09:00', 'weekdays 09:00', 'weekends 10:00', 'mon,thu 18:30', 'every 6h' or 'every 30m' (local time) |
+| `--in DIR` | folder to work in (default: here) |
+| `--name NAME` | a short name for lists (default: the task) |
+| `--recipe RECIPE` | run it as this recipe's chained steps (see `recipe list`) |
+| `--model MODEL` | model to use, passed to the agent |
+| `--permission-mode PERMISSION_MODE` | the agent's permission mode (default: its own setting) |
+| `--worktree` | work in a separate git worktree (default: tasks.isolate_with_worktrees) |
+| `--no-worktree` | work in the folder itself |
+| `--provider PROVIDER` | run through this API provider instead of the subscription |
+| `--mcp-profile MCP_PROFILE` | only this profile's MCP servers ('none' for none) |
+| `--agent AGENT` | which agent (default: the role's, else claude); one of `claude`, `codex`, `opencode` |
+| `--role ROLE` | run as this role (see `role list`) |
+
+### `omaorchestra schedule remove`
+
+Delete a schedule (what it already queued stays queued).
+
+```
+omaorchestra schedule remove id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | schedule id or prefix |
+
+### `omaorchestra schedule pause`
+
+Skip its times until resumed.
+
+```
+omaorchestra schedule pause id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | schedule id or prefix |
+
+### `omaorchestra schedule resume`
+
+Run on its times again.
+
+```
+omaorchestra schedule resume id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | schedule id or prefix |
+
+### `omaorchestra schedule run`
+
+Queue its task now, whatever the time.
+
+```
+omaorchestra schedule run id
+```
+
+| Argument | Meaning |
+|---|---|
+| `id` | schedule id or prefix |
 
 ## `omaorchestra handoff`
 

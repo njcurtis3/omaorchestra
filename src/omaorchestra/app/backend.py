@@ -652,6 +652,98 @@ class Queue(QObject):
     blockedText = Property(str, lambda self: (self._state.get("blocked") or {}).get("text", ""), notify=changed)
 
 
+class Schedules(QObject):
+    """Tasks that queue themselves on a timetable (schedules.py), kept
+    current from the session subscription."""
+
+    changed = Signal()
+
+    def __init__(self, sessions, parent=None):
+        super().__init__(parent)
+        self._enabled = True
+        self._rows = []
+        sessions.schedulesUpdated.connect(self._update)
+        self._clock = QTimer(self)  # "today 09:00" becomes "yesterday 09:00"
+        self._clock.setInterval(60_000)
+        self._clock.timeout.connect(self._retell)
+        self._clock.start()
+        self._raw = []
+
+    @Slot("QVariantMap")
+    def _update(self, snapshot):
+        self._enabled = bool(snapshot.get("enabled", True))
+        self._raw = list(snapshot.get("schedules") or [])
+        self._retell()
+
+    def _retell(self):
+        self._rows = [{**s, "place": present.place(s.get("cwd")),
+                       "nextText": present.day_time(s.get("next")), "lastText": present.day_time(s.get("last"))}
+                      for s in self._raw]
+        self.changed.emit()
+
+    def _send(self, payload):
+        try:
+            response = client.request(payload, timeout=30)
+        except client.DaemonUnavailable:
+            return {"error": "omaorchestrad is not running"}
+        if not response.get("ok"):
+            return {"error": response.get("error") or "the daemon refused"}
+        if "schedules" in response:
+            self._update(response["schedules"])
+        return response
+
+    @Slot(str, result="QVariantMap")
+    def check(self, when):
+        """{"text": "weekdays at 09:00", "next": "tomorrow 09:00"} or {"error": ...}, as it is typed."""
+        from .. import schedules
+        try:
+            parsed = schedules.parse_when(when)
+        except schedules.ScheduleError as e:
+            return {"error": str(e)}
+        return {"text": schedules.describe(parsed),
+                "next": present.day_time(schedules.next_run(parsed, time.time(), anchor=time.time()))}
+
+    @Slot(str, str, str, str, str, bool, str, str, str, str, result="QVariantMap")
+    def add(self, when, task, folder, model, permission_mode, worktree, provider_id, mcp_profile, agent, recipe):
+        """Schedule `task` (as `recipe`'s steps when one is given)."""
+        import os
+        from .. import recipes, routing
+        cwd = os.path.expanduser(folder)
+        if provider_id:
+            try:
+                routing.claude_code_env(providers.get(provider_id), model or None)
+            except (providers.ProviderError, routing.RoutingError) as e:
+                return {"error": str(e)}
+        if recipe:
+            try:
+                steps = recipes.items(recipe, task, cwd, base={"worktree": worktree, "provider": provider_id or None,
+                                                             "model": model or None})
+            except recipes.RecipeError as e:
+                return {"error": str(e)}
+            items = [{**step, **launch.agent_environment(step["agent"])} for step in steps]
+        else:
+            items = [{"task": task, "cwd": cwd, "model": model or None, "permission_mode": permission_mode or None,
+                      "worktree": worktree, "extra": [], "provider": provider_id or None,
+                      "mcp_profile": mcp_profile or None, "agent": agent or "claude",
+                      **launch.agent_environment(agent or "claude")}]
+        return self._send({"cmd": "schedule-add", "when": when, "items": items, "task": task})
+
+    @Slot(str, bool, result="QVariantMap")
+    def setPaused(self, schedule_id, paused):
+        return self._send({"cmd": "schedule-pause" if paused else "schedule-resume", "id": schedule_id})
+
+    @Slot(str, result="QVariantMap")
+    def runNow(self, schedule_id):
+        return self._send({"cmd": "schedule-run", "id": schedule_id})
+
+    @Slot(str, result="QVariantMap")
+    def remove(self, schedule_id):
+        return self._send({"cmd": "schedule-remove", "id": schedule_id})
+
+    rows = Property("QVariantList", lambda self: self._rows, notify=changed)
+    enabled = Property(bool, lambda self: self._enabled, notify=changed)
+
+
 class Worktrees(QObject):
     """Task worktrees for the Worktrees page."""
 
@@ -716,6 +808,7 @@ class Sessions(QObject):
     changed = Signal()
     changesReady = Signal(str, "QVariantMap")  # session id, changes.uncommitted() result
     queueUpdated = Signal("QVariantMap")  # taskqueue snapshot, from the same subscription
+    schedulesUpdated = Signal("QVariantMap")  # schedules snapshot, likewise
     awayUpdated = Signal("QVariantMap")  # away mode (away.Away.state()), likewise
     fleetsUpdated = Signal(list)  # current fleet runs, from the snapshot
     fleetUpdated = Signal(dict)  # one run changed (a fleet event's state)
@@ -745,6 +838,8 @@ class Sessions(QObject):
                 self._snapshot.emit(snapshot["sessions"])
                 if "queue" in snapshot:
                     self.queueUpdated.emit(snapshot["queue"])
+                if "schedules" in snapshot:
+                    self.schedulesUpdated.emit(snapshot["schedules"])
                 if "away" in snapshot:
                     self.awayUpdated.emit(snapshot["away"])
                 if "fleets" in snapshot:
@@ -766,6 +861,9 @@ class Sessions(QObject):
     def _on_event(self, message):
         if message.get("event") == "queue":
             self.queueUpdated.emit(message["queue"])
+            return
+        if message.get("event") == "schedules":
+            self.schedulesUpdated.emit(message["schedules"])
             return
         if message.get("event") == "away":
             self.awayUpdated.emit(message["away"])

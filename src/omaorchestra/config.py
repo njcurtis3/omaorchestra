@@ -127,6 +127,9 @@ SCHEMA = {
         "keep_days": (90, _int_between(*_RANGES[("history", "keep_days")])),
         "titles": (True, _bool),
     },
+    "schedules": {
+        "enabled": (True, _bool),
+    },
     "fleets": {
         "watch": ([], _folders),
         "agent_teams": (True, _bool),
@@ -225,6 +228,15 @@ METADATA = {
             "keep_days": ("Keep history for (days)", "Older records are deleted; 0 keeps them all."),
             "titles": ("Keep task text", "Off: records keep no task titles or prompts, and those already "
                                          "kept are removed."),
+        },
+    },
+    "schedules": {
+        "title": "Schedules",
+        "help": "Tasks that queue themselves on a timetable (`omaorchestra schedule`, or Schedule on the New task "
+                "page). They wait in the queue like any other task.",
+        "keys": {
+            "enabled": ("Run schedules", "Off: no schedule queues anything until it is turned back on; a time "
+                                         "missed meanwhile runs once then."),
         },
     },
     "fleets": {

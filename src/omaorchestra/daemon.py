@@ -14,7 +14,7 @@ import subprocess
 from . import (__version__, adapters, approvals, away, chain, config, costs, fleet, fleet_close, fleet_graph, fleet_scope,
                history,
                launch, notify,
-               paths, procs, remote, roles, taskqueue, transcript, usage, windows, worktrees)
+               paths, procs, remote, roles, schedules, taskqueue, transcript, usage, windows, worktrees)
 from .log import event
 from .registry import CARRIED, Registry
 
@@ -48,6 +48,8 @@ LOCK_CHECK_INTERVAL = 10
 # hooks until that is answered).
 LAUNCH_CHECK_INTERVAL = 2
 LAUNCH_QUIET_SECONDS = 10
+# How often schedules are checked for a time that has come round.
+SCHEDULE_CHECK_INTERVAL = 30
 NOT_STARTED_MESSAGE = adapters.Claude.silent_message
 
 # Events a subscriber may fall behind by before it is disconnected (it can
@@ -77,6 +79,7 @@ class Daemon:
         self.force_verbose = force_verbose  # --verbose on the command line wins over the config
         self.pruner = None
         self.queue = taskqueue.TaskQueue(registry.path.parent / "queue.json")
+        self.schedules = schedules.Schedules(registry.path.parent / "schedules.json")
         self.fleet_seen = {}  # run id -> (status, gate, reason) last told about
         self.spawn = subprocess.Popen  # how queued agents are started (tests replace it)
         self._dispatching = False
@@ -438,6 +441,7 @@ class Daemon:
         self.queue.tasks.remove(item)
         self.queue.mark_started(item, result["id"])
         self.fleet_node_launched(item, result["id"], agent)
+        self.schedule_task_started(item, result["id"])
         for child in self.queue.children(parent_id=item["id"]):
             child["parent_session"] = result["id"]  # it now waits on the session
         self.queue.save()
@@ -905,13 +909,7 @@ class Daemon:
         if cmd == "queue-list":
             return {"ok": True, "queue": self.queue_snapshot()}
         if cmd == "queue-add":
-            fields = dict(request.get("item") or {})
-            parent_session = self.link_chain(fields)
-            item = q.add(fields, paused=bool(request.get("paused")))
-            event(logging.INFO, "task queued", task=item["id"], cwd=item["cwd"],
-                  after=item.get("after") or item.get("parent_session"))
-            if parent_session and parent_session.get("status") == "idle":
-                self.step_ended(parent_session, finished=True)  # what it follows is already done
+            item = self.enqueue(dict(request.get("item") or {}), paused=bool(request.get("paused")))
         elif cmd == "queue-cancel":
             item = q.remove(request["id"])
             event(logging.INFO, "task cancelled", task=item["id"])
@@ -940,6 +938,156 @@ class Daemon:
         self.publish_queue()
         self.dispatch()
         return {"ok": True, "item": item, "queue": self.queue_snapshot()}
+
+    def enqueue(self, fields, paused=False):
+        """Add a task to the queue, linked into its chain (`after`); what
+        `queue add` does, and what a schedule does when its time comes."""
+        parent_session = self.link_chain(fields)
+        item = self.queue.add(fields, paused=paused)
+        event(logging.INFO, "task queued", task=item["id"], cwd=item["cwd"],
+              after=item.get("after") or item.get("parent_session"), schedule=item.get("schedule"))
+        if parent_session and parent_session.get("status") == "idle":
+            self.step_ended(parent_session, finished=True)  # what it follows is already done
+        return item
+
+    # ------------------------------------------------------------- schedules
+
+    def schedule_status(self, s):
+        """Where a schedule's last run stands, in a few words."""
+        queued = [t for t in self.queue.tasks if t["id"] in s["tasks"]]
+        bad = next((t for t in queued if t["state"] in ("failed", "held")), None)
+        if bad:
+            return f"{bad['state']}: {bad.get('error') or ''}".rstrip(": ")
+        if queued:
+            return "queued"
+        live = [self.registry.sessions.get(sid) for sid in s["sessions"]]
+        statuses = {x.get("status") for x in live if x}
+        if "needs-input" in statuses:
+            return "waiting for you"
+        if "working" in statuses:
+            return "running"
+        return s.get("outcome") or s.get("last_note") or ""
+
+    def schedule_running(self, s):
+        """True while its last run is still queued or at work."""
+        if any(t["id"] in s["tasks"] for t in self.queue.tasks):
+            return True
+        return any((self.registry.sessions.get(sid) or {}).get("status") in ("working", "needs-input")
+                   for sid in s["sessions"])
+
+    def schedules_snapshot(self):
+        return {"enabled": self.settings["schedules"]["enabled"],
+                "schedules": [{**s, "title": schedules.Schedules.title(s), "whenText": schedules.describe(s["when"]),
+                               "status": self.schedule_status(s), "cwd": s["items"][0].get("cwd")}
+                              for s in self.schedules.items]}
+
+    def publish_schedules(self):
+        self.publish({"event": "schedules", "schedules": self.schedules_snapshot()})
+
+    def fire_schedule(self, s, now=None, by_hand=False):
+        """Queue a schedule's tasks now (each after the one before). Returns
+        the queued task ids; on a refusal, records it and returns []."""
+        now = time.time() if now is None else now
+        ids = []
+        try:
+            for fields in s["items"]:
+                fields = {**fields, "schedule": s["id"]}
+                if ids:
+                    fields["after"] = ids[-1]
+                ids.append(self.enqueue(fields)["id"])
+        except taskqueue.QueueError as e:
+            event(logging.WARNING, "schedule could not queue", schedule=s["id"], error=str(e))
+            if by_hand:
+                raise
+            self.schedules.ran(s, now, note=f"could not queue: {e}")
+            if self.pusher:
+                self.pusher.task_failed({"task": s["task"], "cwd": s["items"][0].get("cwd")}, str(e))
+            return []
+        if by_hand:
+            s["tasks"], s["sessions"], s["outcome"], s["last"], s["last_note"] = ids, [], None, now, "queued by hand"
+            self.schedules.save()
+        else:
+            self.schedules.ran(s, now, task_ids=ids, note="queued")
+        event(logging.INFO, "schedule queued", schedule=s["id"], tasks=len(ids), by_hand=by_hand)
+        return ids
+
+    def run_schedules(self, now=None):
+        """Queue every schedule whose time has come; a run missed while the
+        daemon was down runs once, and one whose last run is still going
+        skips its time."""
+        if not self.settings["schedules"]["enabled"]:
+            return
+        now = time.time() if now is None else now
+        due = self.schedules.due(now)
+        for s in due:
+            if self.schedule_running(s):
+                event(logging.INFO, "schedule skipped", schedule=s["id"], reason="its last run is still going")
+                self.schedules.ran(s, now, note="skipped: the last run was still going")
+            else:
+                self.fire_schedule(s, now)
+        if due:
+            self.publish_schedules()
+            self.publish_queue()
+            self.dispatch()
+
+    def schedule_task_started(self, item, session_id):
+        s = self.schedules.by_task(item["id"]) if item.get("schedule") else None
+        if s:
+            s["sessions"].append(session_id)
+            self.schedules.save()
+            self.publish_schedules()
+
+    def schedule_session_changed(self, previous, session, reason=None):
+        """Keep a schedule's last outcome: finished once its agent goes idle
+        after working, or how it ended."""
+        sid = (previous or session or {}).get("id")
+        s = self.schedules.by_session(sid) if sid else None
+        if not s:
+            return
+        if session is None:
+            s["outcome"] = history.outcome(previous, reason)
+        elif (previous or {}).get("status") == "working" and session.get("status") == "idle":
+            s["outcome"] = "finished"
+        else:
+            return
+        self.schedules.save()
+        self.publish_schedules()
+
+    def handle_schedule(self, cmd, request):
+        if cmd == "schedule-list":
+            return {"ok": True, "schedules": self.schedules_snapshot()}
+        if cmd == "schedule-add":
+            items = request.get("items") or []
+            for fields in items:  # what queue-add would refuse, refused now
+                if not fields.get("cwd") or not os.path.isdir(fields["cwd"]):
+                    raise schedules.ScheduleError(f"{fields.get('cwd')} is not a directory")
+            s = self.schedules.add(request.get("when"), [dict(i) for i in items], name=request.get("name"),
+                                   task=request.get("task"))
+            event(logging.INFO, "schedule added", schedule=s["id"], when=schedules.describe(s["when"]))
+        elif cmd == "schedule-remove":
+            s = self.schedules.remove(request["id"])
+            event(logging.INFO, "schedule removed", schedule=s["id"])
+        elif cmd in ("schedule-pause", "schedule-resume"):
+            s = self.schedules.set_paused(request["id"], cmd == "schedule-pause")
+        elif cmd == "schedule-run":
+            s = self.schedules.find(request["id"])
+            try:
+                self.fire_schedule(s, by_hand=True)
+            except taskqueue.QueueError as e:
+                raise schedules.ScheduleError(str(e)) from None
+            self.publish_queue()
+            self.dispatch()
+        else:
+            return {"ok": False, "error": f"unknown command: {cmd}"}
+        self.publish_schedules()
+        return {"ok": True, "schedule": s, "schedules": self.schedules_snapshot()}
+
+    def start_schedule_watch(self, interval=SCHEDULE_CHECK_INTERVAL):
+        async def watch():
+            while True:
+                await asyncio.sleep(interval)
+                self.run_schedules()
+        self.schedule_watch = asyncio.get_running_loop().create_task(watch())
 
     def start_pruner(self):
         if self.pruner:
@@ -972,6 +1120,8 @@ class Daemon:
         if self.pruner and new["daemon"]["prune_interval"] != old["daemon"]["prune_interval"]:
             self.start_pruner()
         self.publish_queue()
+        self.publish_schedules()
+        self.run_schedules()  # schedules may have been turned back on
         self.dispatch()  # max_parallel may have grown
         event(logging.INFO, "config reloaded", prune_interval=new["daemon"]["prune_interval"],
               verbose=new["daemon"]["verbose"], waiting=new["notifications"]["waiting"],
@@ -984,6 +1134,8 @@ class Daemon:
         if previous and (session or {}).get("status") != "needs-input":
             self.approvals.settle_session(previous["id"], "answered at the terminal" if session else "session ended")
         self.fleet_activity(previous, session, reason)
+        if reason != "adopted":
+            self.schedule_session_changed(previous, session, reason)
         if session is None and previous and reason != "adopted":
             self.record_history(previous, reason)
             outcome = history.outcome(previous, reason)
@@ -1045,6 +1197,7 @@ class Daemon:
         # change can fall between them.
         self.subscribers.add(queue)
         snapshot = {"ok": True, "sessions": self.registry.list(), "queue": self.queue_snapshot(),
+                    "schedules": self.schedules_snapshot(),
                     "away": self.away.state(), "approvals": self.approvals.public(),
                     "fleets": fleet.current(fleet.runs())}
         event(logging.DEBUG, "subscribed", subscribers=len(self.subscribers))
@@ -1208,6 +1361,11 @@ class Daemon:
                 return self.handle_queue(cmd, request)
             except taskqueue.QueueError as e:
                 return {"ok": False, "error": str(e)}
+        if cmd.startswith("schedule-"):
+            try:
+                return self.handle_schedule(cmd, request)
+            except schedules.ScheduleError as e:
+                return {"ok": False, "error": str(e)}
         if cmd == "handoff":
             try:
                 return {"ok": True, **self.handoff(request)}
@@ -1339,9 +1497,11 @@ def run(verbose=False):
         loop.add_signal_handler(signal.SIGHUP, daemon.reload)
         daemon.start_pruner()
         daemon.start_launch_watch()
+        daemon.start_schedule_watch()
         daemon.tend_history()
         daemon.away.save()  # for the bar widget, as with the registry
         daemon.sync_away()
+        daemon.run_schedules()  # times that came round while the daemon was down
         daemon.dispatch()  # tasks may have been waiting while the daemon was down
         try:
             async with server:
@@ -1354,6 +1514,7 @@ def run(verbose=False):
         finally:
             daemon.pruner.cancel()
             daemon.launch_watch.cancel()
+            daemon.schedule_watch.cancel()
             if daemon.idle_watch:
                 daemon.idle_watch.stop()
                 daemon.lock_watch.cancel()

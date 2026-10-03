@@ -428,6 +428,37 @@ Guardrails:
   permission mode, which a recipe can set (as plan-then-build's first step
   does); set yours in `recipes.toml`.
 
+### Schedules
+
+A schedule queues a task on a timetable, such as updating the dependencies
+every weekday morning or reviewing the day's commits every evening:
+
+```bash
+omaorchestra schedule add "update the dependencies and run the tests" --in ~/code/app --when "weekdays 09:00"
+omaorchestra schedule add "review today's commits" --in ~/code/app --when "daily 18:00" --recipe build-then-review
+omaorchestra schedule                   # every schedule, its next time, how its last run went
+omaorchestra schedule run <id>          # queue it now, whatever the time
+omaorchestra schedule pause|resume <id>
+omaorchestra schedule remove <id>       # what it already queued stays queued
+```
+
+`--when` takes `daily 09:00`, `weekdays 09:00`, `weekends 10:00`, days such
+as `mon,thu 18:30`, or an interval: `every 6h` or `every 30m` (15 minutes
+to 7 days), in local time. `schedule add` takes `queue add`'s other options
+(`--model`, `--worktree`, `--provider`, `--role`...), and `--recipe` runs
+the task as a recipe's chain. In the app, **Schedule…** on the New task page
+asks when, and the **Queue** page lists the schedules above the queue, with
+their next time and how the last run went.
+
+When a schedule's time comes, its task joins the queue and waits for a slot
+like any other: the parallel limit, usage limits, the daily budget and a held
+queue all apply, and nothing is approved for you. A time missed while the
+machine was off or asleep runs once when it is back, not once per missed
+time. If the last run is still queued or working when the next time comes,
+that time is skipped. `schedules.enabled = false` stops every schedule
+queueing anything; a time missed meanwhile runs once when it is turned back
+on. Schedules are kept across daemon restarts.
+
 ## Fleets and roles
 
 Fleets are **experimental** in this release: start with a small goal.

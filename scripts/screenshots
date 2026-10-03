@@ -161,12 +161,19 @@ def render(home, out, fleets):
         if after:
             step["after"] = after
         after = client.request({"cmd": "queue-add", "paused": not after, "item": step})["item"]["id"]
+    # Two schedules: one every weekday morning, one paused.
+    for when, task, project in (("weekdays 09:00", "Check for outdated dependencies and open a summary", "api"),
+                                ("fri 17:00", "Review this week's commits for missing tests", "website")):
+        made = client.request({"cmd": "schedule-add", "when": when, "task": task,
+                               "items": [{"task": task, "cwd": str(home / "code" / project)}]})["schedule"]
+        if project == "website":
+            client.request({"cmd": "schedule-pause", "id": made["id"]})
 
     app = QGuiApplication(sys.argv[:1])
     QQuickStyle.setStyle("Basic")
     sessions = backend.Sessions()
     objects = {"theme": backend.Theme(), "sessions": sessions, "settings": backend.Settings(),
-               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "awayMode": backend.Away(sessions), "sessionHistory": backend.History(sessions),
+               "worktrees": backend.Worktrees(), "queue": backend.Queue(sessions), "schedules": backend.Schedules(sessions), "awayMode": backend.Away(sessions), "sessionHistory": backend.History(sessions),
                "providerList": backend.Providers(),
                "spend": backend.Spend(sessions), "mcp": backend.Mcp(sessions), "fleets": backend.Fleets(sessions),
                "fontFamily": backend.monospace_family(), "appVersion": __version__, "initialSession": "",
