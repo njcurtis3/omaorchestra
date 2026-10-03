@@ -220,10 +220,17 @@ class UiFlowTest(unittest.TestCase):
 
         pages = [p["id"] for p in self.window.property("pages").toVariant()]
         self.assertEqual(len(pages), 11)
-        for page in pages:
-            self.window.setProperty("page", page)
-            spin(150)
-            self.assertEqual(overflowing(self.window.property("contentItem")), [], f"{page} overflows")
+        # Also in a larger font: CI's monospace font is wider than most desktops',
+        # so a layout that only just fits here can overflow there.
+        font = self.window.property("font")
+        for size in (font.pixelSize(), 20):
+            font.setPixelSize(size)
+            self.window.setProperty("font", font)
+            for page in pages:
+                self.window.setProperty("page", page)
+                spin(150)
+                self.assertEqual(overflowing(self.window.property("contentItem")), [],
+                                 f"{page} overflows at {size}px")
 
     def test_sessions_detail_filters_and_settings(self):
         # Sessions reported to the daemon appear live.

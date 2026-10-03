@@ -403,6 +403,7 @@ ColumnLayout {
 
   // The note beside the buttons, or above them in a narrow window.
   GridLayout {
+    id: noteAndButtons
     Layout.fillWidth: true
     columns: page.width >= 760 ? 2 : 1
     columnSpacing: 16
@@ -416,17 +417,38 @@ ColumnLayout {
         ? "A chain is queued: each step starts once the one before finishes, and one that stops or fails holds the rest. A step that waits for you pauses the chain."
         : "Launch opens it in a new terminal window now; Add to queue waits for a free agent slot. The first time an agent works in a folder it asks whether to trust it; answer there."
     }
-    RowLayout {
-      Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+    // Right-aligned, and wrapping onto a second line when the page is too
+    // narrow for all four (listed last first: right to left).
+    Flow {
+      id: buttonFlow
+      objectName: "task-buttons"
+      // All on one line where there is room (a Flow reports no such width
+      // of its own); the layout may give it less, and it wraps.
+      readonly property real oneLine: {
+        let w = 0, n = 0
+        for (const c of children) if (c.visible) { w += c.implicitWidth; n++ }
+        return w + Math.max(0, n - 1) * spacing
+      }
+      // Beside the note it keeps its one line and the note takes the rest;
+      // under it, it spans the page and wraps only if it must.
+      Layout.fillWidth: noteAndButtons.columns === 1
+      Layout.preferredWidth: oneLine
+      Layout.minimumWidth: 0
+      layoutDirection: Qt.RightToLeft
       spacing: 8
       AppButton {
-        objectName: "task-as-fleet"
-        text: "Run as fleet…"
-        quiet: true
-        onClicked: page.asFleet(prompt.text, folder.text)
-        ToolTip.visible: hovered
-        ToolTip.delay: 500
-        ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
+        objectName: "task-launch"
+        text: page.chained ? "Start chain" : "Launch"
+        primary: true
+        enabled: page.ready
+        onClicked: page.launch()
+      }
+      AppButton {
+        objectName: "task-queue"
+        visible: !page.chained
+        text: "Add to queue"
+        enabled: page.ready
+        onClicked: page.addToQueue()
       }
       AppButton {
         objectName: "task-schedule-open"
@@ -441,18 +463,13 @@ ColumnLayout {
         ToolTip.text: "Queue this task on a timetable: daily, on weekdays, or every few hours."
       }
       AppButton {
-        objectName: "task-queue"
-        visible: !page.chained
-        text: "Add to queue"
-        enabled: page.ready
-        onClicked: page.addToQueue()
-      }
-      AppButton {
-        objectName: "task-launch"
-        text: page.chained ? "Start chain" : "Launch"
-        primary: true
-        enabled: page.ready
-        onClicked: page.launch()
+        objectName: "task-as-fleet"
+        text: "Run as fleet…"
+        quiet: true
+        onClicked: page.asFleet(prompt.text, folder.text)
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "A scout, an architect, builders and reviewers, with a plan you approve first. Carries the text and folder over."
       }
     }
   }
