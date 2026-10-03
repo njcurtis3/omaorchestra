@@ -220,10 +220,13 @@ class UiFlowTest(unittest.TestCase):
 
         pages = [p["id"] for p in self.window.property("pages").toVariant()]
         self.assertEqual(len(pages), 11)
-        # Also in a larger font: CI's monospace font is wider than most desktops',
-        # so a layout that only just fits here can overflow there.
+        # Also in a font about as wide as CI's (12 px a character, where this
+        # desktop's is often 8 or 9): a layout that only just fits here can
+        # overflow there. Where the font is that wide already, once is enough.
+        from PySide6.QtGui import QFontMetricsF
         font = self.window.property("font")
-        for size in (font.pixelSize(), 20):
+        wide = max(font.pixelSize(), round(font.pixelSize() * 12 / QFontMetricsF(font).horizontalAdvance("M")))
+        for size in sorted({font.pixelSize(), wide}):
             font.setPixelSize(size)
             self.window.setProperty("font", font)
             for page in pages:
