@@ -10,16 +10,30 @@ files, and closing a run repeats the comparison across the run's branch.
 
 A slice's file may name a file, a folder (everything under it), or a glob
 (`tests/*.py`).
+
+Caches that running the tests leaves behind (`__pycache__/`, `.pytest_cache/`
+...) are not changes when they are new and untracked, even in a repository
+that does not ignore them; committed, they are checked like any file.
 """
 
 import fnmatch
 
 from . import worktrees
 
+# Folders and files a builder makes just by running the tests or a linter.
+CACHE_DIRS = ("__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".hypothesis", ".tox", ".nox")
+CACHE_FILES = ("*.pyc", "*.pyo", ".coverage", ".coverage.*")
+
+
+def is_cache(path):
+    """True for a file inside a tool cache folder, or a cache file."""
+    parts = path.strip().rstrip("/").split("/")
+    return any(p in CACHE_DIRS for p in parts) or any(fnmatch.fnmatch(parts[-1], g) for g in CACHE_FILES)
+
 
 def changed(cwd, base):
     """Files changed in `cwd` since commit `base`: committed, uncommitted
-    and new (untracked, not ignored). None when git cannot say."""
+    and new (untracked, not ignored, and not a cache). None when git cannot say."""
     try:
         diff = worktrees.git(cwd, "diff", "--name-only", base, check=False)
         new = worktrees.git(cwd, "ls-files", "--others", "--exclude-standard", check=False)
@@ -27,7 +41,8 @@ def changed(cwd, base):
         return None
     if diff.returncode != 0 or new.returncode != 0:
         return None
-    return sorted({f for f in (diff.stdout + new.stdout).splitlines() if f.strip()})
+    untracked = [f for f in new.stdout.splitlines() if not is_cache(f)]
+    return sorted({f for f in diff.stdout.splitlines() + untracked if f.strip()})
 
 
 def branch_changed(cwd, base, branch):

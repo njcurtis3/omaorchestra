@@ -138,6 +138,23 @@ class SingleLoopCloseTest(RunHarness):
         self.assertIn(f"{self.state()['branch']} has no commits", failed)
         self.assertFalse(self.close()["ok"])
 
+    def test_caches_from_running_the_tests_neither_hold_nor_block_it(self):
+        # In a repository that does not ignore them (found in a live run).
+        self.start("single-loop", 1, "single-loop")
+
+        def work(cwd):
+            commit(cwd, "part1.py")
+            for name in ("__pycache__/part1.cpython-314.pyc", "tests/__pycache__/test_part1.cpython-314.pyc",
+                         ".pytest_cache/v/cache/nodeids"):
+                path = Path(cwd) / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x\n")
+        self.finish("builder.s1", example("builder"), work)
+        self.assertNotEqual(self.state()["status"], "held", self.state().get("reason"))
+        self.finish("reviewer.s1", PASS)
+        response = self.close()
+        self.assertTrue(response["ok"], response)
+
     def test_a_builder_that_left_its_branch_holds_the_run(self):
         self.start("single-loop", 1, "single-loop")
         self.finish("builder.s1", example("builder"), lambda cwd: git(cwd, "checkout", "-q", "-b", "elsewhere"))

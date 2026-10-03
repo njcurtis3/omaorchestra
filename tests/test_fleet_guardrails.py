@@ -66,6 +66,15 @@ class ScopeTest(unittest.TestCase):
             self.assertEqual(fleet_scope.changed(tmp, base), ["a.py", "c.py", "new.py"])
             self.assertEqual(fleet_scope.branch_changed(tmp, base, "HEAD"), ["c.py"])
             self.assertIsNone(fleet_scope.changed(tmp, "no-such-commit"))
+            # New caches from running the tests are not changes; a committed one is.
+            for name in ("__pycache__/a.cpython-314.pyc", "pkg/__pycache__/b.pyc", ".pytest_cache/README.md",
+                         "stray.pyc", ".coverage"):
+                path = Path(tmp) / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x\n")
+            self.assertEqual(fleet_scope.changed(tmp, base), ["a.py", "c.py", "new.py"])
+            commit(tmp, "lib/__pycache__/kept.pyc")
+            self.assertIn("lib/__pycache__/kept.pyc", fleet_scope.changed(tmp, base))
 
 
 class EngineTest(unittest.TestCase):

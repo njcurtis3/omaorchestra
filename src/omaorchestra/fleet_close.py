@@ -38,10 +38,13 @@ def _clean(path):
     """None when the worktree at `path` is clean, else why not."""
     if not Path(path).is_dir():
         return f"{path} is gone"
-    result = _git(path, "status", "--porcelain")
+    result = _git(path, "status", "--porcelain", "--untracked-files=all")
     if result is None or result.returncode != 0:
         return f"git cannot read {path}"
-    return "has uncommitted changes" if result.stdout.strip() else None
+    # New caches from running the tests (fleet_scope.is_cache) do not count.
+    left = [line for line in result.stdout.splitlines()
+            if line.strip() and not (line.startswith("?? ") and fleet_scope.is_cache(line[3:]))]
+    return "has uncommitted changes" if left else None
 
 
 def check(state):

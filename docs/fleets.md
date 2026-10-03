@@ -137,7 +137,10 @@ pause`) stops anything new from starting; agents already working go on.
 - **The plan gate** comes before any code, and nothing auto-approves.
 - **The scope check.** When a builder finishes, git lists every file it
   changed (committed, uncommitted, new); any outside its slice's files hold
-  the slice before review. No hook blocks it while it works.
+  the slice before review. No hook blocks it while it works. New caches that
+  running the tests leaves (`__pycache__/`, `*.pyc`, `.pytest_cache/`,
+  `.coverage`...) are not counted, here or when closing, even where the
+  repository does not ignore them; a committed one is.
 - **Branches.** Builders and the integrator must end on their own branch;
   merging the run's branch into yours is always yours to do.
 - **Budget and steps.** A fleet's `budget` (US$, API-equivalent on a
