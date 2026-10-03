@@ -65,5 +65,7 @@ def fields(**kv):
     return " ".join(f"{k}={value(v)}" for k, v in kv.items() if v is not None)
 
 
-def event(level, name, **kv):
+def event(level, name, /, **kv):
+    # Positional-only, so a field called name or level (a request's, logged
+    # whole) is just a field.
     logger.log(level, f"{name} {fields(**kv)}".rstrip())

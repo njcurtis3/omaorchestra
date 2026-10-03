@@ -208,6 +208,14 @@ class DaemonScheduleTest(unittest.TestCase):
         self.assertFalse(bad["ok"])
         self.assertIn("say when", bad["error"])
 
+    def test_a_named_schedule(self):
+        # A request field called name once clashed with the request log's own argument.
+        response = self.d.handle({"cmd": "schedule-add", "when": "daily 09:00", "name": "Morning deps",
+                                  "items": [self.item("update deps")], "task": "update deps"})
+        self.assertTrue(response["ok"], response)
+        snap = self.d.handle({"cmd": "schedule-list"})["schedules"]["schedules"][0]
+        self.assertEqual(snap["title"], "Morning deps")
+
     def test_survives_a_restart(self):
         self.add()
         again = daemon.Daemon(Registry(Path(self.tmp.name) / "sessions.json"))
