@@ -768,7 +768,7 @@ class Daemon:
             return state["folder"], None
         if state["shape"] != "diamond" or not n.get("slice"):
             return (own["workdir"], own["path"]) if own else (state["folder"], None)
-        slice_id = n["slice"]
+        slice_id = fleet.root_slice(state, n["slice"])  # a split slice works in the worktree of the one it came from
         record = state["slice_worktrees"].get(slice_id)
         if record is None:
             depends = fleet_graph.depends_on(fleet.live_plan(state), slice_id)

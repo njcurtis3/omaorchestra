@@ -88,6 +88,35 @@ it, and an idle window holds no queue slot. Close it when you like.
 5. When every slice has passed, the run is **finished**: check it and close
    it.
 
+### Recursive slices
+
+A builder may find its slice too big to build as one change. When its
+fleet's `max_depth` allows (the default, 1, does not), the builder can
+**split** the slice instead of building it: it changes nothing and replies
+with smaller slices, in the architect's shape.
+
+```
+builder s2 ─ split ─→ s2-a: builder → reviewer ─→ s2-b: builder → reviewer ─→ reviewer s2 (the whole)
+```
+
+- The smaller slices (`s2-a`, `s2-b`...; `s2-2a` for a second build's split)
+  run one at a time, in the order their edges allow, in the slice's own
+  worktree and branch. Each is built and reviewed like any slice, with its
+  own `tries`, and may split again while the depth allows.
+- When all of them have passed, a reviewer checks the slice as a whole,
+  against its own done-when. A REJECT sends it to a new builder, which may
+  build it or split it again.
+- A split is refused, and holds the run like any unreadable reply, when
+  the fleet allows no deeper split, when a smaller slice reaches past the
+  slice's files, or when the builder changed something.
+- A split does not wait for you: it cannot reach past files you already
+  approved, and the scope check holds any builder that does. Set
+  `split_gate = true` on a fleet to approve each split anyway, at a
+  **split gate** (`fleet approve <run>`).
+- Every agent a split starts counts against `max_steps` and `budget`.
+
+The board, `fleet show` and `top` list the smaller slices under their slice.
+
 Each agent is told what it needs and no more: its role's instructions, then
 a brief built from the run so far (the goal, the scout's facts, its slice,
 the review that sent it back...), then the JSON block its final reply must
@@ -113,6 +142,9 @@ need you, and its panel lists them.
 | Cancel run | `fleet cancel <run>` | nothing more starts |
 
 **At the merge gate:** approve (`fleet approve <run>`) or cancel.
+
+**At a split gate** (only when the fleet sets `split_gate`): approve
+(`fleet approve <run>`), and the builder's smaller slices start, or cancel.
 
 **When it holds:**
 
@@ -263,6 +295,8 @@ tries = 2
 budget = 5
 max_steps = 30
 stall_minutes = 20
+max_depth = 1
+split_gate = false
 [fleets.careful.roles]
 reviewer = "security-reviewer"
 ```
@@ -276,10 +310,12 @@ reviewer = "security-reviewer"
 | `budget` | `0` | US$ the run may spend (API-equivalent on a subscription); 0: no budget |
 | `max_steps` | `30` | agents the run may start in all (3 to 200) |
 | `stall_minutes` | `20` | a working agent with no sign of life this long is flagged |
+| `max_depth` | `1` | how deep slices may [split](#recursive-slices) (1 to 4): 1, none; 2, a slice of the plan once |
+| `split_gate` | `false` | `true`: each split waits for you at a split gate |
 | `roles.<stage>` | the stage's name | the role that plays `scout`, `architect`, `builder`, `reviewer` or `integrator` |
 
 The stages and their order are fixed; a fleet changes who plays them, the
-shape, the scout, and the limits. A run keeps the fleet's settings it started
+shape, the scout, how deep slices may split, and the limits. A run keeps the fleet's settings it started
 with.
 
 ### What each role hands back
@@ -293,10 +329,14 @@ itself.
 |---|---|---|
 | scout | `facts` (each `fact` and `where`), `unknowns`, `risks`, `build` (`green`, `red`, `not run`), `plan_killer` | |
 | architect | `shape`, `rationale`, `slices` (each `id`, `intent`, `files`, `done_when`, `risk`, `risk_why`), `edges` (each `from`, `to`, `artifact`), `not_doing`, `approve` | two slices share an id; a file outside the repository; an edge to no slice, or edges in a circle |
-| builder | `status` (`done`, `blocked`), `changed`, `done_when` (`command`, `output`, `passed`), `blocked`, `noticed` | `done` on a failing command; `blocked` without saying why |
+| builder | `status` (`done`, `blocked`, `split`), `changed`, `done_when` (`command`, `output`, `passed`), `blocked`, `noticed`, `split` (`rationale`, `slices` as the architect's, `edges`) | `done` on a failing command; `blocked` without saying why; no `done_when` unless split; a split with fewer than 2 slices, or the architect's refusals |
 | reviewer | `verdict` (`PASS`, `REJECT`), `findings` (each `severity`, `where`, `what`, `origin`), `summary`, `reran` | a REJECT without a `blocker` finding; a PASS with one |
 | integrator | `merged`, `conflicts` (each `slices`, `resolution`), `suite` (`command`, `output`, `passed`), `blocked`, `escalate` | a failed suite without saying which merge broke it |
 | any other role | `status`, `summary`, `blocked` | `blocked` without saying why |
+
+A split is also refused, once read, when the fleet's `max_depth` allows no
+deeper split, a smaller slice's files reach past the slice's, or git shows
+the builder changed something.
 
 ### Files
 

@@ -10,6 +10,16 @@ A REJECT sends the slice to a new builder (with the findings in its brief)
 and then a new reviewer; after `tries` builds of a slice are rejected the
 run holds for you. A builder that reports itself blocked holds the run too.
 
+A builder may split its slice instead of building it, when the fleet's
+`max_depth` allows (1, the default, allows none; 2 lets a slice of the plan
+split once). Its smaller slices (s2-a, s2-b...) must stay within the
+slice's files; they run one at a time in the slice's own worktree, each
+built and reviewed like any slice, and may split again while the depth
+allows. When all of them have passed, a reviewer checks the slice as a
+whole. A split does not wait for you unless the fleet sets `split_gate`:
+it cannot reach past files you already approved, and the scope check
+holds any builder that does.
+
 The architect proposes the shape; the fleet can force one. A diamond the run
 cannot carry out safely becomes a single loop, with the reason kept in
 `shape_note`: outside a git repository (no worktrees), fewer than 3 slices,
@@ -28,11 +38,13 @@ it:
     budget = 5                 # US$ the run may spend (API-equivalent); 0: no budget
     max_steps = 30             # nodes the run may start in all
     stall_minutes = 20         # a node working this long without a sign of life is flagged
+    max_depth = 1              # 2: a builder may split its slice into smaller ones, once
+    split_gate = false         # true: a split waits for you to approve it
     [fleets.careful.roles]     # the role (roles.py) that plays each stage
     reviewer = "security-reviewer"
 
 The stages and their order are fixed; what a fleet changes is who plays
-them, the shape, and the scout.
+them, the shape, the scout, and how deep a slice may split.
 """
 
 import time
@@ -49,7 +61,8 @@ BUILTIN = {
     "diamond": {"description": "Parallel builders when the plan allows it (checked), then an integrator",
                 "shape": "diamond"},
 }
-KEYS = ("description", "shape", "scout", "tries", "roles", "budget", "max_steps", "stall_minutes")
+KEYS = ("description", "shape", "scout", "tries", "roles", "budget", "max_steps", "stall_minutes", "max_depth",
+        "split_gate")
 MIN_DIAMOND = 3
 EXAMPLE = """[fleets.careful]
 description = "Single loop, reviewed by my security reviewer"
@@ -59,6 +72,8 @@ tries = 2                    # builds of a slice before a REJECT holds the run
 budget = 5                   # US$ the run may spend (API-equivalent); 0: no budget
 max_steps = 30               # agents the run may start in all
 stall_minutes = 20           # working this long with no sign of life is flagged
+max_depth = 1                # 2: a builder may split its slice into smaller ones, once
+split_gate = false           # true: a split waits for you to approve it
 [fleets.careful.roles]       # the role (roles.py) that plays each stage
 reviewer = "security-reviewer"
 """
@@ -76,6 +91,7 @@ def _complete(name, spec, builtin):
     out = {"name": name, "description": spec.get("description", ""), "shape": spec.get("shape", "auto"),
            "scout": spec.get("scout", True), "tries": spec.get("tries", 2), "budget": spec.get("budget", 0),
            "max_steps": spec.get("max_steps", 30), "stall_minutes": spec.get("stall_minutes", 20),
+           "max_depth": spec.get("max_depth", 1), "split_gate": spec.get("split_gate", False),
            "roles": {stage: (spec.get("roles") or {}).get(stage, stage) for stage in STAGES}, "builtin": builtin}
     return out
 
@@ -86,15 +102,16 @@ def _check(name, spec, where):
         raise FleetError(f"{where}: fleet {name}: unknown {', '.join(sorted(bad))}")
     if spec.get("shape", "auto") not in SHAPES:
         raise FleetError(f"{where}: fleet {name}: shape must be one of {', '.join(SHAPES)}")
-    if not isinstance(spec.get("scout", True), bool):
-        raise FleetError(f"{where}: fleet {name}: scout must be true or false")
+    for key in ("scout", "split_gate"):
+        if not isinstance(spec.get(key, False), bool):
+            raise FleetError(f"{where}: fleet {name}: {key} must be true or false")
     tries = spec.get("tries", 2)
     if isinstance(tries, bool) or not isinstance(tries, int) or not 1 <= tries <= 5:
         raise FleetError(f"{where}: fleet {name}: tries must be a whole number from 1 to 5")
     budget = spec.get("budget", 0)
     if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 <= budget <= 10000:
         raise FleetError(f"{where}: fleet {name}: budget must be US$ from 0 (no budget) to 10000")
-    for key, low, high in (("max_steps", 3, 200), ("stall_minutes", 1, 240)):
+    for key, low, high in (("max_steps", 3, 200), ("stall_minutes", 1, 240), ("max_depth", 1, 4)):
         value = spec.get(key, low)
         if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
             raise FleetError(f"{where}: fleet {name}: {key} must be a whole number from {low} to {high}")
@@ -211,7 +228,7 @@ def expected_branch(state, n):
     """The branch a builder or the integrator must end on: the slice's own
     in a diamond, else the run's. None outside git."""
     if n["role"] == "builder" and state.get("shape") == "diamond":
-        return (state.get("slice_worktrees", {}).get(n.get("slice")) or {}).get("branch")
+        return (state.get("slice_worktrees", {}).get(fleet.root_slice(state, n.get("slice"))) or {}).get("branch")
     return state.get("branch")
 
 
@@ -248,7 +265,8 @@ def over_budget(state):
 
 
 def _slice_step(state, slice_id):
-    """("start", node id), ("wait",), ("passed",) or ("hold", reason)."""
+    """("start", node id), ("wait",), ("passed",), ("hold", reason) or
+    ("gate", builder id): a split waiting for you."""
     built = fleet.latest(state, "builder", slice_id)
     if built is None:
         return "start", _add(state, "builder", slice_id)
@@ -262,6 +280,14 @@ def _slice_step(state, slice_id):
     if scope.get("extra") and not scope.get("accepted"):
         return "hold", f"{built['id']} changed files outside its slice: {', '.join(scope['extra'][:8])}" + \
             (f" and {len(scope['extra']) - 8} more" if len(scope["extra"]) > 8 else ""), built["id"]
+    split = fleet.split_plan(built)
+    if split:
+        if state["template"].get("split_gate") and f"split:{built['id']}" not in state["approved"]:
+            return "gate", built["id"]
+        step = _split_step(state, split)
+        if step[0] != "passed":
+            return step
+        # Every smaller slice passed: now the slice is reviewed as a whole.
     review = fleet.latest(state, "reviewer", slice_id)
     if review is None or review["attempt"] < built["attempt"]:
         return "start", _add(state, "reviewer", slice_id)
@@ -275,6 +301,18 @@ def _slice_step(state, slice_id):
         return "hold", (f"the reviewer rejected {slice_id} {tries} time{'s' if tries != 1 else ''}"
                         + (f": {worst['where']}: {worst['what']}" if worst else ""))
     return "start", _add(state, "builder", slice_id)
+
+
+def _split_step(state, split):
+    """The next step of a split's smaller slices, one at a time in the order
+    their edges allow; ("passed",) once they all have."""
+    for slice_id in order(split):
+        step = _slice_step(state, slice_id)
+        if step[0] == "hold" and len(step) == 2:
+            return "hold", step[1], slice_id  # held by this slice, not the one it came from
+        if step[0] != "passed":
+            return step
+    return ("passed",)
 
 
 def at_gate(state, gate, now=None):
@@ -331,6 +369,10 @@ def _advance(state, started, now):
         if step[0] == "hold":
             fleet.hold(state, step[1], by=step[2] if len(step) > 2 else slice_id, now=now)
             return started  # nodes another slice already started still go
+        if step[0] == "gate":
+            state["split_node"] = step[1]
+            at_gate(state, "split", now)
+            return started
         if step[0] == "start":
             started.append(step[1])
         if state["shape"] == "single-loop":
@@ -507,9 +549,11 @@ def set_limits(state, budget=None, max_steps=None, now=None):
 
 
 def approve(state, gate, note=None, now=None):
-    """You approved the gate the run waits at."""
+    """You approved the gate the run waits at (a split's is kept per
+    builder, as `split:<builder id>`)."""
     _at(state, gate)
-    state["approved"][gate] = {"at": now or time.time(), "note": note or None}
+    key = f"split:{state['split_node']}" if gate == "split" else gate
+    state["approved"][key] = {"at": now or time.time(), "note": note or None}
     state.update(status="running", gate=None, since=None)
     fleet.activity(state["id"], {"event": "approved", "gate": gate}, now)
 

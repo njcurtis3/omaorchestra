@@ -1131,13 +1131,23 @@ def cmd_fleet_show(args):
         print(f"  to approve: {plan['approve']}")
         print(f"\n  omaorchestra fleet approve {state['id']}   (or: send-back, drop, shape, cancel)")
     elif plan:
+        split = fleet.split_plan(state["nodes"][state["split_node"]]) \
+            if state["status"] == "at-gate" and state.get("gate") == "split" else None
+        if split:
+            print(f"\n{state['split_node']} split its slice: {split['rationale']}")
+            for s in split["slices"]:
+                print(f"  {s['id']}: {s['intent']}")
+                print(f"      files: {', '.join(s['files'])}")
+                print(f"      done when: {s['done_when']}")
+            print(f"\n  omaorchestra fleet approve {state['id']}   (or: cancel)")
         print(f"\n  {'slice':<7} {'build':<12} {'review':<8} {'tries':<6} {'cost':<8} notes")
         for row in fleet.board(state):
             notes = [x for x in ("waits for you" if row["waiting"] else "", "looks stalled" if row["stalled"] else "",
                                  f"blocked: {row['blocked']}" if row["blocked"] else "",
                                  ("accepted" if row["accepted"] else "outside its files") + ": " + ", ".join(row["extra"])
                                  if row["extra"] else "") if x]
-            print(f"  {row['slice']:<7} {row['build']:<12} {row['verdict'] or '-':<8} {row['tries']:<6} "
+            name = "  " * row["depth"] + row["slice"]
+            print(f"  {name:<7} {row['build']:<12} {row['verdict'] or '-':<8} {row['tries']:<6} "
                   f"${row['cost']:<7.2f} {'; '.join(notes) or row['intent'][:40]}")
         integrator = fleet.latest(state, "integrator")
         if integrator:

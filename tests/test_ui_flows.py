@@ -531,6 +531,17 @@ class UiFlowTest(unittest.TestCase):
             self.assertTrue(wait_for(lambda: fleet.load(ids["scope"])["nodes"]["builder.s1"]["scope"]["accepted"]))
             self.assertTrue(wait_for(lambda: "reviewer.s1" in fleet.load(ids["scope"])["nodes"]), "no reviewer next")
 
+        # A builder's split, at its gate: the smaller slices on the card and under their slice.
+        self.window.showFleet(ids["split"])
+        self.assertTrue(wait_for(lambda: self.shown("card-split")), "no split card")
+        self.assertTrue(self.shown("split-slice-s1-a"))
+        self.click("run-view-board")
+        self.assertTrue(wait_for(lambda: self.shown("board-s1-b")), "the smaller slices are not on the board")
+        if not inside:
+            self.click("card-approve")
+            self.assertTrue(wait_for(lambda: "split:builder.s1" in fleet.load(ids["split"])["approved"]),
+                            "split not approved")
+
         # The board, and a node's detail.
         self.window.showFleet(ids["merge"])
         self.assertTrue(wait_for(lambda: self.shown("card-merge")))

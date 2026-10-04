@@ -228,11 +228,7 @@ ScrollView {
       Layout.fillWidth: true
       runId: view.runId
       chosen: view.nodeId.split(".")[1] || ""
-      onPick: sliceId => {
-        const g = fleets.graph(view.runId)
-        const box = g.nodes.find(n => n.key === "builder." + sliceId)
-        view.nodeId = box && box.node ? box.node : ""
-      }
+      onPick: (sliceId, nodeId) => view.nodeId = nodeId
     }
 
     FleetTimeline {

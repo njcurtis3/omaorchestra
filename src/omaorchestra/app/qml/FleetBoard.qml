@@ -3,17 +3,18 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // A run as a table: one row per slice (fleet.board), its latest build and
-// review, tries, the scope check, cost and branch. Rows update in place
+// review, tries, the scope check, cost and branch; a split slice's smaller
+// slices sit under it, indented. Rows update in place
 // (a keyed model), so a picked row stays picked. `fleets` and `theme` come
 // from Python.
 ColumnLayout {
   id: board
   property string runId: ""
   property string chosen: ""  // a slice id
-  signal pick(string sliceId)
+  signal pick(string sliceId, string nodeId)  // its latest build, "" before one
   spacing: 4
 
-  readonly property var widths: [60, 130, 90, 60, 80]
+  readonly property var widths: [80, 130, 90, 60, 80]
 
   RowLayout {
     Layout.fillWidth: true
@@ -65,7 +66,7 @@ ColumnLayout {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: board.pick(boardRow.key)
+        onClicked: board.pick(boardRow.key, boardRow.item.node)
       }
 
       ColumnLayout {
@@ -74,7 +75,7 @@ ColumnLayout {
         spacing: 2
         RowLayout {
           spacing: 8
-          Label { text: boardRow.key; color: theme.foreground; font.bold: true; Layout.fillWidth: true; Layout.preferredWidth: board.widths[0]; Layout.maximumWidth: board.widths[0]; elide: Text.ElideRight }
+          Label { text: boardRow.key; leftPadding: boardRow.item.depth * 12; color: theme.foreground; font.bold: !boardRow.item.depth; Layout.fillWidth: true; Layout.preferredWidth: board.widths[0]; Layout.maximumWidth: board.widths[0]; elide: Text.ElideRight }
           Label {
             text: boardRow.item.build + (boardRow.item.waiting ? " · you" : boardRow.item.stalled ? " · stalled" : "")
             color: boardRow.item.waiting || boardRow.item.stalled ? theme.urgent : boardRow.item.build === "running" ? theme.accent : theme.foreground

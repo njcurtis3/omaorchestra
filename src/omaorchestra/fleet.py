@@ -91,7 +91,7 @@ def create(goal, folder, template=None, now=None, path=None, budget=None):
     (base / run_id).mkdir(mode=0o700)
     from . import worktrees
     template = template or {"name": "auto", "shape": "auto", "scout": True, "tries": 2, "budget": 0,
-                            "max_steps": 30, "stall_minutes": 20,
+                            "max_steps": 30, "stall_minutes": 20, "max_depth": 1, "split_gate": False,
                             "roles": {stage: stage for stage in ("scout", "architect", "builder", "reviewer",
                                                                  "integrator")}}
     state = {"v": VERSION, "id": run_id, "goal": goal, "folder": str(folder), "fleet": template["name"],
@@ -218,7 +218,71 @@ def plan(state):
 
 
 def slice_of(state, slice_id):
-    return next((s for s in (plan(state) or {}).get("slices") or [] if s["id"] == slice_id), None)
+    """A slice of the plan, or one a builder split its slice into."""
+    found = next((s for s in (plan(state) or {}).get("slices") or [] if s["id"] == slice_id), None)
+    if found or not slice_id:
+        return found
+    for n in state["nodes"].values():
+        found = next((s for s in (split_plan(n) or {}).get("slices", []) if s["id"] == slice_id), None)
+        if found:
+            return found
+    return None
+
+
+def split_plan(n):
+    """The smaller slices a builder split its slice into, or None. Their ids
+    are made from the slice and the attempt (s2-a, s2-b; s2-2a for a second
+    build's split), so a later split never reuses an earlier one's nodes."""
+    result = n.get("result") or {}
+    if n["role"] != "builder" or n["status"] != "done" or result.get("status") != "split":
+        return None
+    prefix = f"{n['slice']}-" + (str(n["attempt"]) if n["attempt"] > 1 else "")
+    ids = {s["id"]: prefix + "abcdefgh"[i] for i, s in enumerate(result["split"]["slices"])}
+    return {"rationale": result["split"]["rationale"],
+            "slices": [{**s, "id": ids[s["id"]], "parent": n["slice"]} for s in result["split"]["slices"]],
+            "edges": [{**e, "from": ids[e["from"]], "to": ids[e["to"]]} for e in result["split"]["edges"]]}
+
+
+def sub_plan(state, slice_id):
+    """The split the slice's latest build made, or None."""
+    built = latest(state, "builder", slice_id)
+    return split_plan(built) if built else None
+
+
+def depth(state, slice_id):
+    """0 for a slice of the plan, 1 for one split from it, and so on."""
+    s = slice_of(state, slice_id)
+    return 1 + depth(state, s["parent"]) if s and s.get("parent") else 0
+
+
+def root_slice(state, slice_id):
+    """The slice of the plan a split slice came from (itself, for one of the plan)."""
+    s = slice_of(state, slice_id)
+    return root_slice(state, s["parent"]) if s and s.get("parent") else slice_id
+
+
+def can_split(state, slice_id):
+    return depth(state, slice_id) + 1 < (state.get("template") or {}).get("max_depth", 1)
+
+
+def split_problem(state, n, result, changed):
+    """Why a builder's split cannot be taken, or None: it went too deep,
+    reached past its slice's files, or changed something."""
+    slice_id = n.get("slice")
+    if not can_split(state, slice_id):
+        limit = (state.get("template") or {}).get("max_depth", 1)
+        return (f"slice {slice_id} cannot be split: this run's fleet allows "
+                + ("no splits" if limit <= 1 else f"splits {limit - 1} level{'s' if limit != 2 else ''} deep"))
+    s = slice_of(state, slice_id)
+    allowed = (s["files"] if s else []) + fleet_scope.accepted(state, slice_id)
+    for child in result["split"]["slices"]:
+        extra = fleet_scope.outside([f.strip().removeprefix("./") for f in child["files"]], allowed)
+        if extra:
+            return f"split: slice {child['id']} reaches outside slice {slice_id}'s files: {', '.join(extra)}"
+    if changed:
+        return "a split must change nothing, but it changed: " + ", ".join(changed[:8]) + \
+            (f" and {len(changed) - 8} more" if len(changed) > 8 else "")
+    return None
 
 
 def live_plan(state):
@@ -309,6 +373,10 @@ def record_reply(state, nid, text, now=None, git=None, changed=None, cost=None):
         n["scope"] = {"changed": changed, "extra": fleet_scope.outside(changed, allowed), "accepted": None}
     try:
         result = fleet_reply.parse(n["role"], text)
+        if n["role"] == "builder" and result["status"] == "split":
+            problem = split_problem(state, n, result, changed)
+            if problem:
+                raise fleet_reply.ReplyError(problem)
     except fleet_reply.ReplyError as e:
         said = str(e)
         n.update(status="held", error=said if said.startswith("its ") else f"its reply: {said}", error_kind="reply",
@@ -319,6 +387,9 @@ def record_reply(state, nid, text, now=None, git=None, changed=None, cost=None):
     n.update(status="done", result=result, written_by=n["role"], error=None, error_kind=None, ended=now,
              git=git or None)
     activity(state["id"], {"event": "result", "node": nid}, now)
+    split = split_plan(n)
+    if split:
+        activity(state["id"], {"event": "split", "node": nid, "slices": [s["id"] for s in split["slices"]]}, now)
     if state.get("held_by") == nid:
         release(state, now)
     return n
@@ -381,26 +452,35 @@ def opencode_reply(session_id, run=subprocess.run):
 def board(state):
     """One row per slice of the plan the run carries out: its latest build
     and review, how many builds, the scope check, its branch and cost.
-    What `fleet show`, `top` and the app draw."""
+    What `fleet show`, `top` and the app draw. A slice a builder split is
+    followed by its smaller slices (`parent`, one `depth` further in)."""
     rows = []
-    for s in (live_plan(state) or {}).get("slices") or []:
+
+    def add(s, level):
         built = latest(state, "builder", s["id"])
         review = latest(state, "reviewer", s["id"])
         scope = (built or {}).get("scope") or {}
         nodes = [n for n in state["nodes"].values() if n.get("slice") == s["id"]]
         rows.append({
-            "slice": s["id"], "intent": s["intent"], "risk": s["risk"],
-            "build": (built or {}).get("status") or "not started",
+            "slice": s["id"], "intent": s["intent"], "risk": s["risk"], "parent": s.get("parent"), "depth": level,
+            "node": (built or {}).get("id") or "",
+            "build": "split" if built and split_plan(built) else (built or {}).get("status") or "not started",
             "blocked": ((built or {}).get("result") or {}).get("blocked"),
             "verdict": ((review or {}).get("result") or {}).get("verdict") if review and review["status"] == "done"
             else ((review or {}).get("status") if review else None),
             "tries": (built or {}).get("attempt") or 0,
             "extra": scope.get("extra") or [], "accepted": bool(scope.get("accepted")),
-            "branch": ((state.get("slice_worktrees") or {}).get(s["id"]) or {}).get("branch") or state.get("branch"),
+            "branch": ((state.get("slice_worktrees") or {}).get(root_slice(state, s["id"])) or {}).get("branch")
+            or state.get("branch"),
             "cost": round(sum((n.get("cost") or {}).get("usd") or 0 for n in nodes), 4),
             "waiting": any(n.get("waiting") and n["status"] == "running" for n in nodes),
             "stalled": any(n.get("stalled") and n["status"] == "running" for n in nodes),
         })
+        for child in (sub_plan(state, s["id"]) or {}).get("slices", []):
+            add(child, level + 1)
+
+    for s in (live_plan(state) or {}).get("slices") or []:
+        add(s, 0)
     return rows
 
 
@@ -433,6 +513,22 @@ def _scout_part(state):
 def _slice_part(s, heading="## Your slice"):
     return [heading, "", f"Slice {s['id']}: {s['intent']}", "", "Files you may touch:"] + _bullets(s["files"]) + [
         "", f"Done when: {s['done_when']}", f"Risk: {s['risk']} ({s['risk_why']})", ""]
+
+
+def _split_part(state, n):
+    """What a builder that split its slice made of it: each smaller slice,
+    what its builds changed, and its latest review."""
+    split = split_plan(n)
+    lines = [f"It split the slice into {len(split['slices'])} smaller slices ({split['rationale']}), each built "
+             "and reviewed in turn:", ""]
+    for s in split["slices"]:
+        review = latest(state, "reviewer", s["id"], done=True)
+        changed = sorted({f for b in state["nodes"].values() if b["role"] == "builder" and b.get("slice") == s["id"]
+                          and b["status"] == "done" for f in b["result"]["changed"]})
+        lines.append(f"- {s['id']}: {s['intent']}; latest review: "
+                     + (review["result"]["verdict"] if review else "not reviewed")
+                     + (f"; changed {', '.join(changed)}" if changed else ""))
+    return lines + [""]
 
 
 def _builder_part(n):
@@ -489,7 +585,12 @@ def brief(state, nid):
         if s is None:
             raise RunError(f"the plan has no slice {slice_id}")
         lines += _slice_part(s, "## Your slice" if role == "builder" else "## The slice under review")
-        others = [o for o in live_plan(state)["slices"] if o["id"] != slice_id]
+        if s.get("parent"):
+            whole = slice_of(state, s["parent"])
+            lines += ["## The slice it is part of", "", f"A builder split slice {whole['id']} ({whole['intent']}) into "
+                      f"smaller slices; this is one of them. Done when, for the whole: {whole['done_when']}", ""]
+        siblings = sub_plan(state, s["parent"])["slices"] if s.get("parent") else live_plan(state)["slices"]
+        others = [o for o in siblings if o["id"] != slice_id]
         if others:
             lines += ["## The other slices (not yours)", ""]
             lines += [f"- {o['id']}: {o['intent']} ({', '.join(o['files'])})" for o in others] + [""]
@@ -502,7 +603,11 @@ def brief(state, nid):
             lines += _review_part(reviews[-1])
         if role == "reviewer":
             built = latest(state, "builder", slice_id, done=True)
-            if built:
+            if built and split_plan(built):
+                lines += ["## What the builders report", ""] + _split_part(state, built)
+                lines += [f"Review slice {slice_id} as a whole: the smaller slices together must do what it says, "
+                          "and its done-when must pass.", ""]
+            elif built:
                 lines += ["## What the builder reports", ""] + _builder_part(built)
             if reviews:
                 lines += ["## Earlier reviews of this slice", ""]
@@ -535,4 +640,6 @@ def brief(state, nid):
 
 def task_for(state, nid):
     """A node's whole task: its brief, then the reply format for its role."""
-    return brief(state, nid) + "\n" + fleet_reply.reply_format(node(state, nid)["role"]) + "\n"
+    n = node(state, nid)
+    split = n["role"] == "builder" and can_split(state, n.get("slice"))
+    return brief(state, nid) + "\n" + fleet_reply.reply_format(n["role"], can_split=split) + "\n"

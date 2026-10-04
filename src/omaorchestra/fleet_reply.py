@@ -103,6 +103,18 @@ def _command(limit=OUTPUT_LIMIT):
 
 # ---------------------------------------------------------------- the contracts
 
+# A slice of a plan: the architect's, or one a builder split its own into.
+SLICE = Fields({
+    "id": Text(20, pattern=SLICE_ID),
+    "intent": Text(2000),
+    "files": Many(Text(300), least=1, most=200),
+    "done_when": Text(1000),
+    "risk": OneOf("high", "low"),
+    "risk_why": Text(1000),
+})
+EDGES = Many(Fields({"from": Text(20), "to": Text(20), "artifact": Text(1000)}), most=100)
+MAX_CHILDREN = 8
+
 CONTRACTS = {
     "scout": Fields({
         "facts": Many(Fields({"fact": Text(1000), "where": Text(300)}), most=100),
@@ -113,22 +125,17 @@ CONTRACTS = {
     "architect": Fields({
         "shape": OneOf("single-loop", "diamond"),
         "rationale": Text(4000),
-        "slices": Many(Fields({
-            "id": Text(20, pattern=SLICE_ID),
-            "intent": Text(2000),
-            "files": Many(Text(300), least=1, most=200),
-            "done_when": Text(1000),
-            "risk": OneOf("high", "low"),
-            "risk_why": Text(1000),
-        }), least=1, most=20),
+        "slices": Many(SLICE, least=1, most=20),
         "not_doing": Many(Text(1000), most=50),
         "approve": Text(2000),
-    }, {"edges": Many(Fields({"from": Text(20), "to": Text(20), "artifact": Text(1000)}), most=100)}),
+    }, {"edges": EDGES}),
+    # `done_when` is required unless the builder split its slice (_consistent).
     "builder": Fields({
-        "status": OneOf("done", "blocked"),
+        "status": OneOf("done", "blocked", "split"),
         "changed": Many(Text(300), most=500),
-        "done_when": _command(),
-    }, {"blocked": Text(2000), "noticed": Text(1000)}),
+    }, {"done_when": _command(), "blocked": Text(2000), "noticed": Text(1000),
+        "split": Fields({"rationale": Text(2000), "slices": Many(SLICE, least=2, most=MAX_CHILDREN)},
+                        {"edges": EDGES})}),
     "reviewer": Fields({
         "verdict": OneOf("PASS", "REJECT"),
         "findings": Many(Fields({"severity": OneOf("blocker", "note"), "where": Text(300), "what": Text(2000)},
@@ -172,21 +179,35 @@ def _cycle(slices, edges):
     return any(s not in state and visit(s) for s in slices)
 
 
+def _plan_consistent(plan, where=""):
+    """Slices with distinct ids and paths inside the repository, joined by
+    edges that go somewhere and never round in a circle."""
+    ids = [s["id"] for s in plan["slices"]]
+    if len(set(ids)) != len(ids):
+        raise ReplyError(f"{where}two slices share an id")
+    for s in plan["slices"]:
+        _files(s["files"], f"{where}slice {s['id']}")
+    plan["edges"] = plan["edges"] or []
+    for edge in plan["edges"]:
+        if edge["from"] not in ids or edge["to"] not in ids or edge["from"] == edge["to"]:
+            raise ReplyError(f"{where}edge {edge['from']} -> {edge['to']} must join two different slices")
+    if _cycle(ids, plan["edges"]):
+        raise ReplyError(f"{where}the edges go round in a circle")
+
+
 def _consistent(role, reply):
     """Refuse what contradicts itself; the shape alone cannot say."""
     if role == "architect":
-        ids = [s["id"] for s in reply["slices"]]
-        if len(set(ids)) != len(ids):
-            raise ReplyError("two slices share an id")
-        for s in reply["slices"]:
-            _files(s["files"], f"slice {s['id']}")
-        reply["edges"] = reply["edges"] or []
-        for edge in reply["edges"]:
-            if edge["from"] not in ids or edge["to"] not in ids or edge["from"] == edge["to"]:
-                raise ReplyError(f"edge {edge['from']} -> {edge['to']} must join two different slices")
-        if _cycle(ids, reply["edges"]):
-            raise ReplyError("the edges go round in a circle")
+        _plan_consistent(reply)
     elif role == "builder":
+        if reply["status"] == "split":
+            if not reply["split"]:
+                raise ReplyError("status is split but split does not give the slices")
+            _plan_consistent(reply["split"], "split: ")
+            return reply
+        reply["split"] = None
+        if not reply["done_when"]:
+            raise ReplyError("no done_when")
         if reply["status"] == "done" and not reply["done_when"]["passed"]:
             raise ReplyError("status is done but its done_when did not pass")
         if reply["status"] == "blocked" and not reply["blocked"]:
@@ -295,9 +316,36 @@ NOTES = {
 }
 
 
-def reply_format(role):
-    """What to end the final reply with, for the node's task."""
+SPLIT_EXAMPLE = {
+    "status": "split",
+    "changed": [],
+    "split": {
+        "rationale": "The lookup and the reset flow are two changes, each checked on its own.",
+        "slices": [
+            {"id": "lookup", "intent": "Look users up by email", "files": ["src/auth/session.py"],
+             "done_when": "python -m pytest tests/test_login.py -> passes", "risk": "high",
+             "risk_why": "It changes how every login is checked"},
+            {"id": "reset", "intent": "Send the reset link by email", "files": ["src/auth/reset.py"],
+             "done_when": "python -m pytest tests/test_reset.py -> passes", "risk": "low",
+             "risk_why": "A flow few people use"}],
+        "edges": [{"from": "lookup", "to": "reset", "artifact": "the email lookup"}],
+    },
+}
+
+SPLIT_NOTE = ("If your slice is too big to build as one change (it needs more than one reviewable change, or its "
+              "files fall into parts that can be checked apart), you may split it instead of building it: change "
+              "nothing, and end with a block in this shape. Each smaller slice is built and reviewed in turn, then "
+              f"your slice is reviewed as a whole. Give 2 to {MAX_CHILDREN} slices; their `files` must stay within "
+              "your slice's files, and `edges` list only those that use something another produces. Never split to "
+              "get round a review that sent your slice back.")
+
+
+def reply_format(role, can_split=False):
+    """What to end the final reply with, for the node's task; a builder that
+    may split its slice is told how."""
     kind = contract_for(role)
+    split = ["", "### Or split the slice", "", SPLIT_NOTE, "", "```json",
+             json.dumps(SPLIT_EXAMPLE, indent=2, ensure_ascii=False), "```"] if can_split and kind == "builder" else []
     return "\n".join([
         "## Reply format",
         "",
@@ -310,4 +358,5 @@ def reply_format(role):
         "```",
         "",
         NOTES[kind],
+        *split,
     ])

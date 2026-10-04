@@ -62,7 +62,7 @@ Newline-delimited JSON over the socket, one response per request:
 | `{"cmd": "stopping", "session_id"}` | `{"ok": true, "known": bool}`: it is being stopped on purpose (history says "stopped", not "crashed") |
 | `{"cmd": "fleet-start", "goal", "folder", "fleet"?, "shape"?, "budget"?, "path"?}` | `{"ok": true, "run": {...}}`: a fleet run (`fleet_graph.py`), its first node queued |
 | `{"cmd": "fleet-list"}`, `{"cmd": "fleet-show", "run"}` | `{"ok": true, "runs": [...]}`, `{"ok": true, "run": {...}, "activity": [...]}` (`run` is an id or prefix) |
-| `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, merge) is passed |
+| `{"cmd": "fleet-approve", "run", "gate"?, "note"?}` | `{"ok": true, "run": {...}}`: the gate it waits at (plan, split, merge) is passed |
 | `{"cmd": "fleet-cancel", "run"}` | `{"ok": true, "run": {...}}`: nothing more starts; its queued nodes are removed |
 | `{"cmd": "fleet-send-back", "run", "note"}`, `fleet-drop` (`slice`), `fleet-shape` (`shape`) | `{"ok": true, "run": {...}}`: answers at the plan gate |
 | `{"cmd": "fleet-accept-scope", "run", "node", "reason"}`, `{"cmd": "fleet-scope-back", "run", "node"}` | `{"ok": true, "run": {...}}`: a builder's files outside its slice (`fleet_scope.py`) accepted, or the slice sent to a new builder to undo them |
@@ -122,6 +122,13 @@ merge gates stop it until `fleet-approve`. After the plan gate the run gets a
 worktree of its own (branch `omaorchestra/fleet-<run>`); in a diamond each
 slice gets another (`omaorchestra/fleet-<run>-<slice>`, from the run's
 branch, or from the slice it depends on).
+
+A builder whose fleet allows it (`max_depth`) may reply `split` with
+smaller slices instead of building. Nothing stores them apart: they are
+read from that builder's result (`fleet.split_plan`), with ids made from the
+slice and the attempt, and run one at a time in the slice's worktree before
+a reviewer checks the slice as a whole. A split stops at a `split` gate only
+when the fleet sets `split_gate`.
 
 A second daemon refuses to start while one is answering on the socket; a stale
 socket file is replaced.
