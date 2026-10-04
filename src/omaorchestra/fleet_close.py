@@ -3,7 +3,8 @@
 A run may be closed once it has finished and git agrees:
 
   - every slice was built (done, not blocked) and its latest build was
-    reviewed PASS;
+    reviewed PASS; a slice a builder split, reviewed PASS as a whole, and
+    each of its smaller slices so;
   - the commits each slice's builder ended at are on the run's branch (in a
     diamond, the integrator merged them there);
   - the run's branch has commits of its own, and its worktree and each
@@ -65,22 +66,31 @@ def check(state):
         return checks
     own = state.get("worktree")
     in_git = bool(state.get("repo") and own)
-    for s in plan["slices"]:
+
+    def built_and_passed(s):
+        """A slice built and reviewed PASS with its commits on the run's
+        branch; a split one, reviewed PASS as a whole, and each smaller slice so."""
         sid = s["id"]
         built = fleet.latest(state, "builder", sid)
-        if not built or built["status"] != "done" or built["result"]["status"] != "done":
+        split = fleet.split_plan(built) if built else None
+        if not built or built["status"] != "done" or (built["result"]["status"] != "done" and not split):
             add(False, f"{sid} was not built")
-            continue
+            return
         if not fleet_graph.passed(state, sid):
             add(False, f"{sid}'s latest build was not reviewed PASS")
-            continue
+            return
+        if split:
+            add(True, f"{sid} reviewed PASS as a whole, split into {', '.join(c['id'] for c in split['slices'])}")
+            for child in split["slices"]:
+                built_and_passed(child)
+            return
         head = (built.get("git") or {}).get("head")
         if not in_git:
             add(True, f"{sid} built and reviewed PASS (not in git: nothing to check there)")
-            continue
+            return
         if not head:
             add(False, f"{sid}: where its builder ended is not known")
-            continue
+            return
         on_branch = _git(own["path"], "merge-base", "--is-ancestor", head, state["branch"])
         base = (built.get("git") or {}).get("base")
         add(on_branch is not None and on_branch.returncode == 0,
@@ -89,10 +99,13 @@ def check(state):
             else f"{sid}'s commits ({head[:10]}) are not on {state['branch']}")
         if base and head == base:
             add(False, f"{sid}'s builder made no commits")
-        record = state.get("slice_worktrees", {}).get(sid)
-        if record:
+
+    for s in plan["slices"]:
+        built_and_passed(s)
+        record = state.get("slice_worktrees", {}).get(s["id"])
+        if record and in_git:
             dirty = _clean(record["path"])
-            add(not dirty, f"{sid}'s worktree is clean" if not dirty else f"{sid}'s worktree {dirty}")
+            add(not dirty, f"{s['id']}'s worktree is clean" if not dirty else f"{s['id']}'s worktree {dirty}")
     if state.get("shape") == "diamond":
         integrator = fleet.latest(state, "integrator", done=True)
         if not integrator:

@@ -120,8 +120,15 @@ def cards(state):
             "dropped": [f"{s['id']}: {s['intent']}" for s in dropped],
             "actions": ["approve", "send-back", "drop", "shape", "cancel"],
         })
+    elif state["status"] == "at-gate" and state.get("gate") == "split":
+        split = fleet.split_plan(state["nodes"][state["split_node"]]) or {}
+        out.append({"kind": "split", "title": "Approve the split", "since": since, "node": state["split_node"],
+                    "rationale": split.get("rationale") or "", "slices": split.get("slices") or [],
+                    "edges": [f"{e['from']} before {e['to']}: {e['artifact']}" for e in split.get("edges") or []],
+                    "actions": ["approve", "cancel"]})
     elif state["status"] == "at-gate" and state.get("gate") == "merge":
-        slices = [{"id": r["slice"], "intent": r["intent"], "branch": r["branch"]} for r in fleet.board(state)]
+        slices = [{"id": r["slice"], "intent": r["intent"], "branch": r["branch"]} for r in fleet.board(state)
+                  if not r["depth"]]
         out.append({"kind": "merge", "title": "Approve the merge", "since": since, "slices": slices,
                     "into": state.get("branch") or "", "actions": ["approve", "cancel"]})
     elif state["status"] == "held":
@@ -206,7 +213,9 @@ def graph(state):
         review = fleet.latest(state, "reviewer", sid)
         rejects = sum(1 for n in state["nodes"].values() if n["role"] == "reviewer" and n.get("slice") == sid
                       and n["status"] == "done" and n["result"]["verdict"] == "REJECT")
-        add(f"builder.{sid}", f"Builder {sid}", f"try {built['attempt']}/{tries}" if built and built["attempt"] > 1
+        split = fleet.split_plan(built) if built else None
+        add(f"builder.{sid}", f"Builder {sid}", f"split · {len(split['slices'])} slices" if split
+            else f"try {built['attempt']}/{tries}" if built and built["attempt"] > 1
             else (built or {}).get("agent") or "", node_state(built) if built else "queued", 3, lane, built)
         add(f"reviewer.{sid}", f"Reviewer {sid}", (review or {}).get("agent") or "",
             node_state(review) if review else "queued", 4, lane, review)

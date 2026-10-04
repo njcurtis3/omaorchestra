@@ -130,11 +130,11 @@ def report(state, activity, now=None):
     for r in roles.values():
         r["share"] = round(r["cost"] / total_cost, 3) if total_cost else 0.0
     slices = []
-    for s in (fleet.live_plan(state) or {}).get("slices") or []:
-        mine = [n for n in state["nodes"].values() if n.get("slice") == s["id"]]
+    for row in fleet.board(state):  # a split slice's smaller slices too, after it
+        mine = [n for n in state["nodes"].values() if n.get("slice") == row["slice"]]
         reviews = [n for n in mine if n["role"] == "reviewer" and n["status"] == "done"]
         latest = max(reviews, key=lambda n: n["attempt"]) if reviews else None
-        slices.append({"slice": s["id"], "builds": sum(1 for n in mine if n["role"] == "builder"),
+        slices.append({"slice": row["slice"], "depth": row["depth"], "builds": sum(1 for n in mine if n["role"] == "builder"),
                        "rejects": sum(1 for n in reviews if n["result"]["verdict"] == "REJECT"),
                        "verdict": latest["result"]["verdict"] if latest else None,
                        "extra_files": sum(len((n.get("scope") or {}).get("extra") or []) for n in mine

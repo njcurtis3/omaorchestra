@@ -128,6 +128,37 @@ class SingleLoopCloseTest(RunHarness):
         self.assertIn("merged", worktrees.merge(record))
         self.assertTrue((self.repo / "part2.py").exists())
 
+    def test_a_split_slice_is_checked_through_its_smaller_slices(self):
+        (self.root / "fleets.toml").write_text('[fleets.deep]\nshape = "single-loop"\nmax_depth = 2\n')
+        response = self.d.handle({"cmd": "fleet-start", "goal": "Make it better", "folder": str(self.repo),
+                                  "fleet": "deep"})
+        self.run = response["run"]["id"]
+        self.finish("scout", example("scout"))
+        plan = plan_reply(1, "single-loop")
+        plan["slices"][0]["files"] = ["pkg/"]
+        self.finish("architect", plan)
+        self.d.handle({"cmd": "fleet-approve", "run": self.run})
+        pieces = [{"id": c, "intent": c, "files": [f"pkg/{c}.py"], "done_when": "true -> passes", "risk": "low",
+                   "risk_why": "small"} for c in ("a", "b")]
+        self.finish("builder.s1", {"status": "split", "changed": [],
+                                   "split": {"rationale": "two parts", "slices": pieces, "edges": []}})
+
+        def piece(name):
+            def work(cwd):
+                Path(cwd, "pkg").mkdir(exist_ok=True)
+                commit(cwd, f"pkg/{name}.py")
+            return work
+        for c in ("a", "b"):
+            self.finish(f"builder.s1-{c}", example("builder"), piece(c))
+            self.finish(f"reviewer.s1-{c}", PASS)
+        self.finish("reviewer.s1", PASS)
+        self.assertEqual(self.state()["status"], "done")
+        response = self.close()
+        self.assertTrue(response["ok"], response)
+        said = [w for _, w in response["checks"]]
+        self.assertIn("s1 reviewed PASS as a whole, split into s1-a, s1-b", said)
+        self.assertIn(f"s1-b built, reviewed PASS, and its commits are on {self.state()['branch']}", said)
+
     def test_uncommitted_work_and_no_commits_block_it(self):
         self.start("single-loop", 1, "single-loop")
         self.finish("builder.s1", example("builder"), lambda cwd: (Path(cwd) / "part1.py").write_text("x\n"))

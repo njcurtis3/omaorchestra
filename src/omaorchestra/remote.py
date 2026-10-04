@@ -90,6 +90,8 @@ def fleet_message(state, level):
     status, gate = state["status"], state.get("gate")
     if status == "at-gate" and gate == "plan":
         title, body = f"{name}: a plan is ready for you", "Approve, send back or cancel it (omaorchestra top)"
+    elif status == "at-gate" and gate == "split":
+        title, body = f"{name}: a builder split its slice", "Approve the split or cancel (omaorchestra top)"
     elif status == "at-gate":
         title, body = f"{name}: slices ready to merge", "Approve the merge or cancel (omaorchestra top)"
     elif status == "held":

@@ -168,7 +168,7 @@ that can run `top` and nothing else.
   builders start, **b** sends it back to the architect with a note, **d**
   drops a slice, **l** runs it as a single loop or a diamond (still
   checked), **x** cancels the run. At the merge gate **y** approves the
-  merge. On a finished run **c** closes it: git is checked first (every
+  merge, and at a split gate (`split_gate`) the builder's split. On a finished run **c** closes it: git is checked first (every
   slice built, reviewed PASS and its commits on the run's branch, nothing
   left uncommitted), the slices' worktrees are removed, and the run's own
   branch is left for you to merge (`omaorchestra worktree merge <branch>`).

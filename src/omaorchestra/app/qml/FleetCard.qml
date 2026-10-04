@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // One decision a fleet run waits on you for (present_fleet.cards): the plan
-// gate, the merge gate, files outside a slice, a slice rejected too often, a
+// gate, a builder's split (when its fleet asks for one), the merge gate, files outside a slice, a slice rejected too often, a
 // reply that could not be read, any other hold, its limits, or closing a
 // finished run. Never a modal: it sits at the top of the run. `fleets`,
 // `sessions` and `theme` come from Python.
@@ -121,6 +121,35 @@ Rectangle {
       Para { visible: (card.card_.risks || []).length > 0; text: (card.card_.risks || []).join("; "); color: theme.muted }
       Heading { text: "To approve" }
       Para { text: card.card_.approve || "" }
+    }
+
+    // ------------------------------------------------------ a builder's split
+    ColumnLayout {
+      visible: card.kind === "split"
+      Layout.fillWidth: true
+      spacing: 4
+      Para { text: (card.card_.node || "") + " split its slice into smaller ones, each built and reviewed in turn; then the slice is reviewed as a whole." }
+      Para { text: card.card_.rationale || ""; color: theme.muted }
+      Repeater {
+        model: card.kind === "split" ? card.card_.slices : []
+        delegate: Rectangle {
+          required property var modelData
+          objectName: "split-slice-" + modelData.id
+          Layout.fillWidth: true
+          implicitHeight: splitText.implicitHeight + 16
+          radius: 4
+          color: theme.surface
+          ColumnLayout {
+            id: splitText
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+            spacing: 2
+            Label { text: modelData.id + "  " + modelData.intent; color: theme.foreground; font.bold: true; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
+            Label { text: "files: " + modelData.files.join(", "); color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
+            Label { text: "done when: " + modelData.done_when; color: theme.muted; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.WrapAtWordBoundaryOrAnywhere }
+          }
+        }
+      }
+      Para { visible: (card.card_.edges || []).length > 0; text: "Order: " + (card.card_.edges || []).join("; "); color: theme.muted }
     }
 
     // ------------------------------------------------------ the merge
@@ -287,9 +316,10 @@ Rectangle {
 
       AppButton {
         objectName: "card-approve"
-        visible: card.kind === "plan" || card.kind === "merge"
+        visible: card.kind === "plan" || card.kind === "split" || card.kind === "merge"
         primary: true
-        text: card.kind === "plan" ? "Approve: builders start" : "Approve the merge"
+        text: card.kind === "plan" ? "Approve: builders start" : card.kind === "split" ? "Approve: its slices start"
+              : "Approve the merge"
         onClicked: card.done(fleets.approve(card.runId, card.kind, ""))
       }
       AppButton {

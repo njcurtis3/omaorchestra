@@ -136,6 +136,25 @@ def write_all(folder, now=None):
     fleet.save(state)
     ids["merge"] = state["id"]
 
+    # A builder split its slice, and the fleet asks you to approve splits.
+    state = _run("Rework the export formats", folder, clock, "single-loop", max_depth=2, split_gate=True)
+    fleet_graph.advance(state, now=clock(0))
+    _do(state, clock, "scout", _example("scout"))
+    _do(state, clock, "architect", _plan([("s1", "Rework the exporters", ["export/"], "high", "every format"),
+                                          ("s2", "Document the formats", ["docs/export.md"], "low", "docs")],
+                                         "single-loop"))
+    fleet_graph.approve(state, "plan", now=clock(1))
+    state.update(branch="omaorchestra/fleet-" + state["id"])
+    fleet_graph.advance(state, now=clock(0))
+    pieces = [{"id": c, "intent": intent, "files": [f"export/{c}.py"],
+               "done_when": f"pytest tests/test_{c}.py -> passes", "risk": "low", "risk_why": "one module"} for c, intent in (("csv", "Export as CSV"),
+                                                                           ("json", "Export as JSON"))]
+    _do(state, clock, "builder.s1", {"status": "split", "changed": [], "split": {
+        "rationale": "Two formats, each checked on its own.", "slices": pieces, "edges": []}}, 5,
+        cost={"usd": 0.30, "real": False})
+    fleet.save(state)
+    ids["split"] = state["id"]
+
     # Finished, not closed.
     state = _run("Fix the date picker on Safari", folder, clock, "single-loop")
     _to_plan(state, clock, "single-loop")

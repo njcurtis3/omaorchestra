@@ -342,7 +342,8 @@ class Top:
                                                         "closed: its work is on " + str(run.get("branch") or "the folder"))}
         elif key == "y" and gate:
             self.detail = True  # the plan on screen before saying yes
-            question = "Approve this plan? Builders start" if gate == "plan" else "Approve merging the slices?"
+            question = {"plan": "Approve this plan? Builders start", "split": "Approve the split? Its slices start"
+                        }.get(gate, "Approve merging the slices?")
             self.ask = {"kind": "confirm", "question": question,
                         "then": lambda: self.fleet_send({"cmd": "fleet-approve", "run": run["id"], "gate": gate},
                                                         f"approved the {gate}")}
@@ -740,17 +741,23 @@ class Top:
             field("", run.get("shape_note"), "work")
             if run.get("gate") == "plan":
                 field("why", plan.get("rationale"), "dim")
-            for s in plan["slices"]:
+            def slice_lines(s):
                 lines.append(("", ""))
-                field(s["id"], s["intent"], "bold")
+                field(s["id"], s["intent"] + (f" (split from {s['parent']})" if s.get("parent") else ""), "bold")
                 field("files", ", ".join(s["files"]))
                 field("done when", s["done_when"])
                 field("risk", f"{s['risk']}: {s['risk_why']}", "urgent" if s["risk"] == "high" else "dim")
                 for role in ("builder", "reviewer"):
                     n = fleet.latest(run, role, s["id"])
                     if n:
-                        verdict = n["result"]["verdict"] if role == "reviewer" and n["result"] else n["status"]
+                        verdict = "split" if fleet.split_plan(n) else \
+                            n["result"]["verdict"] if role == "reviewer" and n["result"] else n["status"]
                         field(role, f"{verdict} (try {n['attempt']})", "dim")
+                for child in (fleet.sub_plan(run, s["id"]) or {}).get("slices", []):
+                    slice_lines(child)
+
+            for s in plan["slices"]:
+                slice_lines(s)
             if run.get("dropped"):
                 field("dropped", ", ".join(run["dropped"]), "dim")
             if run.get("gate") == "plan":
@@ -759,6 +766,10 @@ class Top:
                 field("approve", plan.get("approve"), "bold")
                 field("", "y approves (builders start), b sends it back with a note, d drops a slice, l picks the "
                           "shape, x cancels.", "dim")
+            if run.get("gate") == "split":
+                lines.append(("", ""))
+                field("", f"{run.get('split_node')} split its slice: y approves (its slices start), x cancels.",
+                      "bold")
         else:
             for n in run["nodes"].values():
                 field(n["id"], n["status"] + (f": {n['error']}" if n.get("error") else ""), "dim")
