@@ -59,6 +59,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual(spawned[0][spawned[0].index("--session-id") + 1], sid)
         self.assertEqual(spawned[0][-1], "  fix the   flaky test  ")
 
+    def test_another_sessions_markers_stay_behind(self):
+        spawned = []
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_CHILD_SESSION": "1",
+                                          "CLAUDE_CODE_USE_BEDROCK": "1"}):
+            launch.run("x", self.tmp.name, spawn=lambda cmd, **kw: spawned.append(kw["env"]), request=lambda p: None)
+        env = spawned[0]
+        self.assertNotIn("CLAUDECODE", env)
+        self.assertNotIn("CLAUDE_CODE_CHILD_SESSION", env)
+        self.assertEqual(env["CLAUDE_CODE_USE_BEDROCK"], "1")  # your own setting stays
+        self.assertIn(launch.LAUNCH_VARIABLE, env)
+
     def test_untracked_when_daemon_is_down(self):
         def down(payload):
             raise client.DaemonUnavailable("no")
