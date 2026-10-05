@@ -9,9 +9,15 @@ ACTIVATE = b"activate\n"
 
 def server_name():
     """A full path in the user's own runtime folder: a bare name would put the
-    socket in the shared /tmp, where another user could take the name first."""
+    socket in the shared /tmp, where another user could take the name first.
+    An app on another daemon (OMAORCHESTRA_SOCKET, a throwaway one) is a
+    window of its own, not yours brought forward."""
+    import hashlib
     from .. import paths
-    return str(paths.runtime_dir() / "omaorchestra-app.sock")
+    default = paths.runtime_dir() / "omaorchestra.sock"
+    own = "" if paths.socket_path() == default else \
+        "-" + hashlib.sha1(str(paths.socket_path()).encode()).hexdigest()[:8]
+    return str(paths.runtime_dir() / f"omaorchestra-app{own}.sock")
 
 
 def ask_running_instance(name=None, timeout_ms=300, session="", fleet=""):
