@@ -523,6 +523,17 @@ SPLIT_PART = [
     "yourself, one after another, is not a split: that is building the slice, and you reply `done`.", ""]
 
 
+# Told to the architect when builders may split: not knowing, it read a goal
+# that said "split" as orders for the builder and wrote sub-steps into the
+# slice ("built one at a time by the builder"), the opposite of a split.
+ARCHITECT_SPLIT_PART = [
+    "## Builders may split slices", "",
+    "This run's fleet lets a builder split its slice into smaller ones: it hands them back, within the slice's "
+    "files, and omaorchestra gives each its own builder and reviewer. So say what each slice must do and how to "
+    "check it, never how to build it: no sub-steps or order of work for a builder. A slice may be bigger than one "
+    "change; its builder decides whether to split it.", ""]
+
+
 def _slice_part(s, heading="## Your slice"):
     return [heading, "", f"Slice {s['id']}: {s['intent']}", "", "Files you may touch:"] + _bullets(s["files"]) + [
         "", f"Done when: {s['done_when']}", f"Risk: {s['risk']} ({s['risk_why']})", ""]
@@ -589,6 +600,8 @@ def brief(state, nid):
         forced = (state.get("template") or {}).get("shape", "auto")
         if forced != "auto":
             lines += [f"This run's fleet uses the {forced} shape whatever you choose; plan for it.", ""]
+        if (state.get("template") or {}).get("max_depth", 1) > 1:
+            lines += ARCHITECT_SPLIT_PART
         lines += _scout_part(state)
         before = latest(state, "architect", done=True)
         if before and before["id"] != nid:

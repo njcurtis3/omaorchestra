@@ -209,6 +209,13 @@ class SplitRunTest(unittest.TestCase):
         self.assertIn("split:builder.s1", state["approved"])
         self.assertEqual(fleet_graph.advance(state), ["builder.s1-a"])
 
+    def test_the_architect_is_told_when_builders_may_split(self):
+        for depth, told in ((1, False), (2, True)):
+            state = fleet.create("Make it better", self.tmp.name, {**fleet_graph.get("auto"), "scout": False,
+                                                                    "max_depth": depth})
+            fleet_graph.advance(state)
+            self.assertEqual("## Builders may split slices" in fleet.brief(state, "architect"), told)
+
     def test_old_runs_without_a_depth_advance_as_before(self):
         state = self.run_of()
         del state["template"]["max_depth"]
