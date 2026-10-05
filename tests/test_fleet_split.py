@@ -122,12 +122,15 @@ class SplitRunTest(unittest.TestCase):
     def test_a_split_runs_its_slices_then_reviews_the_whole(self):
         state = self.run_of(max_depth=2)
         self.assertEqual(fleet_graph.advance(state), ["builder.s1"])
-        self.assertIn("Or split the slice", fleet.task_for(state, "builder.s1"))
+        task = fleet.task_for(state, "builder.s1")
+        self.assertIn("Or split the slice", task)
+        self.assertLess(task.index("## Build it, or split it"), task.index("## Reply format"))  # up front
         self.step(state, "builder.s1", split_reply(edges=[("b", "a")], files={"b": ["part1/b.py"]}),
                   ["builder.s1-b"])  # b first: a uses what it makes
         self.assertEqual((fleet.depth(state, "s1-b"), fleet.root_slice(state, "s1-b")), (1, "s1"))
         self.assertNotIn("Or split the slice", fleet.task_for(state, "builder.s1-b"))  # depth 2 is the limit
         brief = fleet.brief(state, "builder.s1-b")
+        self.assertNotIn("## Build it, or split it", brief)
         self.assertIn("Slice s1-b: Piece b", brief)
         self.assertIn("split slice s1 (Part 1)", brief)
         self.assertIn("- s1-a: Piece a", brief)
