@@ -113,6 +113,9 @@ builder s2 ─ split ─→ s2-a: builder → reviewer ─→ s2-b: builder → 
   approved, and the scope check holds any builder that does. Set
   `split_gate = true` on a fleet to approve each split anyway, at a
   **split gate** (`fleet approve <run>`).
+- The architect is told builders may split, so it says what each slice must
+  do, not how to build it; a builder that may split is asked first thing
+  whether to build its slice or split it.
 - Every agent a split starts counts against `max_steps` and `budget`.
 
 The board, `fleet show` and `top` list the smaller slices under their slice.
