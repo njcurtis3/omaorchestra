@@ -74,8 +74,12 @@ class AppSocketTest(unittest.TestCase):
             from omaorchestra.app import instance
         except ImportError:
             self.skipTest("PySide6 not available")
-        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/4242"}):
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": "/run/user/4242", "OMAORCHESTRA_SOCKET": ""}):
             self.assertEqual(instance.server_name(), "/run/user/4242/omaorchestra-app.sock")
+            # An app on a throwaway daemon is a window of its own, still in the private folder.
+            os.environ["OMAORCHESTRA_SOCKET"] = "/run/user/4242/other.sock"
+            other = instance.server_name()
+            self.assertTrue(other.startswith("/run/user/4242/omaorchestra-app-"), other)
 
 
 class DefaultsTest(unittest.TestCase):
