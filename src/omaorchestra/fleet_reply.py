@@ -332,12 +332,11 @@ SPLIT_EXAMPLE = {
     },
 }
 
-SPLIT_NOTE = ("If your slice is too big to build as one change (it needs more than one reviewable change, or its "
-              "files fall into parts that can be checked apart), you may split it instead of building it: change "
-              "nothing, and end with a block in this shape. Each smaller slice is built and reviewed in turn, then "
-              f"your slice is reviewed as a whole. Give 2 to {MAX_CHILDREN} slices; their `files` must stay within "
-              "your slice's files, and `edges` list only those that use something another produces. Never split to "
-              "get round a review that sent your slice back.")
+SPLIT_NOTE = ("If you split your slice instead of building it, change nothing and end with a block in this shape "
+              "instead. omaorchestra starts a new builder and reviewer for each smaller slice, in turn, then a "
+              f"reviewer checks your slice as a whole. Give 2 to {MAX_CHILDREN} slices; their `files` must stay "
+              "within your slice's files, and `edges` list only those that use something another produces. A split "
+              "that changed any file is refused. Never split to get round a review that sent your slice back.")
 
 
 def reply_format(role, can_split=False):

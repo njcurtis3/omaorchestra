@@ -510,6 +510,19 @@ def _scout_part(state):
     return lines + [""]
 
 
+# Up front in a builder's brief when it may split: asked as a hint at the
+# end of the reply format, builders took "split" for how to work, building
+# the parts one after another themselves.
+SPLIT_PART = [
+    "## Build it, or split it", "",
+    "Decide this before you change anything. Split the slice when it needs more than one reviewable change, or its "
+    "files fall into parts that can be checked apart; otherwise build it.", "",
+    "Splitting is a reply, not a way of working: you change nothing, and end with a `split` block (the reply format "
+    "shows it) that lists smaller slices within your files. omaorchestra then starts a new builder and a new "
+    "reviewer for each smaller slice, and a reviewer checks your slice as a whole at the end. Building the parts "
+    "yourself, one after another, is not a split: that is building the slice, and you reply `done`.", ""]
+
+
 def _slice_part(s, heading="## Your slice"):
     return [heading, "", f"Slice {s['id']}: {s['intent']}", "", "Files you may touch:"] + _bullets(s["files"]) + [
         "", f"Done when: {s['done_when']}", f"Risk: {s['risk']} ({s['risk_why']})", ""]
@@ -585,6 +598,8 @@ def brief(state, nid):
         if s is None:
             raise RunError(f"the plan has no slice {slice_id}")
         lines += _slice_part(s, "## Your slice" if role == "builder" else "## The slice under review")
+        if role == "builder" and can_split(state, slice_id):
+            lines += SPLIT_PART
         if s.get("parent"):
             whole = slice_of(state, s["parent"])
             lines += ["## The slice it is part of", "", f"A builder split slice {whole['id']} ({whole['intent']}) into "
