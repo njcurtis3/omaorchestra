@@ -16,6 +16,22 @@ from . import adapters, client, config, modeldefaults, providers, recent, roles,
 
 LAUNCH_VARIABLE = "OMAORCHESTRA_LAUNCH_ID"
 
+# What a Claude Code session puts in its own environment, for the processes it
+# runs. Started from inside one (a daemon or a task run from an agent's shell),
+# an agent would inherit them and take itself for that session's child: Claude
+# Code then saves no transcript, so its reply cannot be read. Only these
+# markers go; settings you export yourself (CLAUDE_CODE_USE_BEDROCK...) stay.
+SESSION_VARIABLES = ("CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH",
+                     "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SESSION_ATTENDED",
+                     "CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN")
+
+
+def agent_env(path=None, **extra):
+    """The environment an agent starts with: ours, less another session's
+    markers, with PATH and `extra` on top."""
+    env = {k: v for k, v in os.environ.items() if k not in SESSION_VARIABLES}
+    return {**env, **({"PATH": path} if path else {}), **extra}
+
 # Same window class as Omarchy's own agent windows (omarchy-agent).
 APP_ID = "org.omarchy.agent"
 
@@ -65,7 +81,7 @@ def resume(record, spawn=subprocess.Popen, request=client.request, path=None):
     except client.DaemonUnavailable:
         tracked = False
     command = terminal_command(folder, adapter.resume_command(session_id, folder, agent_bin))
-    env = {**os.environ, **({"PATH": path} if path else {}), LAUNCH_VARIABLE: session_id}
+    env = agent_env(path, **{LAUNCH_VARIABLE: session_id})
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True, env=env)
@@ -163,7 +179,7 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
                                                         agent_bin))
     # The launch id travels in the agent's environment: its hooks inherit it
     # and report it, which ties the agent's own session id to this placeholder.
-    env = {**os.environ, **({"PATH": path} if path else {}), **route_env, **role_env, LAUNCH_VARIABLE: session_id}
+    env = agent_env(path, **route_env, **role_env, **{LAUNCH_VARIABLE: session_id})
     try:
         spawn(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
               start_new_session=True, env=env)
