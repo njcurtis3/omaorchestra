@@ -134,6 +134,30 @@ class FleetCliTest(unittest.TestCase):
         self.assertIn("omaorchestra worktree merge", out)
         self.assertIn("closed", self.cli("fleet", "list")[1])
 
+    def test_a_split_at_its_gate_and_on_the_board(self):
+        (self.root / "fleets.toml").write_text('[fleets.deep]\nshape = "single-loop"\nmax_depth = 2\n'
+                                               'split_gate = true\n')
+        self.start("--fleet", "deep")
+        self.finish("scout", example("scout"))
+        plan = plan_reply(1)
+        plan["slices"][0]["files"] = ["pkg/"]
+        self.finish("architect", plan)
+        self.cli("fleet", "approve", self.run)
+        pieces = [{"id": c, "intent": f"Piece {c}", "files": [f"pkg/{c}.py"], "done_when": "true -> passes",
+                   "risk": "low", "risk_why": "small"} for c in ("a", "b")]
+        self.finish("builder.s1", {"status": "split", "changed": [],
+                                   "split": {"rationale": "Two parts, checked apart", "slices": pieces, "edges": []}})
+        code, out = self.cli("fleet", "show", self.run)
+        for expected in ("waiting at the split gate", "builder.s1 split its slice: Two parts, checked apart",
+                         "s1-a: Piece a", "files: pkg/a.py", f"omaorchestra fleet approve {self.run}   (or: cancel)"):
+            self.assertIn(expected, out)
+        self.assertEqual(self.cli("fleet", "approve", self.run)[0], 0)
+        code, out = self.cli("fleet", "show", self.run)
+        self.assertNotIn("split its slice", out)
+        self.assertIn("  s1      split        -", out)
+        self.assertIn("    s1-a  running      -", out)  # a smaller slice, indented under its slice
+        self.assertIn("    s1-b  not started", out)
+
     def test_answers_at_the_plan_gate(self):
         self.start()
         self.finish("scout", example("scout"))

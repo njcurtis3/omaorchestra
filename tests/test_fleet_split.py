@@ -197,6 +197,17 @@ class SplitRunTest(unittest.TestCase):
         n = self.answer(state, "builder.s1-a-a", split_reply("part1/a/x"))
         self.assertIn("splits 2 levels deep", n["error"])
 
+    def test_the_step_limit_stops_a_split(self):
+        # architect, builder.s1, builder.s1-a: the third step; reviewer.s1-a would be a fourth.
+        state = self.run_of(max_depth=2, max_steps=3)
+        fleet_graph.advance(state)
+        self.step(state, "builder.s1", split_reply(), ["builder.s1-a"])
+        self.step(state, "builder.s1-a", example("builder"), [])
+        self.assertEqual((state["status"], state["held_by"]), ("held", "limits"))
+        self.assertIn("limit of 3 steps", state["reason"])
+        fleet_graph.set_limits(state, max_steps=10)
+        self.assertEqual(fleet_graph.advance(state), ["reviewer.s1-a"])  # raised: the split goes on
+
     def test_the_split_gate(self):
         state = self.run_of(max_depth=2, split_gate=True)
         fleet_graph.advance(state)
