@@ -62,7 +62,10 @@ says why.
 Each agent is a queued task in a terminal of its own, so the queue's limits
 apply: the parallel limit, the daily budget, and usage limits. The first
 time an agent works in a folder, Claude Code asks whether to trust it;
-answer in its window. Every agent shows in Sessions, with a chip naming its
+answer in its window. Claude Code agents run in its **auto** permission
+mode, so they go on without asking you to say yes to each command; a
+role's own `permissionMode`, or the fleet's `permission_mode`, sets
+another. Every agent shows in Sessions, with a chip naming its
 run and role. An agent's window stays open after its reply is read, so you
 can look back at its work; once the node is done the run no longer needs
 it, and an idle window holds no queue slot. Close it when you like.
@@ -100,9 +103,12 @@ builder s2 ─ split ─→ s2-a: builder → reviewer ─→ s2-b: builder → 
 ```
 
 - The smaller slices (`s2-a`, `s2-b`...; `s2-2a` for a second build's split)
-  run one at a time, in the order their edges allow, in the slice's own
+  run one at a time, in the order their edges allow (an edge's `from`
+  produces what its `to` uses, so `from` is built first), in the slice's own
   worktree and branch. Each is built and reviewed like any slice, with its
-  own `tries`, and may split again while the depth allows.
+  own `tries`, and may split again while the depth allows. One that
+  finds its work already done by another (its builder changes nothing)
+  still counts as built once its reviewer passes it.
 - When all of them have passed, a reviewer checks the slice as a whole,
   against its own done-when. A REJECT sends it to a new builder, which may
   build it or split it again.
@@ -153,7 +159,7 @@ need you, and its panel lists them.
 
 | Held because | Answer |
 |---|---|
-| a reply without its JSON block, or a block that does not check | **Try again** (`fleet retry <run> [--note ...]`), or ask the agent in its window to end with the block: its next reply is read again |
+| a reply without its JSON block, or a block that does not check | **Try again** (`fleet retry <run> [--note ...]`): the new attempt is told why the last reply was refused. Or ask the agent in its window to end with the block: its next reply is read again |
 | an agent's session stopped, crashed, or could not start | **Try again** (`fleet retry`) |
 | a slice rejected `tries` times | **Another try** with a note (`fleet retry --note`), or **Take over**: its builder's window, to work in yourself |
 | a builder reported itself blocked | **Try again** with what it needs (`fleet retry --note`) |
@@ -193,7 +199,8 @@ pause`) stops anything new from starting; agents already working go on.
 
 - every slice built, its latest build reviewed PASS, and its commits on the
   run's branch (for a diamond, merged there by the integrator);
-- at least one commit per slice, and nothing left uncommitted;
+- at least one commit per slice (a smaller slice of a split may have none
+  when another did its work), and nothing left uncommitted;
 - every file the run's branch changed is in a slice's files, or one you
   accepted;
 - a diamond's integrator merged every slice and its suite passed.
@@ -300,6 +307,7 @@ max_steps = 30
 stall_minutes = 20
 max_depth = 1
 split_gate = false
+permission_mode = "auto"
 [fleets.careful.roles]
 reviewer = "security-reviewer"
 ```
@@ -315,6 +323,7 @@ reviewer = "security-reviewer"
 | `stall_minutes` | `20` | a working agent with no sign of life this long is flagged |
 | `max_depth` | `1` | how deep slices may [split](#recursive-slices) (1 to 4): 1, none; 2, a slice of the plan once |
 | `split_gate` | `false` | `true`: each split waits for you at a split gate |
+| `permission_mode` | `auto` | Claude Code's permission mode for the run's agents, unless their role sets one: `auto` goes on without asking; `manual` asks you before each command; or `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan` |
 | `roles.<stage>` | the stage's name | the role that plays `scout`, `architect`, `builder`, `reviewer` or `integrator` |
 
 The stages and their order are fixed; a fleet changes who plays them, the
@@ -326,7 +335,9 @@ with.
 Each agent's final reply ends with one fenced `json` block in its role's
 shape (the full shape and an example are in its task). omaorchestra keeps
 only these fields, cuts long output short, and refuses what contradicts
-itself.
+itself. Each text has a limit (1000 characters for a `done_when`, an
+edge's `artifact` and most others; 2000 for an `intent`), and a reply over
+one is refused.
 
 | Role | Fields | Refused when |
 |---|---|---|

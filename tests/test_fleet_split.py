@@ -72,6 +72,14 @@ class SplitReplyTest(unittest.TestCase):
         self.assertIn("Or split the slice", fleet_reply.reply_format("builder", can_split=True))
         self.assertNotIn("Or split the slice", fleet_reply.reply_format("reviewer", can_split=True))
 
+    def test_the_format_says_which_way_an_edge_goes_and_the_limits(self):
+        # A live run's builder split with its edge backwards, and an architect
+        # wrote a done_when over the limit twice.
+        for text in (fleet_reply.reply_format("architect"), fleet_reply.reply_format("builder", can_split=True)):
+            self.assertIn("`from` is the slice that produces it, `to` the one that uses it, so `from` is built "
+                          "first", " ".join(text.split()))
+            self.assertIn("1000 characters for `done_when`", text)
+
 
 class SplitTemplateTest(unittest.TestCase):
     def test_keys(self):
@@ -83,7 +91,8 @@ class SplitTemplateTest(unittest.TestCase):
             deep = fleet_graph.get("deep", file)
             self.assertEqual((deep["max_depth"], deep["split_gate"]), (3, True))
             for text, error in (("[fleets.x]\nmax_depth = 9\n", "max_depth must be"),
-                                ("[fleets.x]\nsplit_gate = 1\n", "split_gate must be")):
+                                ("[fleets.x]\nsplit_gate = 1\n", "split_gate must be"),
+                                ("[fleets.x]\npermission_mode = \"yes\"\n", "permission_mode must be")):
                 file.write_text(text)
                 with self.subTest(error=error), self.assertRaises(fleet_graph.FleetError) as caught:
                     fleet_graph.load(file)
@@ -186,6 +195,16 @@ class SplitRunTest(unittest.TestCase):
                 n = self.answer(state, "builder.s1", reply, changed)
                 self.assertEqual((n["status"], n["error_kind"], state["status"]), ("held", "reply", "held"))
                 self.assertIn(error, state["reason"])
+
+    def test_a_retry_after_a_refused_reply_is_told_why(self):
+        state = self.run_of()
+        fleet_graph.advance(state)
+        self.answer(state, "builder.s1", split_reply())
+        self.assertEqual(fleet_graph.retry(state, "build it"), "builder.s1.2")
+        self.assertEqual(state["nodes"]["builder.s1.2"]["feedback"], [
+            "omaorchestra refused the last builder's reply: slice s1 cannot be split: this run's fleet allows no "
+            "splits. Give a reply that avoids this.", "build it"])
+        self.assertIn("omaorchestra refused the last builder's reply", fleet.task_for(state, "builder.s1.2"))
 
     def test_deeper_splits_stop_at_the_depth(self):
         state = self.run_of(max_depth=3)
@@ -305,6 +324,24 @@ class DaemonSplitTest(unittest.TestCase):
         child = self.d.registry.sessions[state["nodes"]["builder.s1-a"]["session"]]
         self.assertEqual(child["cwd"], s1["workdir"])
         self.assertNotIn("s1-a", state["slice_worktrees"])
+
+
+    def test_agents_run_in_auto_mode_unless_their_role_says(self):
+        # Live runs stopped for a yes at each command the agent ran.
+        spawned = []
+        self.d.spawn = lambda cmd, **kw: spawned.append(" ".join(map(str, cmd)))
+        roles_dir = self.root / "roles"
+        roles_dir.mkdir()
+        (roles_dir / "careful.md").write_text("---\nname: careful\npermissionMode: acceptEdits\n---\n\nPlan it.\n")
+        (self.root / "fleets.toml").write_text('[fleets.deep]\nscout = false\n[fleets.manual]\nscout = false\n'
+                                               'permission_mode = "manual"\n[fleets.careful]\nscout = false\n'
+                                               '[fleets.careful.roles]\narchitect = "careful"\n')
+        for name, mode in (("deep", "auto"), ("manual", "manual"), ("careful", "acceptEdits")):
+            with self.subTest(fleet=name):
+                response = self.d.handle({"cmd": "fleet-start", "goal": f"Make it {name}", "folder": str(self.repo),
+                                          "fleet": name})
+                self.assertTrue(response["ok"], response)
+                self.assertIn(f"--permission-mode {mode} ", spawned[-1])
 
 
 if __name__ == "__main__":

@@ -61,8 +61,11 @@ BUILTIN = {
     "diamond": {"description": "Parallel builders when the plan allows it (checked), then an integrator",
                 "shape": "diamond"},
 }
+# Claude Code's permission mode for a run's agents unless their role sets one: in
+# auto mode they go on without asking you to say yes to each command.
+PERMISSION_MODE = "auto"
 KEYS = ("description", "shape", "scout", "tries", "roles", "budget", "max_steps", "stall_minutes", "max_depth",
-        "split_gate")
+        "split_gate", "permission_mode")
 MIN_DIAMOND = 3
 EXAMPLE = """[fleets.careful]
 description = "Single loop, reviewed by my security reviewer"
@@ -92,6 +95,7 @@ def _complete(name, spec, builtin):
            "scout": spec.get("scout", True), "tries": spec.get("tries", 2), "budget": spec.get("budget", 0),
            "max_steps": spec.get("max_steps", 30), "stall_minutes": spec.get("stall_minutes", 20),
            "max_depth": spec.get("max_depth", 1), "split_gate": spec.get("split_gate", False),
+           "permission_mode": spec.get("permission_mode", PERMISSION_MODE),
            "roles": {stage: (spec.get("roles") or {}).get(stage, stage) for stage in STAGES}, "builtin": builtin}
     return out
 
@@ -105,6 +109,8 @@ def _check(name, spec, where):
     for key in ("scout", "split_gate"):
         if not isinstance(spec.get(key, False), bool):
             raise FleetError(f"{where}: fleet {name}: {key} must be true or false")
+    if spec.get("permission_mode", PERMISSION_MODE) not in roles.PERMISSION_MODES:
+        raise FleetError(f"{where}: fleet {name}: permission_mode must be one of {', '.join(roles.PERMISSION_MODES)}")
     tries = spec.get("tries", 2)
     if isinstance(tries, bool) or not isinstance(tries, int) or not 1 <= tries <= 5:
         raise FleetError(f"{where}: fleet {name}: tries must be a whole number from 1 to 5")
@@ -500,8 +506,13 @@ def retry(state, note=None, now=None):
         raise fleet.RunError("it is held by its limits: raise them instead")
     if held == "paused":
         raise fleet.RunError("it is paused: resume it instead")
-    feedback = [" ".join(note.split())] if note and note.strip() else None
     n = state["nodes"].get(held) if held else None
+    feedback = [" ".join(note.split())] if note and note.strip() else []
+    if n and n.get("error_kind") == "reply" and n.get("error"):
+        # The new attempt is told why the last one was refused, so it does not repeat it.
+        said = n["error"].removeprefix("its reply: ").removeprefix("its ")
+        feedback.insert(0, f"omaorchestra refused the last {n['role']}'s reply: {said}. Give a reply that avoids "
+                           "this.")
     if n and n["role"] == "builder" and (n.get("scope") or {}).get("extra") and not n["scope"].get("accepted"):
         raise fleet.RunError("it is held by a builder's extra files: accept them or send the slice back")
     if n:

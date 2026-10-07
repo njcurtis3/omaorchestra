@@ -148,8 +148,10 @@ class SingleLoopCloseTest(RunHarness):
                 Path(cwd, "pkg").mkdir(exist_ok=True)
                 commit(cwd, f"pkg/{name}.py")
             return work
-        for c in ("a", "b"):
-            self.finish(f"builder.s1-{c}", example("builder"), piece(c))
+        # s1-b finds its work already done (found in a live run): it commits
+        # nothing, and its review passing it is enough.
+        for c, work in (("a", piece("a")), ("b", None)):
+            self.finish(f"builder.s1-{c}", example("builder"), work)
             self.finish(f"reviewer.s1-{c}", PASS)
         self.finish("reviewer.s1", PASS)
         self.assertEqual(self.state()["status"], "done")
@@ -157,7 +159,9 @@ class SingleLoopCloseTest(RunHarness):
         self.assertTrue(response["ok"], response)
         said = [w for _, w in response["checks"]]
         self.assertIn("s1 reviewed PASS as a whole, split into s1-a, s1-b", said)
-        self.assertIn(f"s1-b built, reviewed PASS, and its commits are on {self.state()['branch']}", said)
+        self.assertIn(f"s1-a built, reviewed PASS, and its commits are on {self.state()['branch']}", said)
+        self.assertIn("s1-b's builder changed nothing (another slice of its split may have done it), and it was "
+                      "reviewed PASS", said)
 
     def test_uncommitted_work_and_no_commits_block_it(self):
         self.start("single-loop", 1, "single-loop")
