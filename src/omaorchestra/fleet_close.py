@@ -98,7 +98,11 @@ def check(state):
             if on_branch is not None and on_branch.returncode == 0
             else f"{sid}'s commits ({head[:10]}) are not on {state['branch']}")
         if base and head == base:
-            add(False, f"{sid}'s builder made no commits")
+            # A smaller slice of a split may find its work already done by one
+            # before it; its reviewer passing it is enough.
+            child = bool(s.get("parent"))
+            add(child, f"{sid}'s builder changed nothing (another slice of its split may have done it), and it was "
+                "reviewed PASS" if child else f"{sid}'s builder made no commits")
 
     for s in plan["slices"]:
         built_and_passed(s)

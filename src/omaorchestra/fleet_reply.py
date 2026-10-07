@@ -301,7 +301,8 @@ NOTES = {
              "them, or \"not run\". `plan_killer` is the one finding that changes the plan, or null.",
     "architect": "`shape` is \"single-loop\" or \"diamond\". Slice ids are short (s1, s2...). `files` are paths "
                  "inside the repository; slices must not share files. `done_when` is a command and what it should "
-                 "give. `edges` list only slices that use something another produces. `approve` says what exactly "
+                 "give. `edges` list only slices that use something another produces: `from` is the slice that "
+                 "produces it, `to` the one that uses it, so `from` is built first. `approve` says what exactly "
                  "you need approved.",
     "builder": "`done_when` is the command you ran and its real output; `passed` is whether it passed. `status` is "
                "\"done\" only if it passed; otherwise \"blocked\", with `blocked` saying why. `noticed` is one thing "
@@ -335,7 +336,8 @@ SPLIT_EXAMPLE = {
 SPLIT_NOTE = ("If you split your slice instead of building it, change nothing and end with a block in this shape "
               "instead. omaorchestra starts a new builder and reviewer for each smaller slice, in turn, then a "
               f"reviewer checks your slice as a whole. Give 2 to {MAX_CHILDREN} slices; their `files` must stay "
-              "within your slice's files, and `edges` list only those that use something another produces. A split "
+              "within your slice's files, and `edges` list only those that use something another produces: `from` "
+              "is the slice that produces it, `to` the one that uses it, so `from` is built first. A split "
               "that changed any file is refused. Never split to get round a review that sent your slice back.")
 
 
@@ -350,7 +352,8 @@ def reply_format(role, can_split=False):
         "",
         "End your final reply with one fenced ```json block in exactly this shape (the values here are only an "
         "example). omaorchestra reads it to pass your work on, so it must be valid JSON; nothing else in your "
-        "reply is read.",
+        "reply is read. Each text has a limit (1000 characters for `done_when`, `risk_why`, an edge's "
+        "`artifact` and most others; 2000 for an `intent`): a reply over one is refused, so keep them short.",
         "",
         "```json",
         json.dumps(EXAMPLES[kind], indent=2, ensure_ascii=False),

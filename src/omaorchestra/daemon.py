@@ -791,6 +791,9 @@ class Daemon:
             task = fleet.task_for(state, nid)
             item = self.queue.add({"task": task, "cwd": workdir, "worktree": False, "worktree_path": worktree,
                                    "extra": [], "role": role_name, "agent": role.agent, "fleet": state["id"],
+                                   "permission_mode": role.permission_mode or (state["template"].get(
+                                       "permission_mode", fleet_graph.PERMISSION_MODE) if role.agent == "claude"
+                                       else None),
                                    "node": nid, "path": state.get("path")})
         except (worktrees.WorktreeError, roles.RoleError, fleet.RunError, taskqueue.QueueError) as e:
             fleet.hold(state, f"{nid} cannot start: {e}", by=nid)

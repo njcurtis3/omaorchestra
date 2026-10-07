@@ -55,7 +55,10 @@ passing:
 Neither is a wall. An agent that can run commands can do what you can,
 including starting a detached process that is no longer under it. What
 limits an agent is its own permission mode; keep that as tight as the work
-allows.
+allows. A fleet run's Claude Code agents run in its auto mode by default,
+where Claude Code's own checks decide what goes ahead without asking you;
+set `permission_mode = "manual"` on a fleet (or `permissionMode` on a
+role) to be asked instead ([fleets.toml](fleets.md#fleetstoml)).
 
 ## What leaves the machine
 
