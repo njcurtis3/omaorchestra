@@ -23,11 +23,13 @@ How each agent takes on a role (launch_args):
             and, for a read-only role, the read-only sandbox
   opencode  the role as an inline agent (OPENCODE_CONFIG_CONTENT) run with
             `--agent`, its edit, bash and web tools denied when the role
-            lacks them
+            lacks them; in auto mode, what opencode would ask you is
+            answered for it (OPENCODE_AUTO)
 
 A read-only role is one whose tools include none that write (Write, Edit,
 NotebookEdit). Claude's own permission modes and model names apply only when
-Claude runs the role; another agent keeps its own defaults.
+Claude runs the role; another agent keeps its own defaults, but for auto mode
+in opencode.
 """
 
 import json
@@ -289,9 +291,18 @@ def opencode_name(role):
     return f"omaorchestra-{role.name}"
 
 
-def launch_args(role, agent, environ=None):
+# What opencode asks you about, answered for an agent in auto mode, as a fleet
+# runs them: files outside the folder may be used (as Claude's auto mode
+# allows), secrets in .env files may not, and a call repeated in a loop is
+# refused, so the agent tries something else.
+OPENCODE_AUTO = {"external_directory": "allow", "doom_loop": "deny",
+                 "read": {"*.env": "deny", "*.env.*": "deny", "*.env.example": "allow"}}
+
+
+def launch_args(role, agent, environ=None, permission_mode=None):
     """How `agent` runs as `role`: {"extra": args for the agent's command
-    line, "env": variables to add, "model", "permission_mode"}."""
+    line, "env": variables to add, "model", "permission_mode"}.
+    `permission_mode` is the mode it runs in, when not the role's own."""
     environ = environ or {}
     spec = {"extra": [], "env": {}, "model": role.model_for(agent), "permission_mode": None}
     if agent == "claude":
@@ -317,6 +328,8 @@ def launch_args(role, agent, environ=None):
         for tool, key in (("Bash", "bash"), ("WebFetch", "webfetch"), ("WebSearch", "websearch")):
             if not role.allows(tool):
                 permission[key] = "deny"
+        if (permission_mode or role.permission_mode) == "auto":
+            permission = {**OPENCODE_AUTO, **permission}
         if permission:
             definition["permission"] = permission
         try:

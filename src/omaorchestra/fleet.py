@@ -30,6 +30,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -434,8 +435,13 @@ def opencode_reply(session_id, run=subprocess.run):
     if not session_id:
         return ""
     try:
-        out = run(["opencode", "export", session_id], capture_output=True, text=True, timeout=30)
-        data = json.loads(out.stdout[out.stdout.find("{"):]) if out.returncode == 0 else {}
+        # Into a file: through a pipe, opencode exits before its export is
+        # all written, and anything past 64 KB is lost (opencode 1.18).
+        with tempfile.TemporaryFile("w+", encoding="utf-8") as f:
+            out = run(["opencode", "export", session_id], stdout=f, stderr=subprocess.DEVNULL, timeout=30)
+            f.seek(0)
+            text = f.read()
+        data = json.loads(text[text.find("{"):]) if out.returncode == 0 else {}
     except (OSError, subprocess.SubprocessError, ValueError):
         return ""
     for message in reversed(data.get("messages") or [] if isinstance(data, dict) else []):

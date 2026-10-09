@@ -313,7 +313,9 @@ class ReadReplyTest(unittest.TestCase):
 
         def run(cmd, **kw):
             calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, "Exporting session...\n" + json.dumps(exported), "")
+            # Past 64 KB, as a live run's was: a pipe lost the end of it.
+            kw["stdout"].write("Exporting session...\n" + json.dumps({**exported, "padding": "x" * 70000}))
+            return subprocess.CompletedProcess(cmd, 0)
         self.assertEqual(fleet.opencode_reply("ses_1", run=run), "opencode says")
         self.assertEqual(calls[0], ["opencode", "export", "ses_1"])
         self.assertEqual(fleet.opencode_reply("ses_1", run=lambda c, **k: subprocess.CompletedProcess(c, 1, "", "")),
@@ -405,6 +407,19 @@ class DaemonFleetTest(unittest.TestCase):
         self.reply("nothing useful")
         self.update("idle", sid="S2")
         self.assertEqual(self.node()["status"], "running")
+
+    def test_an_adopted_opencode_session_is_followed(self):
+        # opencode reports its own session id with the launch id: the node
+        # moves to it, or never hears it finish (found in a live run).
+        self.d.handle({"cmd": "update", "session_id": "S1", "agent": "opencode", "status": "working",
+                       "cwd": self.tmp.name, "launching": True, "fleet": self.state["id"], "node": "scout"})
+        self.d.handle({"cmd": "update", "session_id": "ses_1", "agent": "opencode", "status": "working",
+                       "cwd": self.tmp.name, "launch_id": "S1"})
+        self.assertEqual(self.node()["session"], "ses_1")
+        with mock.patch.object(fleet, "opencode_reply", lambda sid: block(example("scout")) if sid == "ses_1" else ""):
+            self.d.handle({"cmd": "update", "session_id": "ses_1", "agent": "opencode", "status": "idle",
+                           "cwd": self.tmp.name})
+        self.assertEqual(self.node()["status"], "done")
 
 
 class WatchTest(unittest.TestCase):

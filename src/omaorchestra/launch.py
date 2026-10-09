@@ -130,7 +130,7 @@ def run(task, cwd, permission_mode=None, model=None, extra=(), worktree=None,
     role_env = {}
     if role:
         try:
-            spec = roles.launch_args(roles.get(role, cwd), adapter.name, os.environ)
+            spec = roles.launch_args(roles.get(role, cwd), adapter.name, os.environ, permission_mode)
         except roles.RoleError as e:
             raise LaunchError(str(e)) from e
         # A provider has its own model ids, so a role's Claude model is left out.

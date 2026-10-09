@@ -62,10 +62,13 @@ says why.
 Each agent is a queued task in a terminal of its own, so the queue's limits
 apply: the parallel limit, the daily budget, and usage limits. The first
 time an agent works in a folder, Claude Code asks whether to trust it;
-answer in its window. Claude Code agents run in its **auto** permission
-mode, so they go on without asking you to say yes to each command; a
-role's own `permissionMode`, or the fleet's `permission_mode`, sets
-another. Every agent shows in Sessions, with a chip naming its
+answer in its window. Agents run in **auto** mode, so they go on without
+asking you to say yes to each command: Claude Code in its auto permission
+mode; opencode with what it would ask answered for it (files outside the
+folder allowed, `.env` files not read, a call repeated in a loop
+refused). A role's own `permissionMode`, or the fleet's `permission_mode`,
+sets another; any other than `auto` leaves opencode asking as it does.
+Codex keeps its own approval settings. Every agent shows in Sessions, with a chip naming its
 run and role. An agent's window stays open after its reply is read, so you
 can look back at its work; once the node is done the run no longer needs
 it, and an idle window holds no queue slot. Close it when you like.
@@ -268,7 +271,7 @@ read-only role runs in Codex's read-only sandbox; opencode gets it as an
 agent of its own, passed in `OPENCODE_CONFIG_CONTENT` (never written to its
 config), with editing, shell and web tools denied when the role lacks them.
 Claude's model names and permission modes apply only when Claude runs the
-role.
+role, but for `auto` mode in opencode (as above).
 
 ```bash
 omaorchestra role list            # every role, where it comes from, what it hides
@@ -323,7 +326,7 @@ reviewer = "security-reviewer"
 | `stall_minutes` | `20` | a working agent with no sign of life this long is flagged |
 | `max_depth` | `1` | how deep slices may [split](#recursive-slices) (1 to 4): 1, none; 2, a slice of the plan once |
 | `split_gate` | `false` | `true`: each split waits for you at a split gate |
-| `permission_mode` | `auto` | Claude Code's permission mode for the run's agents, unless their role sets one: `auto` goes on without asking; `manual` asks you before each command; or `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan` |
+| `permission_mode` | `auto` | the permission mode for the run's Claude Code and opencode agents, unless their role sets one: `auto` goes on without asking; `manual` asks you before each command; or `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan` |
 | `roles.<stage>` | the stage's name | the role that plays `scout`, `architect`, `builder`, `reviewer` or `integrator` |
 
 The stages and their order are fixed; a fleet changes who plays them, the

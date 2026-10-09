@@ -329,19 +329,40 @@ class DaemonSplitTest(unittest.TestCase):
     def test_agents_run_in_auto_mode_unless_their_role_says(self):
         # Live runs stopped for a yes at each command the agent ran.
         spawned = []
-        self.d.spawn = lambda cmd, **kw: spawned.append(" ".join(map(str, cmd)))
+        self.d.spawn = lambda cmd, **kw: spawned.append((" ".join(map(str, cmd)), kw["env"]))
         roles_dir = self.root / "roles"
         roles_dir.mkdir()
         (roles_dir / "careful.md").write_text("---\nname: careful\npermissionMode: acceptEdits\n---\n\nPlan it.\n")
-        (self.root / "fleets.toml").write_text('[fleets.deep]\nscout = false\n[fleets.manual]\nscout = false\n'
-                                               'permission_mode = "manual"\n[fleets.careful]\nscout = false\n'
-                                               '[fleets.careful.roles]\narchitect = "careful"\n')
-        for name, mode in (("deep", "auto"), ("manual", "manual"), ("careful", "acceptEdits")):
-            with self.subTest(fleet=name):
-                response = self.d.handle({"cmd": "fleet-start", "goal": f"Make it {name}", "folder": str(self.repo),
-                                          "fleet": name})
-                self.assertTrue(response["ok"], response)
-                self.assertIn(f"--permission-mode {mode} ", spawned[-1])
+        for agent in ("opencode", "codex"):
+            (roles_dir / f"{agent}-planner.md").write_text(f"---\nname: {agent}-planner\nagent: {agent}\n"
+                                                           "permissionMode: acceptEdits\n---\n\nPlan it.\n"
+                                                           if agent == "codex" else
+                                                           f"---\nname: {agent}-planner\nagent: {agent}\n---\n\n"
+                                                           "Plan it.\n")
+        (self.root / "fleets.toml").write_text(
+            '[fleets.deep]\nscout = false\n[fleets.manual]\nscout = false\npermission_mode = "manual"\n'
+            '[fleets.careful]\nscout = false\n[fleets.careful.roles]\narchitect = "careful"\n'
+            '[fleets.open]\nscout = false\n[fleets.open.roles]\narchitect = "opencode-planner"\n'
+            '[fleets.openmanual]\nscout = false\npermission_mode = "manual"\n'
+            '[fleets.openmanual.roles]\narchitect = "opencode-planner"\n'
+            '[fleets.codex]\nscout = false\n[fleets.codex.roles]\narchitect = "codex-planner"\n')
+        with mock.patch.dict(os.environ, {"OMAORCHESTRA_OPENCODE": "true", "OMAORCHESTRA_CODEX": "true"}):
+            for name, mode in (("deep", "auto"), ("manual", "manual"), ("careful", "acceptEdits"), ("open", None),
+                               ("openmanual", None), ("codex", None)):
+                with self.subTest(fleet=name):
+                    response = self.d.handle({"cmd": "fleet-start", "goal": f"Make it {name}",
+                                              "folder": str(self.repo), "fleet": name})
+                    self.assertTrue(response["ok"], response)
+                    command, env = spawned[-1]
+                    if mode:
+                        self.assertIn(f"--permission-mode {mode} ", command)
+                    else:  # opencode's mode is in its agent's permissions; Codex keeps its own
+                        self.assertNotIn("--permission-mode", command)
+                        self.assertNotIn(" -a ", command)
+                    if name.startswith("open"):
+                        agent = json.loads(env["OPENCODE_CONFIG_CONTENT"])["agent"]["omaorchestra-opencode-planner"]
+                        self.assertEqual(agent.get("permission", {}).get("external_directory"),
+                                         "allow" if name == "open" else None)
 
 
 if __name__ == "__main__":
