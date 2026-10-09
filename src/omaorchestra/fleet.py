@@ -591,6 +591,20 @@ def _review_part(n):
     return lines + [""]
 
 
+def _where_part(state, n):
+    """Where the node works (the daemon records it when queueing the node):
+    a worktree of the run's folder is named as such, so the agent does not
+    make its changes in the folder itself."""
+    workdir = n.get("workdir")
+    if not workdir or workdir == state["folder"]:
+        return [f"You are the {n['role']} in a fleet run of omaorchestra, in {state['folder']}.", ""]
+    worktrees = [state.get("worktree") or {}, *state.get("slice_worktrees", {}).values()]
+    branch = next((w.get("branch") for w in worktrees if w.get("workdir") == workdir), None)
+    return [f"You are the {n['role']} in a fleet run of omaorchestra on {state['folder']}. You work in {workdir}, "
+            "a git worktree of it" + (f" on branch {branch}" if branch else "") + ": make every change and run "
+            f"every command there, never in {state['folder']}.", ""]
+
+
 def brief(state, nid):
     """What a node is told about the run: its goal, and what the nodes
     before it produced that it needs."""
@@ -598,8 +612,7 @@ def brief(state, nid):
     role, slice_id = n["role"], n.get("slice")
     lines = [f"# {role.capitalize()}" + (f", slice {slice_id}" if slice_id else "")
              + (f", attempt {n['attempt']}" if n["attempt"] > 1 else ""), "",
-             f"You are the {role} in a fleet run of omaorchestra, in {state['folder']}.", "",
-             "## Goal", "", state["goal"], ""]
+             *_where_part(state, n), "## Goal", "", state["goal"], ""]
     if role == "scout":
         lines += ["You are the first step: nothing has been established yet.", ""]
     elif role == "architect":

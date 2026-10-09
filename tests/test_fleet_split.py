@@ -323,6 +323,12 @@ class DaemonSplitTest(unittest.TestCase):
         self.assertEqual(state["status"], "running")
         child = self.d.registry.sessions[state["nodes"]["builder.s1-a"]["session"]]
         self.assertEqual(child["cwd"], s1["workdir"])
+        # Its brief names the worktree, not the run's folder (a live run's
+        # builder first wrote in the folder).
+        self.assertIn(f"You work in {s1['workdir']}, a git worktree of it on branch {s1['branch']}: make every "
+                      f"change and run every command there, never in {self.repo}.", " ".join(child["task"].split()))
+        architect = self.d.registry.sessions[state["nodes"]["architect"]["session"]]
+        self.assertIn(f"You are the architect in a fleet run of omaorchestra, in {self.repo}.", architect["task"])
         self.assertNotIn("s1-a", state["slice_worktrees"])
 
 

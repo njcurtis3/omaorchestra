@@ -788,6 +788,7 @@ class Daemon:
         try:
             workdir, worktree = self.fleet_workdir(state, n)
             role = roles.get(role_name, workdir)
+            n["workdir"] = str(workdir)  # the brief names it
             task = fleet.task_for(state, nid)
             # Codex's approval policies are not Claude's modes, so it keeps its own.
             mode = (role.permission_mode or state["template"].get("permission_mode", fleet_graph.PERMISSION_MODE)

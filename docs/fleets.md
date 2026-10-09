@@ -130,8 +130,9 @@ builder s2 ─ split ─→ s2-a: builder → reviewer ─→ s2-b: builder → 
 The board, `fleet show` and `top` list the smaller slices under their slice.
 
 Each agent is told what it needs and no more: its role's instructions, then
-a brief built from the run so far (the goal, the scout's facts, its slice,
-the review that sent it back...), then the JSON block its final reply must
+a brief built from the run so far (where it works, naming the worktree when
+it is one; the goal, the scout's facts, its slice, the review that sent it
+back...), then the JSON block its final reply must
 end with. omaorchestra reads that block, checks it, and records it; an agent
 never writes the run's state itself. See [What each role hands
 back](#what-each-role-hands-back).
