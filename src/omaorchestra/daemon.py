@@ -789,11 +789,12 @@ class Daemon:
             workdir, worktree = self.fleet_workdir(state, n)
             role = roles.get(role_name, workdir)
             task = fleet.task_for(state, nid)
+            # Codex's approval policies are not Claude's modes, so it keeps its own.
+            mode = (role.permission_mode or state["template"].get("permission_mode", fleet_graph.PERMISSION_MODE)
+                    if role.agent in ("claude", "opencode") else None)
             item = self.queue.add({"task": task, "cwd": workdir, "worktree": False, "worktree_path": worktree,
                                    "extra": [], "role": role_name, "agent": role.agent, "fleet": state["id"],
-                                   "permission_mode": role.permission_mode or (state["template"].get(
-                                       "permission_mode", fleet_graph.PERMISSION_MODE) if role.agent == "claude"
-                                       else None),
+                                   "permission_mode": mode,
                                    "node": nid, "path": state.get("path")})
         except (worktrees.WorktreeError, roles.RoleError, fleet.RunError, taskqueue.QueueError) as e:
             fleet.hold(state, f"{nid} cannot start: {e}", by=nid)
@@ -1262,6 +1263,16 @@ class Daemon:
         self.registry.save()
         event(logging.INFO, "session adopted", launch=launch_id, id=session_id)
         self.changed(placeholder, None, reason="adopted")
+        if placeholder.get("fleet") and placeholder.get("node"):
+            # Its fleet node follows it, or the node never hears it finish.
+            try:
+                state = fleet.load(placeholder["fleet"])
+                n = fleet.node(state, placeholder["node"])
+            except fleet.RunError:
+                return
+            if n.get("session") == launch_id:
+                n["session"] = session_id
+                self.fleet_saved(state, f"{n['id']}'s agent is session {session_id}")
 
     def find_launched(self, sid, session):
         adapter = adapters.ADAPTERS.get(session.get("agent"), adapters.ADAPTERS["claude"])

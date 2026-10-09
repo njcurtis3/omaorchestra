@@ -234,6 +234,11 @@ class LaunchArgsTest(unittest.TestCase):
         self.assertEqual(definition["permission"], {"edit": "deny", "bash": "deny", "websearch": "deny"})
         everything = json.loads(roles.launch_args(self.role(), "opencode")["env"]["OPENCODE_CONFIG_CONTENT"])
         self.assertNotIn("permission", everything["agent"]["omaorchestra-checker"])
+        # In auto mode (a fleet's default) what opencode would ask is answered for it.
+        auto = roles.launch_args(self.role("tools: Read, Grep"), "opencode", permission_mode="auto")
+        self.assertEqual(json.loads(auto["env"]["OPENCODE_CONFIG_CONTENT"])["agent"]["omaorchestra-checker"]
+                         ["permission"], {**roles.OPENCODE_AUTO, "edit": "deny", "bash": "deny", "websearch": "deny",
+                                          "webfetch": "deny"})
         broken = roles.launch_args(self.role(), "opencode", {"OPENCODE_CONFIG_CONTENT": "not json"})
         self.assertIn("agent", json.loads(broken["env"]["OPENCODE_CONFIG_CONTENT"]))
 
